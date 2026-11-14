@@ -1,6 +1,6 @@
 # Spec: ISP Enterprise Control Center Baseline Technical & Security Audit — V1
 
-Status: proposed
+Status: approved in principle
 
 ## Objective
 
@@ -21,7 +21,7 @@ The supplied design requirements cover a multi-tenant SaaS modular monolith (Nes
 
 ## Current repository evidence baseline
 
-At specification time, the accessible `codex/baseline-audit-map` branch contains `LICENSE`, `README.md`, and `docs/CAPABILITY_MAP.md`. The README only identifies the repository. No application, schema, RADIUS, deployment, test, or CI files are currently available to inspect. This is an observed repository limitation, not a defect in an unseen implementation. The audit cannot substantively assess source code until the project files are present.
+Repository branch inventory on 2026-11-14: `main` is at `8b0349552e3917dc26842933be291711e3dcbe8d` and contains only `LICENSE` and `README.md`. `codex/baseline-audit-map` is at `613009b69c42046ec3ad568a75b8a19aeadf2767` and contains those files plus `docs/CAPABILITY_MAP.md` and this spec. Neither branch contains application source, schema/migrations, RADIUS configuration, deployment, tests, or CI files. No source-bearing branch is currently available. These are repository inventory observations, not defects in unseen implementation.
 
 ## Commands
 
@@ -45,6 +45,7 @@ LICENSE
 README.md
 docs/
   CAPABILITY_MAP.md
+  SPEC-baseline-audit.md
 ```
 
 Audit outputs, once evidence is available:
@@ -80,7 +81,7 @@ The recommended coverage must address cross-tenant denial, RLS under the runtime
 
 ## Boundaries
 
-- **Always:** Keep the audit read-only with respect to source/configuration/schema/data; use repository evidence; redact secrets; distinguish verified defects from hypotheses and missing evidence; record commands and results; preserve the supplied severity rubric; state unavailable evidence plainly.
+- **Always:** Keep the audit read-only with respect to source/configuration/schema/data; use repository evidence; redact secrets; distinguish verified defects from hypotheses and missing evidence; record commands and results; preserve the supplied severity rubric; state unavailable evidence plainly. Do not begin the technical baseline audit until the complete source/configuration evidence set in the approved task brief is present in a repository branch.
 - **Ask first:** Any change to source, schemas, migrations, application configuration, CI, deployment, or live environments; any remediation; any direct device/server test; expanding the architecture or version scope.
 - **Never:** Run migrations or deployments; access production; connect to routers, switches, OLTs, NAS devices, or live RADIUS servers; expose credentials/secrets; invent paths, line numbers, dependencies, or observed outcomes; recommend bypassing RLS, trusting client/username tenant IDs, Redis-only accounting, synchronous app-API authentication hot paths, disabling TLS/signature checks, plaintext secrets, destructive journal edits, or unreviewed AI-generated network-device commands.
 
@@ -102,8 +103,13 @@ The recommended coverage must address cross-tenant denial, RLS under the runtime
 - Treating vendor-specific support as confirmed without documentation for the exact model and software version.
 - Building BI or analytics features; these remain P5 recommendations only if repository evidence makes them relevant.
 
+## Approved decisions and audit gate
+
+- The supplied ISP Enterprise Control Center / ISP Enterprise RADIUS SaaS architecture brief is the authoritative target architecture. It is a requirements baseline, not evidence about implementation.
+- Before the technical audit begins, the repository must contain the complete project evidence set: backend/frontend source; PostgreSQL schema and migrations; FreeRADIUS 3.2.x configuration and dictionaries; Docker Compose/deployment; API definitions; queues/workers; tests/CI; and secret-free environment templates.
+- Select the branch containing that complete source as the audit baseline. Prefer `main` if complete; otherwise use the designated source-bearing branch. Record the exact branch and commit SHA in the report. `codex/baseline-audit-map` is only the specification branch unless it receives the complete source.
+- If the required source remains unavailable, report the audit as blocked and list the missing evidence. Do not infer implementation details or begin technical security analysis from the brief.
+
 ## Open Questions
 
-- The target repository currently has no project source or configuration files beyond its README and license. Will the project files be added to this repository before the audit proceeds? If they remain absent, the only valid audit outcome is a limited evidence report stating that the code audit could not be completed.
-- Which branch should be treated as the audit baseline if project files are added on a branch other than `main`?
-- Is the supplied architecture brief the authoritative target for the audit, including FreeRADIUS 3.2.x and the named vendor model/software versions? Until corrected, this spec treats it as the target baseline and labels it unverified.
+- The current branch inventory shows that the required project source/configuration is absent from both available branches. The audit remains blocked until the complete source-bearing branch is added or made available.
