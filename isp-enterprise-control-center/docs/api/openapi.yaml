@@ -1,0 +1,481 @@
+openapi: 3.1.0
+info:
+  title: ISP Enterprise Control Center API
+  version: 1.0.0
+  description: Multi-tenant ISP management API. Tenant context is derived from authenticated membership, never trusted from an arbitrary request body.
+servers:
+  - url: https://api.example-isp.com/api/v1
+    description: Production placeholder; replace with your API hostname
+  - url: https://sandbox-api.example-isp.com/api/v1
+    description: Sandbox placeholder
+security:
+  - bearerAuth: []
+tags:
+  - name: Health
+  - name: Subscribers
+  - name: Packages
+  - name: Sessions
+  - name: Invoices
+  - name: Payments
+  - name: Accounting
+  - name: Network
+  - name: Webhooks
+paths:
+  /health/live:
+    get:
+      tags: [Health]
+      security: []
+      summary: Process liveness
+      responses:
+        '200':
+          description: Process is running
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SuccessEnvelope'}
+  /health/ready:
+    get:
+      tags: [Health]
+      security: []
+      summary: Dependency readiness
+      responses:
+        '200': {description: Dependencies ready}
+        '503': {description: One or more dependencies unavailable}
+  /subscribers:
+    get:
+      tags: [Subscribers]
+      summary: List subscribers
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/PageSize'}
+        - name: status
+          in: query
+          schema: {type: string, enum: [pending, active, grace, suspended, terminated]}
+        - name: search
+          in: query
+          schema: {type: string, maxLength: 120}
+      responses:
+        '200':
+          description: Paginated subscribers
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PaginatedSubscribers'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [Subscribers]
+      summary: Create subscriber
+      security:
+        - oauth2: [subscriber:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SubscriberCreate'}
+      responses:
+        '201':
+          description: Subscriber created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SubscriberEnvelope'}
+        '409': {description: Duplicate customer code or legacy identifier}
+  /subscribers/{subscriberId}:
+    parameters:
+      - {$ref: '#/components/parameters/SubscriberId'}
+    get:
+      tags: [Subscribers]
+      summary: Get subscriber
+      responses:
+        '200': {description: Subscriber found}
+        '404': {description: Subscriber not found in current tenant}
+    patch:
+      tags: [Subscribers]
+      summary: Update subscriber
+      security:
+        - oauth2: [subscriber:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SubscriberPatch'}
+      responses:
+        '200': {description: Subscriber updated}
+        '404': {description: Subscriber not found}
+  /subscribers/{subscriberId}/suspend:
+    post:
+      tags: [Subscribers]
+      summary: Request subscriber suspension
+      security:
+        - oauth2: [subscriber:suspend]
+      parameters:
+        - {$ref: '#/components/parameters/SubscriberId'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: {type: string, minLength: 3, maxLength: 500}
+      responses:
+        '202': {description: Suspension queued for policy execution}
+        '404': {description: Subscriber not found}
+  /resellers:
+    get:
+      tags: [Subscribers]
+      summary: List tenant resellers
+      responses:
+        '200': {description: Reseller list}
+    post:
+      tags: [Subscribers]
+      summary: Create reseller
+      security:
+        - oauth2: [subscriber:write]
+      responses:
+        '201': {description: Reseller created}
+  /packages:
+    get:
+      tags: [Packages]
+      summary: List service packages
+      responses:
+        '200': {description: Package list}
+    post:
+      tags: [Packages]
+      summary: Create service package
+      security:
+        - oauth2: [package:write]
+      responses:
+        '201': {description: Package created}
+  /sessions/online:
+    get:
+      tags: [Sessions]
+      summary: List online RADIUS sessions
+      parameters:
+        - name: nasId
+          in: query
+          schema: {type: string, format: uuid}
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/PageSize'}
+      responses:
+        '200': {description: Current online sessions}
+  /sessions/{sessionId}/disconnect:
+    post:
+      tags: [Sessions]
+      summary: Queue a RADIUS Disconnect request
+      security:
+        - oauth2: [session:disconnect]
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      responses:
+        '202': {description: Disconnect request queued; NAS acknowledgement is asynchronous}
+        '404': {description: Session not found in current tenant}
+  /invoices:
+    get:
+      tags: [Invoices]
+      summary: List invoices
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/PageSize'}
+        - name: status
+          in: query
+          schema: {type: string, enum: [draft, issued, partially_paid, paid, overdue, void]}
+      responses:
+        '200': {description: Invoice list}
+  /payments:
+    post:
+      tags: [Payments]
+      summary: Initiate a payment
+      security:
+        - oauth2: [payment:write]
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PaymentInitiate'}
+      responses:
+        '202': {description: Payment initiation accepted; final status arrives asynchronously}
+        '409': {description: Idempotency key reused with different request body}
+  /payments/{paymentId}:
+    get:
+      tags: [Payments]
+      summary: Get payment status
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200': {description: Payment status}
+        '404': {description: Payment not found}
+  /accounting/trial-balance:
+    get:
+      tags: [Accounting]
+      summary: Get trial balance
+      security:
+        - oauth2: [accounting:read]
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema: {type: string, format: date}
+        - name: to
+          in: query
+          required: true
+          schema: {type: string, format: date}
+      responses:
+        '200': {description: Trial balance by account and currency}
+  /accounting/profit-and-loss:
+    get:
+      tags: [Accounting]
+      summary: Profit and loss statement
+      security:
+        - oauth2: [accounting:read]
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema: {type: string, format: date}
+        - name: to
+          in: query
+          required: true
+          schema: {type: string, format: date}
+      responses:
+        '200': {description: Profit and loss by account and currency}
+  /accounting/balance-sheet:
+    get:
+      tags: [Accounting]
+      summary: Balance sheet as of a date
+      security:
+        - oauth2: [accounting:read]
+      parameters:
+        - name: asOf
+          in: query
+          required: true
+          schema: {type: string, format: date}
+      responses:
+        '200': {description: Balance sheet by account and currency}
+  /accounting/cash-flow:
+    get:
+      tags: [Accounting]
+      summary: Cash flow statement
+      security:
+        - oauth2: [accounting:read]
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema: {type: string, format: date}
+        - name: to
+          in: query
+          required: true
+          schema: {type: string, format: date}
+      responses:
+        '200': {description: Cash flow statement by period and currency}
+  /accounting/journal-entries:
+    post:
+      tags: [Accounting]
+      summary: Create a draft journal entry
+      security:
+        - oauth2: [accounting:write]
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      responses:
+        '201': {description: Draft journal entry created}
+  /analytics/revenue:
+    get:
+      tags: [Accounting]
+      summary: Revenue and collection analytics
+      security:
+        - oauth2: [accounting:read]
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema: {type: string, format: date}
+        - name: to
+          in: query
+          required: true
+          schema: {type: string, format: date}
+        - name: interval
+          in: query
+          schema: {type: string, enum: [day, week, month], default: day}
+      responses:
+        '200': {description: Aggregated revenue analytics}
+  /analytics/subscriber-growth:
+    get:
+      tags: [Subscribers]
+      summary: Subscriber growth and churn analytics
+      security:
+        - oauth2: [subscriber:read]
+      responses:
+        '200': {description: Subscriber growth time series}
+  /network/nas:
+    get:
+      tags: [Network]
+      summary: List tenant NAS devices
+      security:
+        - oauth2: [network:read]
+      responses:
+        '200': {description: NAS inventory}
+  /payment-gateways/{provider}/callbacks:
+    post:
+      tags: [Payments]
+      security: []
+      summary: Receive provider payment callback
+      description: Verify provider signature, timestamp and transaction status before processing. Provider callback authentication is provider-specific and must not rely on this endpoint being public alone.
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: {type: string, enum: [bkash, nagad, rocket, bank_card]}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, additionalProperties: true}
+      responses:
+        '200': {description: Callback accepted or safely acknowledged as duplicate}
+        '400': {description: Invalid callback payload}
+        '401': {description: Signature or provider verification failed}
+  /network/olts:
+    get:
+      tags: [Network]
+      summary: List tenant OLT inventory
+      security:
+        - oauth2: [network:read]
+      responses:
+        '200': {description: OLT inventory including vendor and software metadata}
+  /network/onus:
+    get:
+      tags: [Network]
+      summary: List ONU inventory and status
+      security:
+        - oauth2: [network:read]
+      responses:
+        '200': {description: ONU inventory and last reported optical status}
+  /webhooks:
+    post:
+      tags: [Webhooks]
+      summary: Register a webhook endpoint
+      security:
+        - oauth2: [webhook:write]
+      responses:
+        '201': {description: Webhook registered; signing secret is shown once}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    oauth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://auth.example-isp.com/oauth2/token
+          scopes:
+            subscriber:read: Read subscribers
+            subscriber:write: Create and update subscribers
+            subscriber:suspend: Suspend subscribers
+            package:write: Manage packages
+            session:disconnect: Disconnect subscriber sessions
+            payment:read: Read payment records
+            payment:write: Initiate payments
+            accounting:read: Read financial reports
+            accounting:write: Create accounting drafts
+            network:read: Read network inventory
+            webhook:write: Manage webhooks
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema: {type: integer, minimum: 1, default: 1}
+    PageSize:
+      name: pageSize
+      in: query
+      schema: {type: integer, minimum: 1, maximum: 100, default: 25}
+    SubscriberId:
+      name: subscriberId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: {type: string, minLength: 16, maxLength: 128}
+  responses:
+    Unauthorized:
+      description: Authentication required
+    Forbidden:
+      description: Insufficient permission or tenant membership
+  schemas:
+    SuccessEnvelope:
+      type: object
+      properties:
+        success: {type: boolean, const: true}
+        data: {type: object}
+        meta:
+          type: object
+          properties:
+            requestId: {type: string}
+            timestamp: {type: string, format: date-time}
+    Subscriber:
+      type: object
+      required: [id, customerCode, fullName, status]
+      properties:
+        id: {type: string, format: uuid}
+        customerCode: {type: string}
+        fullName: {type: string}
+        mobileE164: {type: [string, 'null']}
+        status: {type: string, enum: [pending, active, grace, suspended, terminated]}
+    SubscriberCreate:
+      type: object
+      required: [customerCode, fullName]
+      properties:
+        customerCode: {type: string, maxLength: 64}
+        fullName: {type: string, minLength: 2, maxLength: 200}
+        mobileE164: {type: [string, 'null'], maxLength: 30}
+        email: {type: [string, 'null'], format: email}
+        legacyId: {type: [string, 'null'], maxLength: 100}
+    SubscriberPatch:
+      type: object
+      minProperties: 1
+      properties:
+        fullName: {type: string, minLength: 2, maxLength: 200}
+        mobileE164: {type: [string, 'null'], maxLength: 30}
+        email: {type: [string, 'null'], format: email}
+        status: {type: string, enum: [pending, active, grace, suspended, terminated]}
+    SubscriberEnvelope:
+      allOf:
+        - {$ref: '#/components/schemas/SuccessEnvelope'}
+    PaginatedSubscribers:
+      type: object
+      properties:
+        success: {type: boolean, const: true}
+        data:
+          type: array
+          items: {$ref: '#/components/schemas/Subscriber'}
+        meta:
+          type: object
+          properties:
+            page: {type: integer}
+            pageSize: {type: integer}
+            total: {type: integer}
+    PaymentInitiate:
+      type: object
+      required: [subscriberId, amountMinor, currency, gatewayId]
+      properties:
+        subscriberId: {type: string, format: uuid}
+        amountMinor: {type: integer, minimum: 1}
+        currency: {type: string, pattern: '^[A-Z]{3}$'}
+        gatewayId: {type: string, format: uuid}
+        invoiceIds:
+          type: array
+          items: {type: string, format: uuid}
