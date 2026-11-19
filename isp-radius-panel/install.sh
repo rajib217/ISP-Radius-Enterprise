@@ -133,7 +133,7 @@ mariadb "$DB_NAME" < "$SRC_DIR/sql/panel_schema.sql"
 # compare text across different collations, so make the panel tables match radcheck.
 RC_COLL=$(mariadb -N -e "SELECT TABLE_COLLATION FROM information_schema.tables WHERE table_schema='$DB_NAME' AND table_name='radcheck'")
 if [[ "$RC_COLL" =~ ^[a-z0-9_]+$ ]]; then
-  for t in panel_admins plans subscribers payments audit_log stats_snapshots settings role_perms user_plans departments zones areas expenses inventory_items inventory_moves net_devices ip_pools tickets ticket_replies outbox message_templates notes documents fees sub_charges plan_fees nas_groups mac_vendors onus olt_snmp onu_metrics sub_ledger coa_log notices user_ledger topups role_funcs; do
+  for t in panel_admins plans subscribers payments audit_log stats_snapshots settings role_perms user_plans departments zones areas expenses inventory_items inventory_moves net_devices ip_pools tickets ticket_replies outbox message_templates notes documents fees sub_charges plan_fees nas_groups mac_vendors onus olt_snmp onu_metrics sub_ledger coa_log notices user_ledger topups role_funcs traffic_snapshots traffic_last; do
     CUR_COLL=$(mariadb -N -e "SELECT TABLE_COLLATION FROM information_schema.tables WHERE table_schema='$DB_NAME' AND table_name='$t'")
     if [[ "$CUR_COLL" != "$RC_COLL" ]]; then
       mariadb "$DB_NAME" -e "ALTER TABLE \`$t\` CONVERT TO CHARACTER SET utf8mb4 COLLATE $RC_COLL"
@@ -301,7 +301,7 @@ Group=isp-panel
 SupplementaryGroups=freerad
 WorkingDirectory=__APP__
 EnvironmentFile=/etc/isp-panel/panel.env
-ExecStart=/usr/bin/gunicorn --workers 4 --threads 2 --timeout 600 --bind 127.0.0.1:8000 --access-logfile - app:app
+ExecStart=/usr/bin/gunicorn --workers 4 --threads 8 --timeout 600 --bind 127.0.0.1:8000 --access-logfile - app:app
 Restart=on-failure
 RestartSec=3
 PrivateTmp=yes

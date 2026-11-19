@@ -1,6 +1,7 @@
 """Runs every 5 minutes from a systemd timer.
 
   * records the number of online users (feeds the dashboard curve)
+  * records total download / upload throughput and each session's rate (dashboard bandwidth chart)
   * sends Telegram alerts (router down, customers dropping, server load, FreeRADIUS, daily summary)
   * records CPU, RAM, disk and database size (Reports > Server; kept 180 days)
   * closes sessions that stopped sending updates (power cut, cable pulled)
@@ -20,6 +21,53 @@ import radius
 
 BATCH = 20000
 MAX_BATCHES = 100
+TRAFFIC_KEEP_DAYS = 35
+
+
+def session_rate(cur_row, prev):
+    """(down_bps, up_bps) of one open session.
+
+    Routers only send new counters at each interim update (Acct-Interim-Interval, 10 minutes by default), so the
+    rate is the byte difference between the last two updates divided by the time between them. Between updates the
+    previous rate is kept. A session seen for the first time gets its average since it started."""
+    i, o, upd = int(cur_row["i"] or 0), int(cur_row["o"] or 0), cur_row["upd"]
+    if prev is None:
+        start = cur_row.get("start")
+        secs = (upd - start).total_seconds() if upd and start else 0
+        return (int(o * 8 / secs), int(i * 8 / secs)) if secs >= 60 else (0, 0)
+    if upd and prev["upd"] and upd > prev["upd"]:
+        secs = (upd - prev["upd"]).total_seconds()
+        # a counter that went down means the router reset it: use the new value as the bytes for this interval
+        d_out = o - prev["out_oct"] if o >= prev["out_oct"] else o
+        d_in = i - prev["in_oct"] if i >= prev["in_oct"] else i
+        return int(d_out * 8 / secs), int(d_in * 8 / secs)
+    return int(prev["down_bps"]), int(prev["up_bps"])
+
+
+def record_traffic(conn, cur):
+    """Save every open session's current rate in traffic_last and the total in traffic_snapshots.
+    Download = what the customer receives (Acct-Output-Octets); upload = Acct-Input-Octets."""
+    cur.execute("SELECT radacctid, username, acctinputoctets AS i, acctoutputoctets AS o, acctstarttime AS start, "
+                "COALESCE(acctupdatetime, acctstarttime) AS upd FROM radacct WHERE acctstoptime IS NULL")
+    rows = cur.fetchall()
+    cur.execute("SELECT radacctid, in_oct, out_oct, upd, down_bps, up_bps FROM traffic_last")
+    prev = {r["radacctid"]: r for r in cur.fetchall()}
+    out, down_total, up_total = [], 0, 0
+    for r in rows:
+        down, up = session_rate(r, prev.get(r["radacctid"]))
+        down_total += down
+        up_total += up
+        out.append((r["radacctid"], (r["username"] or "")[:64], int(r["i"] or 0), int(r["o"] or 0), r["upd"], down, up))
+    cur.execute("DELETE FROM traffic_last")
+    for k in range(0, len(out), 2000):
+        cur.executemany("INSERT INTO traffic_last (radacctid, username, in_oct, out_oct, upd, down_bps, up_bps) "
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s)", out[k:k + 2000])
+    cur.execute("INSERT INTO traffic_snapshots (ts, down_bps, up_bps, sessions) VALUES (NOW(), %s, %s, %s) "
+                "ON DUPLICATE KEY UPDATE down_bps = VALUES(down_bps), up_bps = VALUES(up_bps), sessions = VALUES(sessions)",
+                (down_total, up_total, len(out)))
+    cur.execute("DELETE FROM traffic_snapshots WHERE ts < NOW() - INTERVAL %s DAY", (TRAFFIC_KEEP_DAYS,))
+    conn.commit()
+    return down_total, up_total
 
 
 def record_server_stats(cur):
@@ -326,6 +374,12 @@ def main():
     cur.execute("INSERT INTO stats_snapshots (ts, online) VALUES (NOW(), %s) "
                 "ON DUPLICATE KEY UPDATE online = VALUES(online)", (online,))
     conn.commit()
+
+    try:
+        record_traffic(conn, cur)
+    except Exception as exc:   # a missing table (install.sh not re-run yet) must not stop the rest of the job
+        conn.rollback()
+        print("traffic sample failed: %s" % exc)
 
     try:
         record_server_stats(cur)

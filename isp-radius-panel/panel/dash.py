@@ -1,4 +1,6 @@
 """Data for the tabs of the home page (only the tab that is open is calculated)."""
+import threading
+import time
 from datetime import date, timedelta
 
 import core
@@ -180,6 +182,131 @@ def cashflow():
 
 LOAD = {"subscriber": subscriber, "accounting": accounting, "user": user, "predictions": predictions,
         "usage": usage, "sales": sales, "cashflow": cashflow}
+
+# Seconds to reuse a tab's numbers. The home page is the most opened page, and "usage" sums the whole day of
+# radacct (millions of rows after a year at 20,000 customers), so recalculating it on every load adds up.
+# Money tabs are not cached, so a payment shows up at once.
+CACHE_SECONDS = {"subscriber": 30, "usage": 120, "predictions": 300, "user": 120}
+_cache = {}
+_cache_lock = threading.Lock()
+
+
+def load(tab):
+    """LOAD[tab](), reused for CACHE_SECONDS[tab] per worker. Keyed by the viewer's scope,
+    so a reseller never sees numbers calculated for another reseller or for an admin."""
+    ttl = CACHE_SECONDS.get(tab)
+    if not ttl:
+        return LOAD[tab]()
+    sc, sp = core.scope_sql("s")
+    key = (tab, sc, tuple(sp), date.today())
+    now = time.monotonic()
+    with _cache_lock:
+        hit = _cache.get(key)
+        if hit and now - hit[0] < ttl:
+            return hit[1]
+    data = LOAD[tab]()
+    with _cache_lock:
+        if len(_cache) > 500:
+            _cache.clear()
+        _cache[key] = (now, data)
+    return data
+
+
+# ===================================================================== v3 dashboard (staff view)
+TRAFFIC_RANGES = {            # key: (look-back, bucket seconds, label format)
+    "1h": ("1 HOUR", 300, "%H:%M"),
+    "24h": ("24 HOUR", 300, "%H:%M"),
+    "7d": ("7 DAY", 3600, "%a %d"),
+    "30d": ("30 DAY", 6 * 3600, "%d %b"),
+}
+
+
+def traffic_series(rng):
+    """Download / upload throughput (bits per second) for the bandwidth chart. [] while nothing is recorded yet."""
+    back, bucket, fmt = TRAFFIC_RANGES.get(rng, TRAFFIC_RANGES["24h"])
+    try:
+        rows = q("SELECT FROM_UNIXTIME(FLOOR(UNIX_TIMESTAMP(ts) / %s) * %s) AS b, AVG(down_bps) AS down, AVG(up_bps) AS up "
+                 "FROM traffic_snapshots WHERE ts >= NOW() - INTERVAL " + back + " GROUP BY b ORDER BY b",
+                 (bucket, bucket))
+    except Exception:          # table not created yet: install.sh has not been re-run after the upgrade
+        rows = []
+    return {"unit": "bps", "labels": [r["b"].strftime(fmt) for r in rows],
+            "stamps": [r["b"].strftime("%d %b %Y, %H:%M") for r in rows],
+            "series": [{"name": "Download", "color": "--accent", "values": [float(r["down"] or 0) for r in rows]},
+                       {"name": "Upload", "color": "--online", "values": [float(r["up"] or 0) for r in rows]}]}
+
+
+def throughput_now():
+    """Latest total throughput, or None when no sample is younger than 15 minutes."""
+    try:
+        r = q("SELECT ts, down_bps, up_bps, sessions FROM traffic_snapshots WHERE ts >= NOW() - INTERVAL 15 MINUTE "
+              "ORDER BY ts DESC LIMIT 1", one=True)
+    except Exception:
+        return None
+    return r
+
+
+def revenue_6m():
+    """Collected vs. not collected for the last 6 months.
+
+    'Expected' is what all active customers' packages cost, counting customers who existed by the end of that month.
+    Older months are an estimate: the panel does not keep who was active in the past, only who is active now."""
+    today = date.today()
+    months = []
+    for back in range(5, -1, -1):
+        y, m = today.year, today.month - back
+        while m <= 0:
+            m += 12
+            y -= 1
+        months.append((y, m))
+    first = date(months[0][0], months[0][1], 1)
+    paid = {r["ym"]: float(r["t"] or 0) for r in q(
+        "SELECT DATE_FORMAT(paid_at, '%%Y-%%m') AS ym, SUM(amount) AS t FROM payments WHERE paid_at >= %s GROUP BY ym",
+        (first,))}
+    expected = {}
+    for y, m in months:
+        end = date(y + (m == 12), m % 12 + 1, 1)
+        r = q("SELECT COALESCE(SUM(p.price), 0) AS t FROM subscribers s JOIN plans p ON p.id = s.plan_id "
+              "WHERE s.status = 'active' AND s.created_at < %s", (end,), one=True)
+        expected["%04d-%02d" % (y, m)] = float(r["t"] or 0)
+    keys = ["%04d-%02d" % ym for ym in months]
+    collected = [paid.get(k, 0.0) for k in keys]
+    unpaid = [max(expected[k] - paid.get(k, 0.0), 0.0) for k in keys]
+    return {"unit": "money", "colors": ["--online", "--offline"],
+            "labels": [date(y, m, 1).strftime("%b %y") for y, m in months],
+            "series": [{"name": "Collected", "values": collected}, {"name": "Not collected (est.)", "values": unpaid}]}
+
+
+def status_mix():
+    """Non-overlapping split for the donut: every subscriber is in exactly one slice."""
+    r = q("SELECT COUNT(*) AS total, "
+          "COALESCE(SUM(s.status = 'active' AND (s.expiry_date IS NULL OR s.expiry_date >= CURDATE())), 0) AS active, "
+          "COALESCE(SUM(s.status = 'active' AND (s.expiry_date IS NULL OR s.expiry_date >= CURDATE()) "
+          "AND s.username IN " + ONLINE + "), 0) AS active_online, "
+          "COALESCE(SUM(s.status = 'active' AND s.expiry_date < CURDATE()), 0) AS expired, "
+          "COALESCE(SUM(s.status = 'suspended'), 0) AS disabled FROM subscribers s", one=True)
+    v = {k: n(r[k]) for k in ("total", "active", "active_online", "expired", "disabled")}
+    return {"center": "subscribers", "items": [
+        {"name": "Active, online", "value": v["active_online"], "color": "--online", "status": "online"},
+        {"name": "Active, offline", "value": max(v["active"] - v["active_online"], 0), "color": "--accent", "status": "offline"},
+        {"name": "Expired", "value": v["expired"], "color": "--offline", "status": "expired"},
+        {"name": "Disabled", "value": v["disabled"], "color": "--neutral", "status": "suspended"}]}
+
+
+def growth_pct(total):
+    """Subscriber growth over 30 days: customers added in that time against those who were there before."""
+    before = n(q("SELECT COUNT(*) AS c FROM subscribers WHERE created_at < NOW() - INTERVAL 30 DAY", one=True)["c"])
+    if not before:
+        return None
+    return round(100.0 * (total - before) / before, 1)
+
+
+def dues_total():
+    """Package price of active customers whose package has run out, plus unpaid extra service charges."""
+    a = q("SELECT COALESCE(SUM(p.price), 0) AS t, COUNT(*) AS c FROM subscribers s JOIN plans p ON p.id = s.plan_id "
+          "WHERE s.status = 'active' AND s.expiry_date < CURDATE()", one=True)
+    b = q("SELECT COALESCE(SUM(amount), 0) AS t FROM sub_charges WHERE paid = 0", one=True)
+    return {"amount": float(a["t"] or 0) + float(b["t"] or 0), "customers": n(a["c"])}
 
 
 def allowed_tabs():

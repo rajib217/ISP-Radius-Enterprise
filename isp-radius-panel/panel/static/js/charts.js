@@ -95,7 +95,60 @@
     void area; void last;
   }
 
-  function fmtMoney(v) { return v >= 1000 ? (Math.round(v / 100) / 10) + "k" : String(Math.round(v)); }
+  function fmtBps(v) {
+    var u = ["bps", "Kbps", "Mbps", "Gbps", "Tbps"], i = 0;
+    while (v >= 1000 && i < u.length - 1) { v /= 1000; i++; }
+    return (i ? v.toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2) : Math.round(v)) + " " + u[i];
+  }
+
+  /* Several series as soft areas with lines on top (download vs upload). d.series[k].color is a CSS variable name. */
+  function area(host, d) {
+    var series = d.series || [], labels = d.labels || [], n = labels.length;
+    if (n < 2) {
+      host.innerHTML = '<div class="chart-empty"><div>Collecting data.<br>Throughput is sampled every 5 minutes; the chart fills in as samples arrive.</div></div>';
+      return;
+    }
+    var fmt = d.unit === "bps" ? fmtBps : fmtNum;
+    var f = frame(host, d.height || 240), pad = { l: 70, r: 12, t: 12, b: 24 };
+    var peak = 0;
+    series.forEach(function (s) { s.values.forEach(function (v) { if (v > peak) peak = v; }); });
+    var max = nice(peak * 1.1 || 1), iw = f.w - pad.l - pad.r, ih = f.h - pad.t - pad.b;
+    function X(i) { return pad.l + iw * i / (n - 1); }
+    function Y(v) { return pad.t + ih * (1 - v / max); }
+    axes(f, pad, max, fmt);
+    xlabels(f, pad, labels, X);
+    var colors = series.map(function (s, k) { return css(s.color || ["--c1", "--c2", "--c3"][k % 3]); });
+    series.forEach(function (s, k) {
+      var pts = s.values.map(function (v, i) { return X(i).toFixed(1) + "," + Y(v).toFixed(1); });
+      svg("path", { d: "M" + X(0) + "," + Y(0) + " L" + pts.join(" L") + " L" + X(n - 1) + "," + Y(0) + " Z", fill: colors[k], "fill-opacity": k ? ".10" : ".16" }, f.s);
+      svg("path", { d: "M" + pts.join(" L"), "class": "line", stroke: colors[k] }, f.s);
+    });
+    var guide = svg("line", { y1: pad.t, y2: pad.t + ih, "class": "guide", opacity: 0 }, f.s);
+    var dots = series.map(function (s, k) { return svg("circle", { r: 4, fill: colors[k], stroke: css("--surface"), "stroke-width": 2, opacity: 0 }, f.s); });
+    f.s.addEventListener("pointermove", function (e) {
+      var r = f.s.getBoundingClientRect(), x = (e.clientX - r.left) * f.w / r.width;
+      var i = Math.min(Math.max(Math.round((x - pad.l) / iw * (n - 1)), 0), n - 1);
+      guide.setAttribute("x1", X(i)); guide.setAttribute("x2", X(i)); guide.setAttribute("opacity", 1);
+      var html = "<b>" + esc((d.stamps || labels)[i]) + "</b>";
+      series.forEach(function (s, k) {
+        dots[k].setAttribute("cx", X(i)); dots[k].setAttribute("cy", Y(s.values[i])); dots[k].setAttribute("opacity", 1);
+        html += '<br><i class="sw" style="background:' + colors[k] + '"></i>' + esc(s.name) + ": " + fmt(s.values[i]);
+      });
+      showTip(host, f.tip, X(i) * r.width / f.w, Y(Math.max.apply(null, series.map(function (s) { return s.values[i]; }))), html);
+    });
+    f.s.addEventListener("pointerleave", function () {
+      guide.setAttribute("opacity", 0); dots.forEach(function (c) { c.setAttribute("opacity", 0); }); f.tip.classList.remove("show");
+    });
+    var lg = document.createElement("div");
+    lg.className = "legend";
+    lg.innerHTML = series.map(function (s, k) {
+      var last = s.values[n - 1];
+      return '<span><i style="background:' + colors[k] + '"></i>' + esc(s.name) + ' <b class="num">' + fmt(last) + "</b></span>";
+    }).join("");
+    host.appendChild(lg);
+  }
+
+  function fmtMoney(v) { return v >= 1e6 ? (Math.round(v / 1e5) / 10) + "M" : v >= 1000 ? (Math.round(v / 100) / 10) + "k" : String(Math.round(v)); }
 
   function bars(host, d) {
     var fmt = d.unit === "money" ? fmtMoney : d.unit === "number" ? fmtNum : fmtBytes;
@@ -148,12 +201,14 @@
     var R = 56, C = 2 * Math.PI * R, off = 0, palette = ["--c1", "--c2", "--c3", "--c4", "--c5", "--c6"];
     svg("circle", { cx: 75, cy: 75, r: R, fill: "none", stroke: css("--surface-2"), "stroke-width": 20 }, s);
     var ul = document.createElement("ul");
+    var link = host.dataset.link;
     items.forEach(function (it, k) {
-      var color = css(palette[Math.min(k, 5)]), len = C * it.value / total;
+      var color = css(it.color || palette[Math.min(k, 5)]), len = C * it.value / total;
       svg("circle", { cx: 75, cy: 75, r: R, fill: "none", stroke: color, "stroke-width": 20, "stroke-dasharray": Math.max(len - 1.5, 0.5) + " " + C, "stroke-dashoffset": -off, transform: "rotate(-90 75 75)" }, s);
       off += len;
-      var li = document.createElement("li");
-      li.innerHTML = '<i style="background:' + color + '"></i><span>' + esc(it.name) + "</span><span>" + it.value.toLocaleString() + "</span>";
+      var li = document.createElement("li"), pct = Math.round(1000 * it.value / total) / 10;
+      var body = '<i style="background:' + color + '"></i><span>' + esc(it.name) + '</span><span class="num">' + it.value.toLocaleString() + ' <small class="muted">' + pct + "%</small></span>";
+      li.innerHTML = (link && it.status) ? '<a href="' + esc(link + "?status=" + encodeURIComponent(it.status)) + '">' + body + "</a>" : body;
       ul.appendChild(li);
     });
     var t1 = svg("text", { x: 75, y: 78, "text-anchor": "middle", "class": "donut-center" }, s); t1.textContent = total.toLocaleString();
@@ -162,18 +217,17 @@
     host.appendChild(wrap);
   }
 
-  var kinds = { line: line, bars: bars, donut: donut };
-  function drawAll() {
-    document.querySelectorAll(".chart[data-kind]").forEach(function (host) {
-      var src = document.getElementById(host.dataset.src), data = {};
-      try { data = JSON.parse(src.textContent); } catch (e) { /* ignore */ }
-      kinds[host.dataset.kind](host, data);
-    });
+  var kinds = { line: line, bars: bars, donut: donut, area: area };
+  function drawOne(host) {
+    var src = document.getElementById(host.dataset.src), data = {};
+    try { data = JSON.parse(src.textContent); } catch (e) { /* ignore */ }
+    if (kinds[host.dataset.kind]) kinds[host.dataset.kind](host, data);
   }
+  function drawAll() { document.querySelectorAll(".chart[data-kind]").forEach(drawOne); }
   var timer;
   function redraw() { clearTimeout(timer); timer = setTimeout(drawAll, 80); }
   window.addEventListener("resize", redraw);
   document.addEventListener("themechange", drawAll);
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", drawAll); else drawAll();
-  window.IspCharts = { redraw: drawAll };
+  window.IspCharts = { redraw: drawAll, draw: drawOne, fmtBps: fmtBps };
 })();

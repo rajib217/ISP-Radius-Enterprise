@@ -41,3 +41,8 @@
     {% if err %}<div class="err">{{ err }}</div>{% elif help %}<div class="help">{{ help }}</div>{% endif %}
   </div>
 {% endmacro %}
+
+{# Money in the panel currency. BDT shows the taka sign in a font that has it; the digits stay monospace. Import "with context". #}
+{% macro money(value) -%}
+  <span class="money">{% if currency == 'BDT' %}<span class="taka" aria-label="BDT">৳</span>{% else %}{{ currency }}&nbsp;{% endif %}{{ value|money }}</span>
+{%- endmacro %}

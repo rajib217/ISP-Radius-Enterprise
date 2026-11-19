@@ -615,3 +615,23 @@ CREATE TABLE IF NOT EXISTS portal_payments (
   created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY idx_sub (subscriber_id, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Bandwidth throughput (v3 dashboard). maintenance.py fills these every 5 minutes from radacct counters.
+-- traffic_last keeps the previous counter of each open session, so the next run can work out its rate.
+CREATE TABLE IF NOT EXISTS traffic_snapshots (
+  ts        DATETIME NOT NULL PRIMARY KEY,
+  down_bps  BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  up_bps    BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  sessions  INT UNSIGNED NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS traffic_last (
+  radacctid BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+  username  VARCHAR(64) NOT NULL DEFAULT '',
+  in_oct    BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  out_oct   BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  upd       DATETIME NULL,
+  down_bps  BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  up_bps    BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  KEY idx_user (username)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

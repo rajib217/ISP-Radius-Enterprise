@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import icon, pager %}
+{% from "_macros.html" import icon, pager, money with context %}
 {% block title %}Subscribers{% endblock %}
 {% set status = request.args.get('status', '') %}
 {% set labels = {'': 'All', 'active': 'Active', 'online': 'Online', 'stale': 'Stale', 'offline': 'Offline', 'expired': 'Expired',
@@ -21,7 +21,7 @@
 
 <div class="toolbtns">
   {% if can('subscribers', 'edit') %}
-  {% if can_fn('sub.add') %}<a class="btn tb" href="{{ url_for('subscriber_new') }}">{{ icon('plus') }}Add Subscriber</a>{% endif %}
+  {% if can_fn('sub.add') %}<button class="btn tb" type="button" data-open="add-drawer">{{ icon('plus') }}Add Subscriber</button>{% endif %}
   <button class="btn tb" type="button" data-open="activate-dlg">{{ icon('bolt') }}Activation</button>
   <button class="btn tb" type="button" data-mass="extend">{{ icon('play') }}Mass Activation</button>
   {% if can_fn('sub.import') %}<a class="btn tb" href="{{ url_for('import_csv') }}">{{ icon('upload') }}Import</a>{% endif %}
@@ -64,6 +64,22 @@
   </form>
   <div class="hint hide" id="massHint">Tick the customers in the list first, then choose Apply.</div>
 
+  <div class="quickbar">
+    <nav class="seg-tabs" aria-label="Connection status">
+      {% for k, l in (('', 'All'), ('online', 'Online'), ('offline', 'Offline'), ('expired', 'Expired')) %}<a href="{{ url_for('subscribers', **dict(keep, status=k)) }}" {% if status == k %}aria-current="page"{% endif %}>{% if k == 'online' %}<span class="live-dot sm" aria-hidden="true"></span>{% endif %}{{ l }}</a>{% endfor %}
+    </nav>
+    {% if nas_rows %}
+    <form method="get" action="{{ url_for('subscribers') }}" class="row-gap">
+      {% for k, v in keep.items() if k != 'nas' %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+      <label class="muted" for="nasf">Router</label>
+      <select id="nasf" name="nas" class="w-auto" onchange="this.form.submit()">
+        <option value="">All routers</option>
+        {% for n in nas_rows %}<option value="{{ n.nasname }}" {{ 'selected' if request.args.get('nas') == n.nasname }}>{{ n.shortname or n.nasname }} · {{ n.nasname }}</option>{% endfor %}
+      </select>
+    </form>
+    {% endif %}
+  </div>
+
   <div class="listbar">
     <div class="row-gap">
       <form method="get" action="{{ url_for('subscribers') }}" class="row-gap">
@@ -78,7 +94,7 @@
         <button type="button" data-tx="csv">CSV</button>
         <span class="viewmenu"><button type="button" id="viewBtn" aria-haspopup="true">View &#9662;</button>
           <div class="viewpop hide" id="viewPop">
-            {% for key, name in (('password', 'Password'), ('plan', 'Packages'), ('seller', 'Salesperson'), ('balance', 'Balance'), ('due', 'Due'), ('area', 'Area'), ('phone', 'Phone'), ('mac', 'MAC')) %}
+            {% for key, name in (('password', 'Password'), ('plan', 'Packages'), ('mac', 'IP / MAC'), ('rate', 'Rx / Tx'), ('seller', 'Salesperson'), ('balance', 'Balance'), ('due', 'Due'), ('area', 'Area'), ('phone', 'Phone')) %}
             <label><input type="checkbox" data-col="{{ key }}" checked> {{ name }}</label>{% endfor %}
           </div></span>
       </div>
@@ -106,36 +122,41 @@
         {{ th('expiry', 'Expiration') }}
         <th data-c="password">Password</th>
         {{ th('plan', 'Packages') }}
+        <th data-c="mac">IP / MAC</th><th data-c="rate" class="num" title="Average over the last router update (about 10 minutes)">Rx / Tx</th>
         <th data-c="seller">Salesperson</th><th data-c="balance">Balance</th><th data-c="due">Due</th>
-        {{ th('area', 'Area', '', 'area') }}<th data-c="phone">Phone</th><th data-c="mac">MAC</th>
+        {{ th('area', 'Area', '', 'area') }}<th data-c="phone">Phone</th>
       </tr></thead>
       <tbody>
       {% for s in rows %}
         <tr>
-          <td class="muted">{{ s.id }}</td>
-          <td class="sel"><input class="row-check" type="checkbox" name="ids" value="{{ s.id }}" form="bulkForm" aria-label="Select {{ s.username }}"></td>
-          <td class="act nowrap">
+          <td class="muted" data-card="hide">{{ s.id }}</td>
+          <td class="sel" data-card="select"><input class="row-check" type="checkbox" name="ids" value="{{ s.id }}" form="bulkForm" aria-label="Select {{ s.username }}"></td>
+          <td class="act nowrap" data-card="actions">
             {% if can('subscribers', 'edit') %}
-            <a class="ic purple" href="{{ url_for('subscriber_view', sid=s.id, renew=1) }}" title="Renew" aria-label="Renew {{ s.username }}">{{ icon('bolt') }}</a>
-            <a class="ic green" href="{{ url_for('receive', q=s.username) }}" title="Take payment" aria-label="Payment for {{ s.username }}">{{ icon('wallet') }}</a>
-            <form method="post" action="{{ url_for('subscriber_toggle', sid=s.id) }}" class="inline" {% if s.status == 'active' %}data-confirm="Suspend {{ s.username }}?"{% endif %}>{{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}"><button class="ic {{ 'red' if s.status == 'active' else 'gray' }}" type="submit" title="{{ 'Suspend' if s.status == 'active' else 'Activate' }}" aria-label="{{ 'Suspend' if s.status == 'active' else 'Activate' }} {{ s.username }}">{{ icon('power') }}</button></form>
+            {% if can_fn('sub.activation') %}<button type="button" class="ic purple" data-open="renew-drawer" data-action="{{ url_for('subscriber_renew', sid=s.id) }}" data-label="{{ s.username }}"
+              data-fill='{{ {"days": s.plan_days or 30, "amount": "%.2f"|format(s.plan_price|float), "next": request.full_path.rstrip("?")}|tojson }}' title="Renew package" aria-label="Renew {{ s.username }}">{{ icon('bolt') }}<span class="ic-label">Renew</span></button>{% endif %}
+            {% if s.online and can_fn('sub.disconnect') %}<form method="post" action="{{ url_for('subscriber_kick', sid=s.id) }}" class="inline" data-confirm="Disconnect {{ s.username }} now? The router lets them reconnect right away.">{{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}"><button class="ic amber" type="submit" title="Disconnect session" aria-label="Disconnect {{ s.username }}">{{ icon('unplug') }}<span class="ic-label">Disconnect</span></button></form>{% endif %}
+            {% if can_fn('sub.edit') %}<a class="ic gray" href="{{ url_for('subscriber_edit', sid=s.id) }}" title="Edit" aria-label="Edit {{ s.username }}">{{ icon('edit') }}<span class="ic-label">Edit</span></a>{% endif %}
+            <a class="ic green" href="{{ url_for('receive', q=s.username) }}" title="Take payment" aria-label="Payment for {{ s.username }}">{{ icon('wallet') }}<span class="ic-label">Payment</span></a>
+            <form method="post" action="{{ url_for('subscriber_toggle', sid=s.id) }}" class="inline" {% if s.status == 'active' %}data-confirm="Suspend {{ s.username }}?"{% endif %}>{{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}"><button class="ic {{ 'red' if s.status == 'active' else 'gray' }}" type="submit" title="{{ 'Suspend' if s.status == 'active' else 'Activate' }}" aria-label="{{ 'Suspend' if s.status == 'active' else 'Activate' }} {{ s.username }}">{{ icon('power') }}<span class="ic-label">{{ 'Suspend' if s.status == 'active' else 'Activate' }}</span></button></form>
             {% endif %}
           </td>
-          <td class="who-cell">{% if s.photo %}<img class="lavatar" src="{{ url_for('subscriber_photo', sid=s.id) }}" alt="">{% else %}<span class="lavatar ph">{{ icon('user') }}</span>{% endif %}
+          <td class="who-cell" data-card="title">{% if s.photo %}<img class="lavatar" src="{{ url_for('subscriber_photo', sid=s.id) }}" alt="">{% else %}<span class="lavatar ph">{{ icon('user') }}</span>{% endif %}
             <span><a href="{{ url_for('subscriber_view', sid=s.id) }}"><b>{{ s.full_name or s.username }}</b></a>
             <a class="uname" href="{{ url_for('subscriber_view', sid=s.id) }}">{{ s.username }}</a></span></td>
-          <td>{% if s.state == 'suspended' %}<span class="pill bad">Suspended</span>{% elif s.state == 'expired' %}<span class="pill bad">Expired</span>{% else %}<span class="pill ok">Active</span>{% endif %}
+          <td data-card="key">{% if s.state == 'suspended' %}<span class="pill bad">Suspended</span>{% elif s.state == 'expired' %}<span class="pill bad">Expired</span>{% else %}<span class="pill ok">Active</span>{% endif %}
             {% if s.grace_until and s.grace_until >= today %}<span class="pill info" title="Grace until {{ s.grace_until|d }}">Grace</span>{% endif %}</td>
-          <td>{% if s.online %}<span class="pill ok">Online</span>{% else %}<span class="pill gray">Offline</span>{% endif %}</td>
-          <td class="nowrap">{% if s.expiry_date %}<span class="pill {{ 'bad' if s.state == 'expired' else 'ok' }}">{{ s.expiry_date.strftime('%d %b %Y') }} 00:00:00</span>{% else %}<span class="muted">No expiry</span>{% endif %}</td>
+          <td data-card="key">{% if s.online %}<span class="badge ok live">Online</span>{% else %}<span class="badge mute">Offline</span>{% endif %}</td>
+          <td class="nowrap" data-card="key">{% if s.expiry_date %}<span class="pill {{ 'bad' if s.state == 'expired' else ('warn' if s.days_left is not none and s.days_left <= 3 else 'ok') }}" title="{{ s.expiry_date.strftime('%d %b %Y') }} 00:00:00">{{ s.expiry_date.strftime('%d %b %Y') }}</span>{% else %}<span class="muted">No expiry</span>{% endif %}</td>
           <td data-c="password"><span class="pill info mono">{{ s.password or '—' }}</span></td>
-          <td data-c="plan">{% if s.plan_label %}<span class="pill info">{{ s.plan_label }}</span>{% else %}<span class="muted">No plan</span>{% endif %}</td>
+          <td data-c="plan" data-card="key">{% if s.plan_label %}<span class="pill info">{{ s.plan_label }}</span>{% else %}<span class="muted">No plan</span>{% endif %}</td>
+          <td data-c="mac" class="mono ipmac">{% if s.live_ip or s.live_mac %}<span>{{ s.live_ip or '—' }}</span><small>{{ s.live_mac or '—' }}</small>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td data-c="rate" class="num mono rate">{% if s.rx_bps is not none %}<span class="rx" title="Download">{{ icon('arrow-down') }}{{ s.rx_bps|bps }}</span><span class="tx" title="Upload">{{ icon('arrow-up') }}{{ s.tx_bps|bps }}</span>{% elif s.online %}<span class="muted" title="Waiting for the next router update">…</span>{% else %}<span class="muted">—</span>{% endif %}</td>
           <td data-c="seller">{% if s.created_by %}<span class="pill violet">{{ s.seller_name or s.created_by }}{% if s.seller_role %} ({{ roles.get(s.seller_role, s.seller_role) }}){% endif %}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
           <td data-c="balance"><span class="pill ok">{{ '%.2f'|format(s.balance|float) }}</span></td>
           <td data-c="due"><span class="pill {{ 'bad' if s.due|float > 0 else 'ok' }}">{{ '%.2f'|format(s.due|float) }}</span></td>
           <td data-c="area">{{ s.area or '—' }}</td>
           <td data-c="phone" class="nowrap">{{ s.phone or '—' }}</td>
-          <td data-c="mac" class="mono">{{ s.mac_bind or '—' }}</td>
         </tr>
       {% endfor %}
       </tbody>
@@ -261,5 +282,57 @@
   </div>
   <div class="modal-foot"><button type="button" class="btn primary" data-close>Close</button></div>
 </dialog>
+
+{# ---- slide-over drawers (v3). The full Add page stays available for every other field. ---- #}
+{% if can('subscribers', 'edit') and can_fn('sub.add') %}
+<dialog class="modal drawer" id="add-drawer" aria-labelledby="add-title">
+  <form method="post" action="{{ url_for('subscriber_new') }}" autocomplete="off">
+    {{ csrf_input() }}<input type="hidden" name="status" value="active">
+    <div class="modal-head"><h2 id="add-title">Add subscriber</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <div class="grid2">
+        <div class="field"><label class="lbl" for="d-user">PPPoE username <span class="req">*</span></label>
+          <input id="d-user" name="username" class="mono" required minlength="3" maxlength="64" pattern="[A-Za-z0-9_.@\-]{3,64}" placeholder="e.g. mirpur.rahim01" autocapitalize="off" spellcheck="false"></div>
+        <div class="field"><label class="lbl" for="d-pass">Password <span class="req">*</span></label>
+          <div class="input-btn"><input id="d-pass" name="password" class="mono" required minlength="4" maxlength="64" pattern="[!-~]{4,64}" autocapitalize="off" spellcheck="false"><button type="button" class="btn sm" data-gen="d-pass">Generate</button></div></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label class="lbl" for="d-name">Full name</label><input id="d-name" name="full_name" maxlength="128"></div>
+        <div class="field"><label class="lbl" for="d-phone">Mobile</label><input id="d-phone" name="phone" type="tel" inputmode="tel" maxlength="32" placeholder="01XXXXXXXXX"></div>
+      </div>
+      <div class="field"><label class="lbl" for="d-plan">Package</label>
+        <select id="d-plan" name="plan_id"><option value="">No package yet</option>{% for p in act_plans %}<option value="{{ p.id }}">{{ p.label }}{% if p.price %} · {{ currency }} {{ p.price|money }}{% endif %}</option>{% endfor %}</select></div>
+      <div class="grid2">
+        <div class="field"><label class="lbl" for="d-area">Area</label><input id="d-area" name="area" maxlength="64" list="d-areas"><datalist id="d-areas">{% for a in areas %}<option value="{{ a }}">{% endfor %}</datalist></div>
+        <div class="field"><label class="lbl" for="d-ip">Static IP</label><input id="d-ip" name="static_ip" class="mono" maxlength="45" placeholder="Leave empty for the pool" inputmode="decimal"></div>
+      </div>
+      {% if can_fn('sub.expiry') %}<div class="field"><label class="lbl" for="d-exp">Expiry date</label><input id="d-exp" name="expiry_date" type="date"><div class="help">Empty means no expiry. Activation or renewal sets it from the package.</div></div>{% endif %}
+      {% if app_cfg.identity_optional != '1' %}<div class="field"><label class="lbl" for="d-nid">NID / NIC <span class="req">*</span></label><input id="d-nid" name="identity" maxlength="32" required></div>{% endif %}
+      <p class="help">Address, e-mail, notes and the other fields are on the <a href="{{ url_for('subscriber_new') }}">full form</a>.</p>
+    </div>
+    <div class="modal-foot"><span class="grow"></span><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Create subscriber</button></div>
+  </form>
+</dialog>
+{% endif %}
+
+{% if can('subscribers', 'edit') and can_fn('sub.activation') %}
+<dialog class="modal drawer" id="renew-drawer" aria-labelledby="renew-title">
+  <form method="post" action="" autocomplete="off">
+    {{ csrf_input() }}<input type="hidden" name="next" value="">
+    <div class="modal-head"><h2 id="renew-title">Renew <span class="mono" data-label-slot></span></h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <p class="help">The days are added to the current expiry, or to today if it has passed, and the account is activated.</p>
+      <div class="grid2">
+        <div class="field"><label class="lbl" for="rd-days">Days to add</label><input id="rd-days" name="days" type="number" min="1" max="3650" value="30" required></div>
+        <div class="field"><label class="lbl" for="rd-amount">Amount received ({{ currency }})</label><input id="rd-amount" name="amount" class="mono" type="number" min="0" step="0.01" value="0" required><div class="help">Filled with the package price. Taxes and extra fees are not included here.</div></div>
+      </div>
+      <div class="field"><label class="lbl">Paid by</label>
+        <div class="seg-choice" role="radiogroup">{% for v, l in (('cash', 'Cash'), ('bkash', 'bKash'), ('nagad', 'Nagad'), ('rocket', 'Rocket'), ('bank', 'Bank')) %}<label><input type="radio" name="method" value="{{ v }}" {{ 'checked' if v == 'cash' }}><span>{{ l }}</span></label>{% endfor %}</div></div>
+      <div class="field"><label class="lbl" for="rd-note">Note</label><input id="rd-note" name="note" maxlength="255" placeholder="Receipt number, who paid…"></div>
+    </div>
+    <div class="modal-foot"><span class="grow"></span><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Renew</button></div>
+  </form>
+</dialog>
+{% endif %}
 {% endblock %}
 {% block scripts %}<script src="{{ asset('js/activation.js') }}"></script>{% endblock %}

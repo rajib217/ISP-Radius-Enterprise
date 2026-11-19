@@ -1,14 +1,19 @@
 """OLTs: add / edit with SNMP settings, read ONUs from the OLT, SNMP test and walk."""
+import logging
 import re
+import threading
 import time
 
 from flask import abort, g, flash, redirect, render_template, request, url_for
 
 import core
+import db
 import oltsync
 import snmplib
 from core import audit, commit, get_db, insert, q, route, x
 from mod_network import _is_ip
+
+log = logging.getLogger(__name__)
 
 PON_TYPES = ["EPON", "GPON", "XGS-PON", "XG-PON"]
 OID_RE = re.compile(r"^\d+(\.\d+){3,}$")
@@ -170,19 +175,50 @@ def olt_sync(did):
     return redirect(core.safe_next(request.form.get("next")) or url_for("olts"))
 
 
+_SYNC_LOCK = threading.Lock()
+
+
+def _sync_in_background(devices):
+    """Read each OLT on its own database connection, so the web request that started it returns at once.
+    Reading 40 OLTs over SNMP can take minutes; doing it inside the request held a panel worker the whole time."""
+    try:
+        conn = db.connect()
+    except Exception:
+        _SYNC_LOCK.release()
+        log.exception("OLT sync-all: cannot connect to the database")
+        return
+    try:
+        for d, cfg in devices:
+            try:
+                with conn.cursor() as cur:
+                    oltsync.poll(cur, d, cfg)
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                log.exception("OLT sync-all: %s failed", d.get("name") or d.get("ip"))
+    finally:
+        conn.close()
+        _SYNC_LOCK.release()
+
+
 @route("/olts/sync-all", module="network", methods=["POST"])
 def olt_sync_all():
-    done = bad = 0
-    sc, sp = core.olt_scope("d")
-    for d in q("SELECT d.*, s.* FROM net_devices d JOIN olt_snmp s ON s.device_id = d.id WHERE d.kind = 'olt'" + sc +
-               " LIMIT 40", sp):
-        with get_db().cursor() as cur:
-            ok, _ = oltsync.poll(cur, d, _cfg(d))
-        done += ok
-        bad += not ok
-        commit()
-    flash("%d OLT%s read, %d failed." % (done, "" if done == 1 else "s", bad), "success" if not bad else "warn")
-    return redirect(url_for("olts"))
+    back = url_for("onus") if "onus" in (request.referrer or "") else url_for("olts")
+    if not _SYNC_LOCK.acquire(blocking=False):
+        flash("A sync of all OLTs is already running. Refresh this page in a minute.", "warn")
+        return redirect(back)
+    try:
+        sc, sp = core.olt_scope("d")
+        rows = q("SELECT d.*, s.* FROM net_devices d JOIN olt_snmp s ON s.device_id = d.id WHERE d.kind = 'olt'" + sc +
+                 " LIMIT 40", sp)
+        devices = [(d, _cfg(d)) for d in rows]
+        threading.Thread(target=_sync_in_background, args=(devices,), daemon=True, name="olt-sync-all").start()
+    except Exception:
+        _SYNC_LOCK.release()
+        raise
+    flash("Reading %d OLT%s in the background. Refresh this page in a minute to see the results."
+          % (len(devices), "" if len(devices) == 1 else "s"), "success")
+    return redirect(back)
 
 
 @route("/olts/<int:did>/test", module="network", methods=["POST"])

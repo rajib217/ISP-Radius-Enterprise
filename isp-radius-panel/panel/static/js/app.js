@@ -68,6 +68,9 @@
         var fill = JSON.parse(b.dataset.fill);
         Object.keys(fill).forEach(function (k) { if (form.elements[k]) form.elements[k].value = fill[k]; });
       }
+      /* one drawer serves every row: the button gives the form its address and the heading its name */
+      if (b.dataset.action && form) form.action = b.dataset.action;
+      if (b.dataset.label) $$("[data-label-slot]", dlg).forEach(function (n) { n.textContent = b.dataset.label; });
       dlg.showModal();
       var first = $("input:not([type=hidden]):not([readonly]), select", dlg);
       if (first) first.focus();
@@ -444,7 +447,8 @@
       }
       var step = Math.ceil(n / 6);
       for (var i = 0; i < n; i += step) { var tx = mk("text", { x: X(i), y: H - 8, "text-anchor": "middle", "font-size": 11, fill: "currentColor", "fill-opacity": ".6" }); tx.textContent = d.t[i]; }
-      var series = [["rx", "RX Power (dBm)", "#2bb3b1", YP], ["tx", "TX Power (dBm)", "#3b82f6", YP], ["temp", "Temperature (°C)", "#f43f5e", YT]];
+      var cv = function (n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); };
+      var series = [["rx", "RX Power (dBm)", cv("--online"), YP], ["tx", "TX Power (dBm)", cv("--accent"), YP], ["temp", "Temperature (°C)", cv("--offline"), YT]];
       var legend = document.getElementById("onu-legend"); if (legend) legend.innerHTML = "";
       series.forEach(function (sr) {
         var pts = [], seg = [];
@@ -473,4 +477,62 @@
       });
     });
   })();
+  /* v3: bandwidth chart time range (1H / 24H / 7D / 30D). 1H and 24H refresh every 5 minutes, like the samples. */
+  $$("[data-traffic-tabs]").forEach(function (box) {
+    var host = document.getElementById(box.dataset.target);
+    if (!host) return;
+    var src = document.getElementById(host.dataset.src), current = "24h";
+    function load(rng, btn) {
+      if (btn) btn.setAttribute("aria-busy", "true");
+      fetch(box.dataset.url + "?range=" + encodeURIComponent(rng), { credentials: "same-origin", headers: { Accept: "application/json" } })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) { if (d && rng === current) { src.textContent = JSON.stringify(d); if (window.IspCharts) window.IspCharts.draw(host); } })
+        .catch(function () { /* offline: keep the chart that is showing */ })
+        .then(function () { if (btn) btn.removeAttribute("aria-busy"); });
+    }
+    $$("button[data-range]", box).forEach(function (b) {
+      b.addEventListener("click", function () {
+        $$("button[data-range]", box).forEach(function (o) { o.setAttribute("aria-selected", o === b ? "true" : "false"); });
+        current = b.dataset.range;
+        load(current, b);
+      });
+    });
+    setInterval(function () { if (!document.hidden && (current === "1h" || current === "24h")) load(current); }, 300000);
+  });
+
+  /* v3: tables become cards on phones. Every cell gets its column name as data-label; tables without
+     data-card hints get them here (first cell = title, next three = key facts, last action cell = buttons).
+     The other cells fold away behind a details button. data-cards="off" opts a table out. */
+  function cardify(t) {
+    if (t.dataset.cards === "off" || t.dataset.cardified) return;
+    t.dataset.cardified = "1";
+    var heads = $$("thead th", t).map(function (th) { return th.textContent.replace(/[↑↓]/g, "").trim(); });
+    var hinted = !!t.querySelector("td[data-card]");
+    $$("tbody > tr", t).forEach(function (tr) {
+      var cells = Array.prototype.slice.call(tr.children), keys = 0;
+      cells.forEach(function (td, i) {
+        if (!td.hasAttribute("data-label") && heads[i]) td.setAttribute("data-label", heads[i]);
+        if (hinted) return;
+        if (td.colSpan > 1 || cells.length === 1) { td.dataset.card = "title"; return; }
+        if (td.classList.contains("sel")) td.dataset.card = "select";
+        else if (td.classList.contains("act") || (i === cells.length - 1 && td.querySelector("form, a.btn, button"))) td.dataset.card = "actions";
+        else if (!tr.querySelector("td[data-card=title]")) td.dataset.card = "title";
+        else if (keys < 3) { td.dataset.card = "key"; keys++; }
+      });
+      var folded = cells.filter(function (td) { return !td.dataset.card && td.textContent.trim(); });
+      var title = tr.querySelector("td[data-card=title]");
+      if (!folded.length || !title) return;
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "card-toggle"; b.setAttribute("aria-expanded", "false"); b.setAttribute("aria-label", "Show details");
+      b.innerHTML = '<svg class="i" aria-hidden="true"><use href="#i-chevron-down"/></svg>';
+      b.addEventListener("click", function (e) {
+        e.preventDefault(); e.stopPropagation();
+        var open = tr.classList.toggle("open");
+        b.setAttribute("aria-expanded", open ? "true" : "false");
+        b.setAttribute("aria-label", open ? "Hide details" : "Show details");
+      });
+      title.appendChild(b);
+    });
+  }
+  $$("table.tbl").forEach(cardify);
 })();

@@ -322,6 +322,11 @@ def sub_filters(args):
     if args.get("seller"):
         where.append("s.created_by = %s")
         params.append(args["seller"])
+    nas = args.get("nas", "")
+    if nas and NAS_NAME_RE.match(nas):     # router: the customer's saved NAS, or a live session on it now
+        where.append("(s.nas_ip = %s OR s.username IN (SELECT username FROM radacct WHERE acctstoptime IS NULL "
+                     "AND nasipaddress = %s))")
+        params += [nas, nas]
     for key, op in (("exp_from", ">="), ("exp_to", "<=")):
         v = args.get(key, "")
         if re.match(r"^\d{4}-\d{2}-\d{2}$", v):

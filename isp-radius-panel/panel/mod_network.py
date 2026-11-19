@@ -2,6 +2,7 @@
 import ipaddress
 import re
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 
 from flask import abort, flash, redirect, render_template, request, url_for
 from datetime import datetime
@@ -197,8 +198,19 @@ def ping(ip):
     return r.returncode == 0
 
 
-def _check(device):
-    result = ping(device["ip"])
+def ping_many(ips):
+    """Ping many hosts at once (up to 32 in parallel) so 'ping all' takes seconds, not minutes.
+    Returns {ip: True / False / None} with the same meaning as ping()."""
+    ips = list(dict.fromkeys(ips))
+    if not ips:
+        return {}
+    with ThreadPoolExecutor(max_workers=min(32, len(ips))) as pool:
+        return dict(zip(ips, pool.map(ping, ips)))
+
+
+def _check(device, result=...):
+    if result is ...:
+        result = ping(device["ip"])
     if result is None:
         return None
     x("UPDATE net_devices SET last_status = %s, last_checked = %s WHERE id = %s",
@@ -225,8 +237,9 @@ def device_ping_all():
     _staff_only()
     rows = q("SELECT * FROM net_devices ORDER BY name LIMIT 60")
     up = down = 0
+    answers = ping_many(d["ip"] for d in rows)
     for d in rows:
-        result = _check(d)
+        result = _check(d, answers.get(d["ip"]))
         if result is None:
             flash("The ping command is not installed on the server (apt install iputils-ping).", "error")
             return redirect(url_for("devices"))

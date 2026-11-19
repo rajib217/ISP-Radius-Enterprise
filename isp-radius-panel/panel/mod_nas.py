@@ -99,8 +99,9 @@ def nas_delete(nid):
     return redirect(url_for("nas_list"))
 
 
-def _check_nas(row):
-    result = mod_network.ping(row["nasname"])
+def _check_nas(row, result=...):
+    if result is ...:
+        result = mod_network.ping(row["nasname"])
     status = "up" if result else ("down" if result is False else "")
     x("UPDATE nas SET last_status = %s, last_checked = NOW() WHERE id = %s", (status, row["id"]))
     return result
@@ -122,8 +123,10 @@ def nas_ping(nid):
 @route("/nas/ping-all", module="network", methods=["POST"])
 def nas_ping_all():
     up = down = 0
-    for row in q("SELECT id, nasname FROM nas LIMIT 200"):
-        r = _check_nas(row)
+    rows = q("SELECT id, nasname FROM nas LIMIT 200")
+    answers = mod_network.ping_many(row["nasname"] for row in rows)
+    for row in rows:
+        r = _check_nas(row, answers.get(row["nasname"]))
         up += r is True
         down += r is False
     commit()

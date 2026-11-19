@@ -34,7 +34,7 @@ core.ENDPOINT_MODULE.update({
     "subscriber_delete": "subscribers", "subscribers_bulk": "subscribers", "subscribers_export": "subscribers",
     "import_sample": "subscribers", "import_csv": "subscribers",
     "subscriber_renew": ("subscribers", "accounting"), "receipt": ("subscribers", "accounting"),
-    "online": "online", "online_disconnect": "online",
+    "online": "online", "online_disconnect": "online", "api_traffic": "online",
     "plans": "plans", "plan_save": "plans", "plan_delete": "plans",
     "nas_list": "network", "nas_save": "network", "nas_delete": "network", "tools": "network",
     "tools_reload": "network", "logs": "logs",
@@ -85,6 +85,16 @@ def f_bytes(value):
         if value < 1024 or unit == "TB":
             return ("%d %s" % (value, unit)) if unit == "B" else ("%.1f %s" % (value, unit))
         value /= 1024.0
+
+
+@app.template_filter("bps")
+def f_bps(value):
+    """Bits per second in network units (1000-based): 940 Kbps, 18.4 Mbps, 1.84 Gbps."""
+    value = float(value or 0)
+    for unit in ("bps", "Kbps", "Mbps", "Gbps"):
+        if value < 1000 or unit == "Gbps":
+            return ("%d %s" % (value, unit)) if unit == "bps" else ("%.2f %s" % (value, unit) if value < 100 else "%.0f %s" % (value, unit))
+        value /= 1000.0
 
 
 @app.template_filter("dur")
@@ -326,7 +336,7 @@ def dashboard():
     seller = core.my_downline() is not None
     tabs = dash.allowed_tabs()
     tab = request.args.get("tab") if request.args.get("tab") in dict(tabs) else (tabs[0][0] if tabs else "")
-    tabdata = dash.LOAD[tab]() if tab else None
+    tabdata = dash.load(tab) if tab else None
     if seller:
         return render_template("dashboard.html", seller=True, tabs=tabs, tab=tab, td=tabdata, attention=core.attention(),
                                notices=_notices())
@@ -362,8 +372,19 @@ def dashboard():
     revenue = q("SELECT COALESCE(SUM(amount), 0) AS s, COUNT(*) AS c FROM payments WHERE paid_at >= %s",
                 (month_start,), one=True)
     plan_mix = {"items": [{"name": p["name"], "value": p["c"]} for p in plans]}
+    money = core.can("accounting")
+    v3 = {
+        "growth": dash.growth_pct(stats["total"]),
+        "dues": dash.dues_total() if money else None,
+        "money": money,
+        "bw": core.can("online"),
+        "now": dash.throughput_now() if core.can("online") else None,
+        "traffic": dash.traffic_series("24h") if core.can("online") else None,
+        "revenue6": dash.revenue_6m() if money else None,
+        "mix": dash.status_mix(),
+    }
     return render_template("dashboard.html", stats=stats, online=online, peak=peak, series=series,
-                           plan_mix=plan_mix,
+                           plan_mix=plan_mix, v3=v3,
                            auth_ok=n(auth.get("Access-Accept")), auth_bad=n(auth.get("Access-Reject")),
                            plans=plans, by_nas=by_nas, rejects=rejects, expiring=expiring,
                            revenue=revenue, server=server_info(), attention=core.attention(),
@@ -377,6 +398,15 @@ def api_live():
     bad = q("SELECT COUNT(*) AS c FROM radpostauth WHERE reply = 'Access-Reject' "
             "AND authdate >= NOW() - INTERVAL 1 HOUR", one=True)["c"]
     return jsonify(online=online, rejects_hour=bad, time=datetime.now().strftime("%H:%M:%S"))
+
+
+@app.route("/api/traffic")
+def api_traffic():
+    """Bandwidth chart data for the dashboard's 1H / 24H / 7D / 30D buttons."""
+    if core.my_downline() is not None:
+        abort(403)
+    rng = request.args.get("range", "24h")
+    return jsonify(dash.traffic_series(rng if rng in dash.TRAFFIC_RANGES else "24h"))
 
 
 # ====================================================================
@@ -414,7 +444,8 @@ def subscribers():
     sort = sort if sort in SORTS else "created"
     direction = "ASC" if request.args.get("dir") == "asc" else "DESC"
     rows = q("SELECT s.id, s.username, s.full_name, s.phone, s.area, s.status, s.expiry_date, s.grace_until, "
-             "s.mac_bind, s.static_ip, s.created_by, s.balance, s.photo, p.label AS plan_label, p.download_mbps, p.upload_mbps, p.bandwidth_value, p.bandwidth_type, "
+             "s.mac_bind, s.static_ip, s.created_by, s.balance, s.photo, s.plan_id, p.label AS plan_label, p.download_mbps, p.upload_mbps, p.bandwidth_value, p.bandwidth_type, "
+             "p.price AS plan_price, p.validity_days AS plan_days, "
              "a.full_name AS seller_name, a.role AS seller_role, "
              "(SELECT value FROM radcheck rc WHERE rc.username = s.username AND rc.attribute = 'Cleartext-Password' "
              "LIMIT 1) AS password, "
@@ -425,11 +456,25 @@ def subscribers():
     decorate(rows)
     if rows:
         marks = ",".join(["%s"] * len(rows))
-        on = {r["username"] for r in q(
-            "SELECT DISTINCT username FROM radacct WHERE acctstoptime IS NULL AND username IN (%s)" % marks,
-            [r["username"] for r in rows])}
+        names = [r["username"] for r in rows]
+        live = {}       # username -> newest open session (IP, MAC, router)
+        for a in q("SELECT username, framedipaddress, callingstationid, nasipaddress, acctstarttime FROM radacct "
+                   "WHERE acctstoptime IS NULL AND username IN (%s) ORDER BY acctstarttime" % marks, names):
+            live[a["username"]] = a
+        try:            # per-customer rate from the 5-minute traffic job (table appears after install.sh is re-run)
+            rates = {t["username"]: t for t in q(
+                "SELECT username, SUM(down_bps) AS down, SUM(up_bps) AS up FROM traffic_last "
+                "WHERE username IN (%s) GROUP BY username" % marks, names)}
+        except Exception:
+            rates = {}
         for r in rows:
-            r["online"] = r["username"] in on
+            a = live.get(r["username"])
+            r["online"] = a is not None
+            r["live_ip"] = (a["framedipaddress"] if a else "") or r["static_ip"] or ""
+            r["live_mac"] = (a["callingstationid"] if a else "") or r["mac_bind"] or ""
+            r["live_nas"] = a["nasipaddress"] if a else ""
+            t = rates.get(r["username"]) if a else None
+            r["rx_bps"], r["tx_bps"] = (float(t["down"] or 0), float(t["up"] or 0)) if t else (None, None)
     plans = q("SELECT id, label FROM plans ORDER BY download_mbps, label")
     areas = [r["area"] for r in q("SELECT DISTINCT area FROM subscribers WHERE area <> '' ORDER BY area")]
     sellers = q("SELECT username, full_name, role FROM panel_admins ORDER BY username") if core.my_downline() is None else []
@@ -689,23 +734,24 @@ def subscriber_view(sid):
 @app.route("/subscribers/<int:sid>/renew", methods=["POST"])
 def subscriber_renew(sid):
     sub = q("SELECT * FROM subscribers WHERE id = %s", (sid,), one=True) or abort(404)
+    back = safe_next(request.form.get("next")) or url_for("subscriber_view", sid=sid)   # the list's Renew drawer returns to the list
     try:
         days = int(request.form.get("days", "0"))
         amount = round(float(request.form.get("amount", "0") or 0), 2)
         assert 1 <= days <= 3650 and 0 <= amount < 10 ** 8
     except (ValueError, AssertionError):
         flash("Enter the number of days (1-3650) and a valid amount.", "error")
-        return redirect(url_for("subscriber_view", sid=sid))
+        return redirect(back)
     method = request.form.get("method", "cash")
     why = mod_subs.charge_me(sub, "Renewal %s +%d days" % (sub["username"], days))
     if why:
         flash("Not renewed: %s. Add balance first. Nothing was changed." % why, "error")
-        return redirect(url_for("subscriber_view", sid=sid))
+        return redirect(back)
     if request.form.get("from_balance"):
         have = float(sub["balance"] or 0)
         if amount > have + 0.001:
             flash("The balance (%.2f) is lower than the amount (%.2f). Nothing was changed." % (have, amount), "error")
-            return redirect(url_for("subscriber_view", sid=sid))
+            return redirect(back)
         x("UPDATE subscribers SET balance = %s WHERE id = %s", (round(have - amount, 2), sid))
         insert("INSERT INTO sub_ledger (subscriber_id, amount, balance_after, note, created_by) VALUES (%s, %s, %s, %s, %s)",
                (sid, -amount, round(have - amount, 2), "Renewal +%d days" % days, g.me["username"]))
@@ -714,7 +760,7 @@ def subscriber_renew(sid):
     audit("renewed", sub["username"], "+%d days, %s" % (days, amount))
     commit()
     flash("Renewed until %s." % new_expiry.strftime("%d %b %Y"), "success")
-    return redirect(url_for("subscriber_view", sid=sid))
+    return redirect(back)
 
 
 @app.route("/subscribers/<int:sid>/toggle", methods=["POST"])
@@ -749,7 +795,7 @@ def subscriber_kick(sid):
         flash("Could not disconnect %d session(s). Check the router's incoming RADIUS setting." % failed, "error")
     else:
         flash("This customer has no live session.", "warn")
-    return redirect(url_for("subscriber_view", sid=sid))
+    return redirect(safe_next(request.form.get("next")) or url_for("subscriber_view", sid=sid))
 
 
 @app.route("/subscribers/<int:sid>/delete", methods=["POST"])

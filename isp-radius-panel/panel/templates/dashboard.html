@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import icon %}
+{% from "_macros.html" import icon, money with context %}
 {% block title %}Dashboard{% endblock %}
 {% block content %}
 <div class="page-head">
@@ -26,6 +26,71 @@
   <span class="muted" style="align-self:center">Needs attention</span>
   {% for a in todo %}<a role="listitem" href="{{ url_for(a.endpoint, **a.args) }}">{{ icon('alert') }}{{ a.label }}: {{ a.c }}</a>{% endfor %}
 </div></section>
+{% endif %}
+
+{% if not seller %}
+{# ---- v3: key numbers ---- #}
+<section class="kpi-grid" aria-label="Key numbers">
+  <a class="kcard" href="{{ url_for('subscribers', status='active') }}">
+    <span class="kcard-top"><span class="kcard-k">Active subscribers</span><span class="kcard-ic">{{ icon('users') }}</span></span>
+    <span class="kcard-v">{{ '{:,}'.format(stats.active) }}</span>
+    <span class="kcard-s">
+      {% if v3.growth is not none %}<span class="delta {{ 'up' if v3.growth >= 0 else 'down' }}" title="Change in subscribers over 30 days">{{ icon('trend-up' if v3.growth >= 0 else 'trend-down') }}{{ '+' if v3.growth > 0 }}{{ v3.growth }}%</span>{% endif %}
+      <span>of {{ '{:,}'.format(stats.total) }} · 30 days</span>
+    </span>
+  </a>
+  <a class="kcard" href="{{ url_for('online') if can('online') else url_for('subscribers', status='online') }}">
+    <span class="kcard-top"><span class="kcard-k">Online PPPoE sessions</span><span class="live-dot" aria-hidden="true"></span></span>
+    <span class="kcard-v" data-live="online">{{ '{:,}'.format(online) }}</span>
+    <span class="kcard-s"><span>Peak 24 h: <b class="num">{{ '{:,}'.format(peak) }}</b></span>{% if stats.active %}<span>· {{ (100 * online / stats.total)|round|int if stats.total else 0 }}% of customers</span>{% endif %}</span>
+  </a>
+  {% if v3.money %}
+  <a class="kcard" href="{{ url_for('payments') }}">
+    <span class="kcard-top"><span class="kcard-k">Collected this month</span><span class="kcard-ic">{{ icon('wallet') }}</span></span>
+    <span class="kcard-v">{{ money(revenue.s) }}</span>
+    <span class="kcard-s"><span class="due">Due {{ money(v3.dues.amount) }}</span><span>· {{ '{:,}'.format(v3.dues.customers) }} expired</span></span>
+  </a>
+  {% endif %}
+  {% if v3.bw %}
+  <a class="kcard" href="{{ url_for('network_graph') if can('network') else url_for('online') }}">
+    <span class="kcard-top"><span class="kcard-k">Live throughput</span><span class="kcard-ic">{{ icon('gauge') }}</span></span>
+    {% if v3.now %}
+    <span class="kcard-v">{{ v3.now.down_bps|bps }}</span>
+    <span class="kcard-s"><span class="bw down">{{ icon('arrow-down') }}download</span><span class="bw up">· {{ icon('arrow-up') }}<b class="num">{{ v3.now.up_bps|bps }}</b> upload</span><span>· {{ '{:,}'.format(v3.now.sessions) }} sessions</span></span>
+    {% else %}
+    <span class="kcard-v muted">—</span>
+    <span class="kcard-s"><span>Collecting: first figure appears within 10 minutes</span></span>
+    {% endif %}
+  </a>
+  {% endif %}
+</section>
+
+{# ---- v3: analytics ---- #}
+<div class="cols dash-charts">
+  {% if v3.bw %}
+  <section class="panel c-8">
+    <div class="panel-head"><h2>Bandwidth usage</h2>
+      <div class="seg-tabs" role="tablist" aria-label="Time range" data-traffic-tabs data-target="traffic-chart" data-url="{{ url_for('api_traffic') }}">
+        {% for k, l in (('1h', '1H'), ('24h', '24H'), ('7d', '7D'), ('30d', '30D')) %}<button type="button" role="tab" data-range="{{ k }}" aria-selected="{{ 'true' if k == '24h' else 'false' }}">{{ l }}</button>{% endfor %}
+      </div>
+    </div>
+    <div class="panel-body"><div class="chart" id="traffic-chart" data-kind="area" data-src="traffic-data" aria-label="Download and upload throughput"></div>
+      <script type="application/json" id="traffic-data">{{ v3.traffic|tojson }}</script></div>
+  </section>
+  {% endif %}
+  <section class="panel {{ 'c-4' if v3.bw or v3.money else 'c-12' }}">
+    <div class="panel-head"><h2>Subscriber status</h2><a class="aside" href="{{ url_for('subscribers') }}">View all</a></div>
+    <div class="panel-body"><div class="chart" data-kind="donut" data-src="status-mix" data-link="{{ url_for('subscribers') }}"></div>
+      <script type="application/json" id="status-mix">{{ v3.mix|tojson }}</script></div>
+  </section>
+  {% if v3.money %}
+  <section class="panel {{ 'c-12' if v3.bw else 'c-8' }}">
+    <div class="panel-head"><h2>Revenue &amp; collection</h2><span class="aside" title="Older months are estimated from the customers who are active now">Last 6 months · not collected is estimated</span></div>
+    <div class="panel-body"><div class="chart" data-kind="bars" data-src="revenue-6m" aria-label="Collected and not collected per month"></div>
+      <script type="application/json" id="revenue-6m">{{ v3.revenue6|tojson }}</script></div>
+  </section>
+  {% endif %}
+</div>
 {% endif %}
 
 {% if tabs %}
@@ -63,15 +128,6 @@
 {% endif %}
 
 {% if not seller %}
-
-<section class="kpis" aria-label="Subscriber summary">
-  <a class="kpi" href="{{ url_for('subscribers') }}"><span class="k">Subscribers</span><span class="v">{{ '{:,}'.format(stats.total) }}</span><span class="s">in the system</span></a>
-  <a class="kpi" href="{{ url_for('subscribers', status='active') }}"><span class="k">Active</span><span class="v">{{ '{:,}'.format(stats.active) }}</span><span class="s">can connect</span></a>
-  <a class="kpi" href="{{ url_for('subscribers', status='expiring') }}"><span class="k">Expiring in 7 days</span><span class="v">{{ '{:,}'.format(stats.expiring) }}</span><span class="s">ask for renewal</span></a>
-  <a class="kpi" href="{{ url_for('subscribers', status='expired') }}"><span class="k">Expired</span><span class="v">{{ '{:,}'.format(stats.expired) }}</span><span class="s">blocked at login</span></a>
-  <a class="kpi" href="{{ url_for('subscribers', status='suspended') }}"><span class="k">Suspended</span><span class="v">{{ '{:,}'.format(stats.suspended) }}</span><span class="s">blocked by you</span></a>
-  <a class="kpi" href="{{ url_for('reports') }}"><span class="k">Collected this month</span><span class="v">{{ revenue.s|money }}</span><span class="s">{{ currency }} · {{ revenue.c }} payment{{ '' if revenue.c == 1 else 's' }}</span></a>
-</section>
 
 <div class="cols">
   <section class="panel c-5">
