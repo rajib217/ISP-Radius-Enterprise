@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, pager %}
+{% block title %}Extra Service Fees{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Extra Service Fees</h1><p class="sub">One-off charges for a customer (installation, cable, router, reconnection). Unpaid charges show as the customer's Balance.</p></div>
+  {% if can('subscribers', 'edit') %}<div class="actions"><button class="btn primary" data-open="charge-dlg" data-new>{{ icon('plus') }}Add charge</button></div>{% endif %}
+</div>
+<section class="kpis" style="margin-top:0"><div class="kpi"><span class="k">Charges</span><span class="v">{{ '{:,}'.format(tot.c) }}</span></div><div class="kpi"><span class="k">Unpaid in total</span><span class="v">{{ tot.due|money }}</span></div></section>
+<section class="panel">
+  <form class="filters" method="get" action="{{ url_for('charges') }}">
+    <div class="search">{{ icon('search') }}<input type="search" name="q" value="{{ request.args.get('q', '') }}" placeholder="Username or charge" aria-label="Search"></div>
+    <select name="paid" aria-label="Status" onchange="this.form.submit()">
+      <option value="">All</option><option value="0" {{ 'selected' if request.args.get('paid') == '0' }}>Unpaid</option><option value="1" {{ 'selected' if request.args.get('paid') == '1' }}>Paid</option>
+    </select>
+    <button class="btn" type="submit">Search</button>
+  </form>
+  {% if rows %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Date</th><th>Customer</th><th>Charge</th><th class="num">Amount</th><th>Status</th><th class="hide-sm">Added by</th><th></th></tr></thead>
+    <tbody>{% for r in rows %}<tr>
+      <td class="nowrap">{{ r.created_at|d }}</td>
+      <td><a href="{{ url_for('subscriber_view', sid=r.subscriber_id) }}"><b class="mono">{{ r.username }}</b></a><small style="display:block" class="muted">{{ r.full_name or '' }}</small></td>
+      <td>{{ r.name }}{% if r.note %}<small style="display:block" class="muted">{{ r.note }}</small>{% endif %}</td>
+      <td class="num">{{ r.amount|money }}</td>
+      <td><span class="pill {{ 'ok' if r.paid else 'warn' }}">{{ 'Paid' if r.paid else 'Unpaid' }}</span></td>
+      <td class="hide-sm">{{ r.created_by }}</td>
+      <td class="act">{% if can('subscribers', 'edit') %}
+        {% if not r.paid %}<form class="inline" method="post" action="{{ url_for('charge_paid', cid=r.id) }}" data-confirm="Mark as paid and record the payment?">{{ csrf_input() }}<button class="btn sm" type="submit">{{ icon('check') }}Paid</button></form>{% endif %}
+        <form class="inline" method="post" action="{{ url_for('charge_delete', cid=r.id) }}" data-confirm="Delete this charge?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete charge">{{ icon('trash') }}</button></form>{% endif %}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {{ pager(pg, keep, 'charges') }}
+  {% else %}<div class="empty"><h3>No charges</h3><p>Add an installation or equipment fee to a customer.</p></div>{% endif %}
+</section>
+{% if can('subscribers', 'edit') %}
+<dialog class="modal" id="charge-dlg" aria-labelledby="ch-title">
+  <form method="post" action="{{ url_for('charge_save') }}">
+    {{ csrf_input() }}
+    <div class="modal-head"><h2 id="ch-title">Add charge</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <div class="field"><label class="lbl" for="ch-user">Username</label><input id="ch-user" name="username" value="{{ request.args.get('username', '') }}" required autocomplete="off"></div>
+      <div class="field"><label class="lbl" for="ch-name">Charge</label><input id="ch-name" name="name" maxlength="64" list="ch-names" required placeholder="Installation"></div>
+      <datalist id="ch-names">{% for f in fees %}<option value="{{ f.name }}">{% endfor %}<option value="Installation"><option value="Router"><option value="Cable"><option value="Reconnection"></datalist>
+      <div class="field"><label class="lbl" for="ch-amt">Amount ({{ currency }})</label><input id="ch-amt" name="amount" type="number" min="0.01" step="0.01" required></div>
+      <div class="field"><label class="lbl" for="ch-note">Note</label><input id="ch-note" name="note" maxlength="255"></div>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Add</button></div>
+  </form>
+</dialog>
+{% endif %}
+{% endblock %}

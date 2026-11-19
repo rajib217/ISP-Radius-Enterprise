@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, pager %}
+{% block title %}Subscribers{% endblock %}
+{% set status = request.args.get('status', '') %}
+{% set labels = {'': 'All', 'active': 'Active', 'online': 'Online', 'stale': 'Stale', 'offline': 'Offline', 'expired': 'Expired',
+  'expired_online': 'Expired Online', 'profile_disabled_online': 'Profile Disabled Online',
+  'internet_disabled_online': 'Internet Disabled Online', 'internet_disabled': 'Internet Disabled',
+  'exp1': 'Expiring 1 Day', 'exp3': 'Expiring 3 Days', 'exp7': 'Expiring 1 Week', 'expiring': 'Expiring 1 Week',
+  'exp14': 'Expiring 2 Weeks', 'exp28': 'Expiring 4 Weeks', 'mac': 'MAC Binded', 'grace': 'Grace Period On',
+  'renewed': 'Recent Auto Renew', 'suspended': 'Suspended'} %}
+{% set label = labels.get(status, 'All') %}
+{% set filtered = request.args.get('q') or request.args.get('plan') or request.args.get('area') or request.args.get('seller') or request.args.get('exp_from') or request.args.get('exp_to') or request.args.get('join_from') or request.args.get('join_to') or request.args.get('act_from') or request.args.get('act_to') %}
+{% macro th(key, label, cls='', c='') %}
+  {% set nd = 'asc' if (sort == key and direction == 'desc') else 'desc' %}
+  <th class="{{ cls }}"{% if c %} data-c="{{ c }}"{% endif %}><a class="{{ 'sorted' if sort == key }}" href="{{ url_for('subscribers', **dict(keep, sort=key, dir=nd)) }}">{{ label }}{% if sort == key %} {{ '↑' if direction == 'asc' else '↓' }}{% endif %}</a></th>
+{% endmacro %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Subscribers</h1><p class="sub"><a href="{{ url_for('dashboard') }}">Home</a> &middot; {{ label }} Subscribers</p></div>
+</div>
+
+<div class="toolbtns">
+  {% if can('subscribers', 'edit') %}
+  {% if can_fn('sub.add') %}<a class="btn tb" href="{{ url_for('subscriber_new') }}">{{ icon('plus') }}Add Subscriber</a>{% endif %}
+  <button class="btn tb" type="button" data-open="activate-dlg">{{ icon('bolt') }}Activation</button>
+  <button class="btn tb" type="button" data-mass="extend">{{ icon('play') }}Mass Activation</button>
+  {% if can_fn('sub.import') %}<a class="btn tb" href="{{ url_for('import_csv') }}">{{ icon('upload') }}Import</a>{% endif %}
+  {% endif %}
+  {% if can_fn('sub.export') %}<a class="btn tb" href="{{ url_for('subscribers_export', **keep) }}">{{ icon('download') }}Export</a>
+  <a class="btn tb green" href="{{ url_for('subscribers_export', **dict(keep, passwords='1' if me.role == 'admin' else '0')) }}">{{ icon('download') }}Download Subscribers Export</a>{% endif %}
+  {% if can('subscribers', 'edit') %}
+  <button class="btn tb" type="button" data-mass="renew">{{ icon('card') }}Mass Payment</button>
+  {% if me.role == 'admin' %}<button class="btn tb red" type="button" data-mass="delete">{{ icon('trash') }}Mass Delete</button>{% endif %}
+  <button class="btn tb" type="button" id="massSetBtn">{{ icon('sliders') }}Mass Settings</button>
+  {% endif %}
+  <button class="btn tb" type="button" data-open="filter-dlg">{{ icon('filter') }}Filter</button>
+  <button class="btn tb" type="button" id="compactBtn" aria-pressed="false">{{ icon('table') }}Compact View</button>
+  <button class="btn sm icon info" type="button" data-open="legend-dlg" aria-label="What do the lists mean?">{{ icon('info') }}</button>
+</div>
+
+<section class="panel">
+  <div class="panel-head list-title"><h2>{{ icon('users') }} Subscribers <a class="reload" href="{{ request.full_path.rstrip('?') }}" title="Reload" aria-label="Reload">{{ icon('refresh') }}</a> <b>({{ '{:,}'.format(pg.total) }})</b></h2></div>
+
+  <form id="bulkForm" method="post" action="{{ url_for('subscribers_bulk') }}" class="bulkbar" data-bulkbar>
+    {{ csrf_input() }}
+    <input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">
+    <b><span data-selected>0</span> selected</b>
+    <select name="action" data-bulk-action aria-label="Bulk action">
+      <option value="suspend">Suspend</option>
+      <option value="activate">Activate</option>
+      <option value="extend">Mass Activation (add days)</option>
+      <option value="renew">Mass Payment (plan price and days)</option>
+      <option value="plan">Change plan</option>
+      <option value="grace">Grace period</option>
+      <option value="unbind">Remove MAC binding</option>
+      {% if me.role == 'admin' %}<option value="delete">Delete</option>{% endif %}
+    </select>
+    <select name="plan_id" data-for="plan" class="hide" aria-label="New plan">
+      {% for p in plans %}<option value="{{ p.id }}">{{ p.label }}</option>{% endfor %}
+    </select>
+    <input type="number" name="days" min="0" max="3650" value="30" data-for="extend grace" class="hide" aria-label="Days">
+    <label class="check" data-for="suspend"><input type="checkbox" name="kick" value="1" checked>Disconnect them now</label>
+    <button class="btn sm primary" type="submit" data-confirm="Apply this action to all selected subscribers?">Apply</button>
+  </form>
+  <div class="hint hide" id="massHint">Tick the customers in the list first, then choose Apply.</div>
+
+  <div class="listbar">
+    <div class="row-gap">
+      <form method="get" action="{{ url_for('subscribers') }}" class="row-gap">
+        {% for k, v in keep.items() if k != 'per' %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+        <select name="per" class="w-auto" aria-label="Rows per page" onchange="this.form.submit()">
+          {% for n in (25, 50, 100, 200) %}<option value="{{ n }}" {{ 'selected' if pg.per == n }}>{{ n }}</option>{% endfor %}
+        </select>
+      </form>
+      <div class="seg" role="group" aria-label="Export this page">
+        <button type="button" data-tx="print">Print</button><button type="button" data-tx="copy">Copy</button>
+        <button type="button" data-tx="pdf">PDF</button><button type="button" data-tx="excel">Excel</button>
+        <button type="button" data-tx="csv">CSV</button>
+        <span class="viewmenu"><button type="button" id="viewBtn" aria-haspopup="true">View &#9662;</button>
+          <div class="viewpop hide" id="viewPop">
+            {% for key, name in (('password', 'Password'), ('plan', 'Packages'), ('seller', 'Salesperson'), ('balance', 'Balance'), ('due', 'Due'), ('area', 'Area'), ('phone', 'Phone'), ('mac', 'MAC')) %}
+            <label><input type="checkbox" data-col="{{ key }}" checked> {{ name }}</label>{% endfor %}
+          </div></span>
+      </div>
+    </div>
+    <form class="row-gap" method="get" action="{{ url_for('subscribers') }}">
+      {% for k, v in keep.items() if k != 'q' %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+      <label class="muted" for="subq">Search:</label>
+      <input id="subq" type="search" name="q" value="{{ request.args.get('q', '') }}" placeholder="Type & Search" class="w-220">
+    </form>
+  </div>
+  <div class="listbar">
+    <span class="muted">Showing {{ pg.first }} to {{ pg.last }} of {{ '{:,}'.format(pg.total) }} records</span>
+    {{ pager(pg, keep, 'subscribers') }}
+  </div>
+
+  {% if rows %}
+  <div class="tbl-wrap" data-bulk>
+    <table class="tbl subs{{ ' compact' if app_cfg.table_view == 'compact' }}" id="subsTable">
+      <thead><tr>
+        {{ th('id', 'ID') }}
+        <th class="sel"><input type="checkbox" data-check-all aria-label="Select all on this page"></th>
+        <th>Actions</th>
+        {{ th('username', 'Profile') }}
+        <th>Profile Status</th><th>C.Status</th>
+        {{ th('expiry', 'Expiration') }}
+        <th data-c="password">Password</th>
+        {{ th('plan', 'Packages') }}
+        <th data-c="seller">Salesperson</th><th data-c="balance">Balance</th><th data-c="due">Due</th>
+        {{ th('area', 'Area', '', 'area') }}<th data-c="phone">Phone</th><th data-c="mac">MAC</th>
+      </tr></thead>
+      <tbody>
+      {% for s in rows %}
+        <tr>
+          <td class="muted">{{ s.id }}</td>
+          <td class="sel"><input class="row-check" type="checkbox" name="ids" value="{{ s.id }}" form="bulkForm" aria-label="Select {{ s.username }}"></td>
+          <td class="act nowrap">
+            {% if can('subscribers', 'edit') %}
+            <a class="ic purple" href="{{ url_for('subscriber_view', sid=s.id, renew=1) }}" title="Renew" aria-label="Renew {{ s.username }}">{{ icon('bolt') }}</a>
+            <a class="ic green" href="{{ url_for('receive', q=s.username) }}" title="Take payment" aria-label="Payment for {{ s.username }}">{{ icon('wallet') }}</a>
+            <form method="post" action="{{ url_for('subscriber_toggle', sid=s.id) }}" class="inline" {% if s.status == 'active' %}data-confirm="Suspend {{ s.username }}?"{% endif %}>{{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}"><button class="ic {{ 'red' if s.status == 'active' else 'gray' }}" type="submit" title="{{ 'Suspend' if s.status == 'active' else 'Activate' }}" aria-label="{{ 'Suspend' if s.status == 'active' else 'Activate' }} {{ s.username }}">{{ icon('power') }}</button></form>
+            {% endif %}
+          </td>
+          <td class="who-cell">{% if s.photo %}<img class="lavatar" src="{{ url_for('subscriber_photo', sid=s.id) }}" alt="">{% else %}<span class="lavatar ph">{{ icon('user') }}</span>{% endif %}
+            <span><a href="{{ url_for('subscriber_view', sid=s.id) }}"><b>{{ s.full_name or s.username }}</b></a>
+            <a class="uname" href="{{ url_for('subscriber_view', sid=s.id) }}">{{ s.username }}</a></span></td>
+          <td>{% if s.state == 'suspended' %}<span class="pill bad">Suspended</span>{% elif s.state == 'expired' %}<span class="pill bad">Expired</span>{% else %}<span class="pill ok">Active</span>{% endif %}
+            {% if s.grace_until and s.grace_until >= today %}<span class="pill info" title="Grace until {{ s.grace_until|d }}">Grace</span>{% endif %}</td>
+          <td>{% if s.online %}<span class="pill ok">Online</span>{% else %}<span class="pill gray">Offline</span>{% endif %}</td>
+          <td class="nowrap">{% if s.expiry_date %}<span class="pill {{ 'bad' if s.state == 'expired' else 'ok' }}">{{ s.expiry_date.strftime('%d %b %Y') }} 00:00:00</span>{% else %}<span class="muted">No expiry</span>{% endif %}</td>
+          <td data-c="password"><span class="pill info mono">{{ s.password or '—' }}</span></td>
+          <td data-c="plan">{% if s.plan_label %}<span class="pill info">{{ s.plan_label }}</span>{% else %}<span class="muted">No plan</span>{% endif %}</td>
+          <td data-c="seller">{% if s.created_by %}<span class="pill violet">{{ s.seller_name or s.created_by }}{% if s.seller_role %} ({{ roles.get(s.seller_role, s.seller_role) }}){% endif %}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td data-c="balance"><span class="pill ok">{{ '%.2f'|format(s.balance|float) }}</span></td>
+          <td data-c="due"><span class="pill {{ 'bad' if s.due|float > 0 else 'ok' }}">{{ '%.2f'|format(s.due|float) }}</span></td>
+          <td data-c="area">{{ s.area or '—' }}</td>
+          <td data-c="phone" class="nowrap">{{ s.phone or '—' }}</td>
+          <td data-c="mac" class="mono">{{ s.mac_bind or '—' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="listbar"><span class="muted">Showing {{ pg.first }} to {{ pg.last }} of {{ '{:,}'.format(pg.total) }} records</span>{{ pager(pg, keep, 'subscribers') }}</div>
+  {% else %}
+  <div class="empty">
+    {% if filtered or status %}
+      <h3>No subscribers match</h3><p>Try a shorter search or another list.</p>
+      <a class="btn" href="{{ url_for('subscribers') }}">Show all</a>
+    {% else %}
+      <h3>No subscribers yet</h3><p>Add customers one by one, or import your existing list from a CSV file.</p>
+      <a class="btn primary" href="{{ url_for('import_csv') }}">Import from CSV</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+
+<dialog class="modal" id="filter-dlg" aria-labelledby="filter-title">
+  <form method="get" action="{{ url_for('subscribers') }}">
+    <input type="hidden" name="per" value="{{ pg.per }}">
+    <div class="modal-head"><h2 id="filter-title">Filter</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <div class="field"><label class="lbl" for="f-status">List</label>
+        <select id="f-status" name="status">{% for k, l in labels.items() if k != 'expiring' %}<option value="{{ k }}" {{ 'selected' if status == k }}>{{ l }}</option>{% endfor %}</select></div>
+      <div class="field"><label class="lbl" for="f-plan">Package</label>
+        <select id="f-plan" name="plan"><option value="">All packages</option>{% for p in plans %}<option value="{{ p.id }}" {{ 'selected' if request.args.get('plan') == p.id|string }}>{{ p.label }}</option>{% endfor %}</select></div>
+      {% if areas %}<div class="field"><label class="lbl" for="f-area">Area</label>
+        <select id="f-area" name="area"><option value="">All areas</option>{% for a in areas %}<option {{ 'selected' if request.args.get('area') == a }}>{{ a }}</option>{% endfor %}</select></div>{% endif %}
+      {% if sellers %}<div class="field"><label class="lbl" for="f-seller">Salesperson</label>
+        <select id="f-seller" name="seller"><option value="">Everyone</option>{% for u in sellers %}<option value="{{ u.username }}" {{ 'selected' if request.args.get('seller') == u.username }}>{{ u.full_name or u.username }} ({{ roles.get(u.role, u.role) }})</option>{% endfor %}</select></div>{% endif %}
+      <div class="grid2">
+        <div class="field"><label class="lbl" for="f-from">Expires from</label><input id="f-from" type="date" name="exp_from" value="{{ request.args.get('exp_from', '') }}"></div>
+        <div class="field"><label class="lbl" for="f-to">Expires until</label><input id="f-to" type="date" name="exp_to" value="{{ request.args.get('exp_to', '') }}"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label class="lbl" for="f-jfrom">Joined from</label><input id="f-jfrom" type="date" name="join_from" value="{{ request.args.get('join_from', '') }}"></div>
+        <div class="field"><label class="lbl" for="f-jto">Joined until</label><input id="f-jto" type="date" name="join_to" value="{{ request.args.get('join_to', '') }}"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label class="lbl" for="f-afrom">Activated from</label><input id="f-afrom" type="date" name="act_from" value="{{ request.args.get('act_from', '') }}"></div>
+        <div class="field"><label class="lbl" for="f-ato">Activated until</label><input id="f-ato" type="date" name="act_to" value="{{ request.args.get('act_to', '') }}"></div>
+      </div>
+      <div class="field"><label class="lbl" for="f-q">Search</label><input id="f-q" name="q" value="{{ request.args.get('q', '') }}" placeholder="Username, name, phone, address, IP"></div>
+    </div>
+    <div class="modal-foot"><a class="btn" href="{{ url_for('subscribers') }}">Clear</a><button class="btn primary" type="submit">Apply filter</button></div>
+  </form>
+</dialog>
+
+{% if can('subscribers', 'edit') %}
+<dialog class="modal act-modal" id="activate-dlg" aria-labelledby="act-title">
+  {% set act_modal = true %}{% set pre = none %}{% set back = none %}{% include '_activation_form.html' %}
+</dialog>
+{% endif %}
+
+<dialog class="modal wide" id="mass-dlg" aria-labelledby="mass-title">
+  <form method="post" action="{{ url_for('subscribers_bulk') }}" id="massForm" autocomplete="off">
+    {{ csrf_input() }}<input type="hidden" name="action" value="settings"><input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">
+    <div id="massIdsBox"></div>
+    <div class="modal-head"><h2 id="mass-title">Mass Service Settings</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body mass-body">
+      <div class="field"><label class="lbl">Selected Subscribers</label><input id="massIds" readonly></div>
+      <div class="grid2">
+        <div class="field"><label class="lbl" for="m-st">Profile Status</label><select id="m-st" name="profile_status"><option value="">Select A Status</option><option value="active">Active</option><option value="suspended">Suspended</option></select></div>
+        <div class="field"><label class="lbl" for="m-sms">SMS Status</label><select id="m-sms" name="sms_status"><option value="">Select A Status</option><option value="on">Enabled</option><option value="off">Disabled</option></select></div>
+        <div class="field"><label class="lbl" for="m-em">Email Status</label><select id="m-em" name="email_status"><option value="">Select A Status</option><option value="on">Enabled</option><option value="off">Disabled</option></select></div>
+        <div class="field"><label class="lbl" for="m-mac">Auto Mac Status</label><select id="m-mac" name="auto_mac_status"><option value="">Select A Status</option><option value="on">Enabled</option><option value="off">Disabled</option></select></div>
+        <div class="field"><label class="lbl" for="m-ct">Connection Type</label><select id="m-ct" name="conn_type"><option value="">Select A Type</option>{% for c in ['PPPoE','Hotspot','DHCP','Static IP'] %}<option>{{ c }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="m-nas">NAS</label><select id="m-nas" name="nas_id"><option value="">Search Nas Here...</option>{% for n in nas_rows %}<option value="{{ n.id }}">{{ n.shortname or n.nasname }} ({{ n.nasname }})</option>{% endfor %}</select></div>
+      </div>
+      <hr class="mass-hr">
+      <div class="grid2">
+        <div class="field"><label class="lbl" for="m-sp">Salespersons</label><select id="m-sp" name="salesperson"><option value="">Search Username Here...</option>{% for s in sales %}<option value="{{ s.username }}">{{ s.username }}{% if s.full_name %} ({{ s.full_name }}){% endif %}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="m-pk">Packages</label><select id="m-pk" name="plan_id"><option value="">Select A Package</option>{% for p in plans %}<option value="{{ p.id }}">{{ p.label }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="m-ex">Expiration Date</label><input id="m-ex" name="expiry" type="date" placeholder="Pick a Date"></div>
+      </div>
+      <hr class="mass-hr">
+      <div class="grid2">
+        <div class="field"><label class="lbl" for="m-vt">Total Volume (GB)</label><input id="m-vt" name="vol_total" type="number" min="0" step="0.01" placeholder="Total Volume"></div>
+        <div class="field"><label class="lbl" for="m-vu">Used Volume (GB)</label><input id="m-vu" name="vol_used" type="number" min="0" step="0.01" placeholder="Used Volume"></div>
+        <div class="field"><label class="lbl" for="m-stt">Total Session (Min)</label><input id="m-stt" name="sess_total" type="number" min="0" placeholder="Total Session (Min)"></div>
+        <div class="field"><label class="lbl" for="m-su">Used Session (Min)</label><input id="m-su" name="sess_used" type="number" min="0" placeholder="Used Session (Min)"></div>
+      </div>
+      <hr class="mass-hr">
+      <div class="grid2">
+        <div class="field"><label class="lbl" for="m-dt">Discount Amount Type</label><select id="m-dt" name="disc_type"><option value="">Select A Type</option><option value="fixed">Fixed</option><option value="percent">Percentage</option></select></div>
+        <div class="field"><label class="lbl" for="m-dv">Discount</label><input id="m-dv" name="discount" type="number" min="0" step="0.01" placeholder="Billing Discount"></div>
+      </div>
+      <hr class="mass-hr">
+      <div class="grid2">
+        <div class="field"><label class="lbl" for="m-b1">Box/POP Number</label><input id="m-b1" name="box_pop_no" maxlength="64" placeholder="Box/POP Number"></div>
+        <div class="field"><label class="lbl" for="m-b2">Box/POP Address</label><input id="m-b2" name="box_pop_addr" maxlength="128" placeholder="Box/POP Address"></div>
+        <div class="field"><label class="lbl" for="m-b3">MC/Swicth/ONU Board</label><input id="m-b3" name="mc_board" maxlength="64" placeholder="MC/Swicth/ONU Board"></div>
+        <div class="field"><label class="lbl" for="m-b4">Electricity Type/Socket</label><input id="m-b4" name="electricity" maxlength="64" placeholder="Electricity Type/Socket"></div>
+        <div class="field"><label class="lbl" for="m-b5">Cable Type</label><input id="m-b5" name="cable_type" maxlength="64" placeholder="Cable Type"></div>
+        <div class="field"><label class="lbl" for="m-b6">Uplink Port</label><input id="m-b6" name="uplink_port" maxlength="64" placeholder="Uplink Port"></div>
+        <div class="field"><label class="lbl" for="m-b7">Fiber Code/ID</label><input id="m-b7" name="fiber_code" maxlength="64" placeholder="Fiber Code/ID"></div>
+        <div class="field"><label class="lbl" for="m-b8">Fiber Color</label><input id="m-b8" name="fiber_color" maxlength="64" placeholder="Fiber Color"></div>
+      </div>
+    </div>
+    <div class="modal-foot"><span style="flex:1"></span><button type="button" class="btn" data-close>Close</button><button class="btn primary" type="submit" data-confirm="Apply the filled settings to all selected subscribers? Empty fields are left unchanged.">Submit</button></div>
+  </form>
+</dialog>
+
+<dialog class="modal" id="legend-dlg" aria-labelledby="leg-title">
+  <div class="modal-head"><h2 id="leg-title">What each list shows</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+  <div class="modal-body">
+    <dl class="facts">
+      <dt>Online</dt><dd>Has a live session now.</dd>
+      <dt>Stale</dt><dd>Session open but no update from the router for 15 minutes (power cut or cable pulled).</dd>
+      <dt>Offline</dt><dd>Active customers with no live session.</dd>
+      <dt>Expired</dt><dd>Package end date has passed.</dd>
+      <dt>Expired Online</dt><dd>Expired but still connected. They are disconnected at the next login.</dd>
+      <dt>Profile Disabled Online</dt><dd>Suspended by you but still connected.</dd>
+      <dt>Internet Disabled</dt><dd>Suspended, or expired with no grace period. They cannot log in.</dd>
+      <dt>Expiring ...</dt><dd>Active customers whose package ends within that time.</dd>
+      <dt>MAC Binded</dt><dd>Login is locked to one router or device MAC.</dd>
+      <dt>Grace Period On</dt><dd>Allowed to stay online for a few extra days after expiry.</dd>
+      <dt>Recent Auto Renew</dt><dd>Renewed or paid in the last 7 days.</dd>
+      <dt>Balance</dt><dd>Unpaid extra service fees (see Extra Service Fees).</dd>
+    </dl>
+  </div>
+  <div class="modal-foot"><button type="button" class="btn primary" data-close>Close</button></div>
+</dialog>
+{% endblock %}
+{% block scripts %}<script src="{{ asset('js/activation.js') }}"></script>{% endblock %}

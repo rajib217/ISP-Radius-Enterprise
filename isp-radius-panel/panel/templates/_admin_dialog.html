@@ -1,0 +1,46 @@
+<dialog class="modal" id="admin-dlg" aria-labelledby="admin-title">
+  <form method="post" action="{{ url_for('admin_save') }}" autocomplete="off">
+    {{ csrf_input() }}<input type="hidden" name="id"><input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">
+    <div class="modal-head"><h2 id="admin-title" data-title data-title-new="Add user" data-title-edit="Edit user">Add user</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body">
+      <div class="notice-box">{{ icon('alert') }}<span>Sub-resellers and retailers should belong to a reseller: pick the reseller under "Belongs to" below.</span></div>
+      <div class="grid-3 togglerow">
+        <div class="field"><span class="lbl">Status</span><label class="switch"><input type="checkbox" name="is_active" value="1" checked><i></i></label></div>
+        <div class="field"><span class="lbl">SMS Status</span><label class="switch"><input type="checkbox" name="sms_on" value="1" checked><i></i></label></div>
+        <div class="field"><span class="lbl">Email Status</span><label class="switch"><input type="checkbox" name="email_on" value="1" checked><i></i></label></div>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label class="lbl" for="a-type">Profile Type <b class="req">*</b></label><select id="a-type" name="ptype" required><option value="">Select A Type</option>{% for t in ('Admin','Staff','Reseller','Subreseller','Retailer') %}<option>{{ t }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="a-role">Role &amp; Permission <b class="req">*</b></label><select id="a-role" name="role" required><option value="">Select A Role</option>{% for k, label in role_opts %}<option value="{{ k }}" data-type="{{ ptype_of(k) }}">{{ label }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="a-name">Full Name <b class="req">*</b></label><input id="a-name" name="full_name" placeholder="Enter Full Name" required></div>
+        <div class="field"><label class="lbl" for="a-user">Username <b class="req">*</b></label><input id="a-user" name="username" placeholder="Enter Username" data-lock-on-edit required spellcheck="false"></div>
+        <div class="field"><label class="lbl" for="a-pass">Password <b class="req" data-new-only>*</b></label><input id="a-pass" name="password" type="password" minlength="8" placeholder="Enter Password" autocomplete="new-password"><div class="help">At least 8 characters. When editing, leave empty to keep the current one.</div></div>
+        <div class="field"><label class="lbl" for="a-ident">Identity <b class="req" data-new-only>*</b></label><input id="a-ident" name="identity" maxlength="64" placeholder="Enter Identity Number"></div>
+        <div class="field"><label class="lbl" for="a-phone">Phone <b class="req">*</b></label><input id="a-phone" name="phone" type="tel" placeholder="Enter Phone Number" required></div>
+        <div class="field"><label class="lbl" for="a-email">Email <b class="req">*</b></label><input id="a-email" name="email" type="email" placeholder="Enter Email Address" required></div>
+        <div class="field"><label class="lbl" for="a-country">Country</label><input id="a-country" name="country" maxlength="64" list="a-countries" placeholder="Select A Country"><datalist id="a-countries"><option>Bangladesh</option><option>India</option><option>Nepal</option><option>Pakistan</option><option>Sri Lanka</option></datalist></div>
+        <div class="field"><label class="lbl" for="a-prov">Province</label><input id="a-prov" name="province" maxlength="64" placeholder="Select A Province"></div>
+        <div class="field"><label class="lbl" for="a-city">City</label><input id="a-city" name="city" maxlength="64" placeholder="Select A City"></div>
+        <div class="field"><label class="lbl" for="a-addr">Address</label><input id="a-addr" name="address" maxlength="255" placeholder="Enter Address"></div>
+        <div class="field"><label class="lbl" for="a-parent">Belongs to (resellers only)</label><select id="a-parent" name="parent_id"><option value="">Nobody (top level)</option>{% for s in sellers %}<option value="{{ s.id }}">{{ s.username }} ({{ s.role }})</option>{% endfor %}</select><div class="help">A sub-reseller or retailer sees only their own customers. Their reseller sees them too.</div></div>
+        <div class="field"><label class="lbl" for="a-cap">User limit (resellers and sub-resellers)</label><input id="a-cap" name="max_children" type="number" min="0" max="100000" placeholder="No limit"><div class="help">The most people that can sit directly below this user. Empty means no limit.</div></div>
+        <div class="field"><label class="lbl" for="a-dept">Department</label><select id="a-dept" name="department_id"><option value="">None</option>{% for d in depts %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="a-zone">Zone</label><select id="a-zone" name="zone_id"><option value="">None</option>{% for z in zones %}<option value="{{ z.id }}">{{ z.name }}</option>{% endfor %}</select></div>
+      </div>
+    </div>
+    <script>
+    (function(){var dlg=document.getElementById("admin-dlg");if(!dlg)return;var type=dlg.querySelector("#a-type"),role=dlg.querySelector("#a-role"),idf=dlg.querySelector("[name=id]");
+    function filter(){Array.prototype.forEach.call(role.options,function(o){if(!o.value)return;var ok=!type.value||o.dataset.type===type.value;o.hidden=!ok;o.disabled=!ok;});}
+    type.addEventListener("change",function(){filter();var cur=role.options[role.selectedIndex];if(!cur||cur.disabled||!cur.value){role.value="";var first=Array.prototype.find.call(role.options,function(o){return o.value&&!o.disabled;});if(first&&type.value)role.value=first.value;}});
+    role.addEventListener("change",function(){var o=role.options[role.selectedIndex];if(o&&o.dataset.type){type.value=o.dataset.type;filter();}});
+    dlg.addEventListener("opened",function(){var isNew=!idf.value;
+      if(isNew){type.value="";role.value="";["is_active","sms_on","email_on"].forEach(function(n){dlg.querySelector("[name="+n+"]").checked=true;});
+        var pre=dlg.dataset.preRole;}
+      else{var o=role.options[role.selectedIndex];type.value=o&&o.dataset.type?o.dataset.type:"";}
+      filter();
+      dlg.querySelector("[name=identity]").required=isNew;dlg.querySelector("[name=password]").required=isNew;});
+    })();
+    </script>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Close</button><button class="btn primary" type="submit">Submit</button></div>
+  </form>
+</dialog>

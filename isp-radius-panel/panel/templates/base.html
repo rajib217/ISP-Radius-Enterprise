@@ -1,0 +1,68 @@
+{% from "_macros.html" import icon %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ isp_name }}{% endblock %} · RADIUS Panel</title>
+  {% if brand.favicon %}<link rel="icon" href="{{ brand.favicon }}">{% else %}<link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">{% endif %}
+  <script>try{var t=localStorage.getItem("isp-theme");if(!t&&window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches)t="dark";if(t)document.documentElement.dataset.theme=t;if(localStorage.getItem("isp-side")==="off")document.documentElement.classList.add("side-off")}catch(e){}</script>
+  <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+</head>
+<body>
+{% include "_icons.html" %}
+<div class="app">
+  <button type="button" class="side-toggle" data-side-toggle aria-label="Hide or show the menu" title="Hide / show menu">{{ icon('menu') }}</button>
+  <aside class="side" aria-label="Main">
+    <a class="brand" href="{{ url_for('dashboard') }}">
+      {% if brand.logo %}<img class="brand-logo" src="{{ brand.logo }}" alt="">{% else %}<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13" fill="none" stroke="#8f74ff" stroke-width="3"/><circle cx="16" cy="16" r="7.6" fill="none" stroke="#35d0dc" stroke-width="3"/><circle cx="16" cy="16" r="2.4" fill="#fff"/></svg>{% endif %}
+      <span><b>{{ isp_name }}</b><small>RADIUS panel</small></span>
+    </a>
+    <nav class="nav" aria-label="Menu">
+      {% for n in nav %}
+        {% if n.children is defined %}
+        <details class="nav-group" data-key="{{ n.key }}" {{ 'open' if n.open }}>
+          <summary class="{{ 'on' if n.active }}">{{ icon(n.icon) }}<span>{{ n.label }}</span>{{ icon('chevron') }}</summary>
+          <div class="nav-sub">
+            {% for it in n.children %}<a href="{{ it.url }}" class="{{ 'on' if it.active }}">{{ it.label }}</a>{% endfor %}
+          </div>
+        </details>
+        {% else %}
+        <a class="nav-link {{ 'on' if n.active }}" href="{{ n.url }}">{{ icon(n.icon) }}<span>{{ n.label }}</span></a>
+        {% endif %}
+      {% endfor %}
+      <form method="post" action="{{ url_for('logout') }}" class="nav-logout">{{ csrf_input() }}<button type="submit">{{ icon('logout') }}<span>Logout</span></button></form>
+    </nav>
+    <div class="side-foot">
+      <div class="links"><button type="button" data-theme-toggle aria-label="Switch light or dark theme">{{ icon('sun') }}<span>Theme</span></button></div>
+      <a class="who" href="{{ url_for('profile') }}">
+        <span class="av">{{ (me.full_name or me.username)[:1]|upper }}</span>
+        <span><b>{{ me.full_name or me.username }}</b><small>{{ me.role|replace('c_', '', 1)|replace('_', ' ')|capitalize if me.role.startswith('c_') else me.role|capitalize }}</small></span>
+      </a>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="btn icon burger" data-nav-toggle aria-label="Open menu">{{ icon('menu') }}</button>
+      <span class="grow"></span>
+    </header>
+
+    <main class="content">
+      {% if switched_from %}<div class="switch-bar">{{ icon('swap') }}<span>You are signed in as <b>{{ me.username }}</b> (switched from an admin account).</span><form method="post" action="{{ url_for('switch_back') }}">{{ csrf_input() }}<button class="btn sm" type="submit">Switch back</button></form></div>{% endif %}
+      {% block content %}{% endblock %}
+      {% if show_credit or copyright_text %}<footer class="credit-line">{{ copyright_text }}{% if copyright_text and show_credit %} &middot; {% endif %}{% if show_credit %}Powered by ISP RADIUS Panel{% endif %}</footer>{% endif %}
+    </main>
+  </div>
+</div>
+
+<div class="toasts" role="status" aria-live="polite">
+  {% for cat, msg in get_flashed_messages(with_categories=true) %}
+    <div class="toast {{ cat }}"><p>{{ msg }}</p><button type="button" aria-label="Dismiss">{{ icon('x') }}</button></div>
+  {% endfor %}
+</div>
+
+<script src="{{ asset('js/charts.js') }}"></script>
+<script src="{{ asset('js/app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

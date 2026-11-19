@@ -1,0 +1,39 @@
+{% extends "settings_base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Log engine{% endblock %}
+{% block ssub %}NAT log engine connection and how long logs are kept.{% endblock %}
+{% block sbody %}
+<form method="post" class="panel set-card" id="log-form">
+  {{ csrf_input() }}
+  <div class="panel-head"><h2>Log Engine Settings</h2><a class="aside" href="{{ url_for('logs') }}">Open logs &rarr;</a></div>
+  <div class="set-form">
+    <div class="field"><label class="lbl" for="s-nat">NAT Logs Module</label><span class="switch"><input id="s-nat" type="checkbox" name="nat_on" {{ 'checked' if s.nat_on == '1' }}><i></i></span></div>
+    <div class="field"><label class="lbl" for="s-push">Push Sessions And Subscribers To The Engine</label><span class="switch"><input id="s-push" type="checkbox" name="nat_push_on" {{ 'checked' if s.nat_push_on == '1' }}><i></i></span></div>
+    <p class="help" style="grid-column:1/-1;margin:0">When on, the scheduler pushes RADIUS session starts and stops every minute, changed subscribers and NAS routers every 5 minutes, and re-sends every subscriber at 02:15 and the whole NAS list at 02:20 each night. Before turning it on, every router must exist on the NAS page with the IP it sends syslog from: the NAS push replaces the engine's router list, and the first push refuses to drop a router the engine is still receiving logs from.</p>
+    <div style="grid-column:1/-1">
+      <div class="lbl" style="margin-bottom:6px">Push Status</div>
+      <div class="push-status">
+        <div><span>Last Session ID Pushed</span><b>{{ s.nat_last_session or 'Never' }}</b></div>
+        <div><span>Last Stop Time Pushed</span><b>{{ s.nat_last_stop or 'Never' }}</b></div>
+        <div><span>Last Subscriber Sync</span><b>{{ s.nat_last_sub or 'Never' }}</b></div>
+        <div><span>Last NAS Sync</span><b>{{ s.nat_last_nas or 'Never' }}</b></div>
+      </div>
+    </div>
+    <div class="field"><label class="lbl" for="s-url">Engine URL</label><input id="s-url" name="nat_url" value="{{ s.nat_url }}" placeholder="http://127.0.0.1:8080" spellcheck="false"></div>
+    <div class="field"><label class="lbl" for="s-tok">API Token</label><div style="position:relative"><input id="s-tok" name="nat_token" type="password" value="{{ s.nat_token }}" placeholder="API Token" autocomplete="off" style="padding-right:40px"><button type="button" class="btn sm icon" id="tok-eye" aria-label="Show token" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);border:0;background:none">{{ icon('eye') }}</button></div></div>
+    <div class="field"><label class="lbl" for="s-xd">Maximum Export Range (Days)</label><input id="s-xd" name="nat_export_days" type="number" min="1" max="31" value="{{ s.nat_export_days }}"><div class="help">The longest period one NAT logs export may cover, 1 to 31 days (default 7). Longer periods have to be split into several exports.</div></div>
+    <div class="field"><label class="lbl" for="s-xr">Maximum Export Rows</label><input id="s-xr" name="nat_export_rows" type="number" min="1000" max="500000" value="{{ s.nat_export_rows }}"><div class="help">The most rows one NAT logs export may hold, 1,000 to 500,000 (default 100,000). An export that hits the cap is delivered truncated.</div></div>
+    <div class="field" style="grid-column:1/-1"><label class="lbl" for="s-view">Log View Type</label><select id="s-view" name="nat_view"><option value="details" {{ 'selected' if s.nat_view != 'raw' }}>Details</option><option value="raw" {{ 'selected' if s.nat_view == 'raw' }}>Raw</option></select><div class="help">Details shows every parsed field; Raw shows only the time, subscriber and original log line.</div></div>
+    <div class="field"><label class="lbl" for="s-log">Keep login attempts (days)</label><input id="s-log" name="authlog_days" type="number" min="1" max="3650" value="{{ s.authlog_days }}"></div>
+    <div class="field"><label class="lbl" for="s-arch">Archive usage history after (months)</label><input id="s-arch" name="archive_months" type="number" min="0" max="120" value="{{ s.archive_months }}"><div class="help">Older rows move to a separate table so the live one stays fast. 0 keeps everything.</div></div>
+    <div class="row-gap" style="grid-column:1/-1">
+      <button class="btn violet" type="submit" form="log-test">{{ icon('bolt') }}Test Connection</button>
+      <button class="btn violet" type="button" disabled title="Needs the engine's push API, which is not part of this panel yet">{{ icon('send') }}Push Now</button>
+    </div>
+    <p class="help" style="grid-column:1/-1;margin:0">Test Connection uses the saved URL and token (save first). Push Now and the automatic push are not active yet: this panel does not know your engine's API.</p>
+  </div>
+  <div class="set-foot"><button class="btn primary" type="submit">Submit</button></div>
+</form>
+<form id="log-test" method="post" action="{{ url_for('settings_logs_test') }}">{{ csrf_input() }}</form>
+<script>document.getElementById('tok-eye').addEventListener('click',function(){var i=document.getElementById('s-tok');i.type=i.type==='password'?'text':'password';});</script>
+{% endblock %}

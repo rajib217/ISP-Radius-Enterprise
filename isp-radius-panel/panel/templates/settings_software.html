@@ -1,0 +1,34 @@
+{% extends "settings_base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Software settings{% endblock %}
+{% block ssub %}How the panel behaves day to day.{% endblock %}
+{% block sbody %}
+<form method="post" class="panel set-card">
+  {{ csrf_input() }}
+  <div class="panel-head"><h2>Software Settings</h2></div>
+  <div class="set-form soft">
+    <div class="frow"><label class="lbl" for="pf">Phone Format <b class="req">*</b></label><label class="switch"><input type="checkbox" name="phone_format_on" {{ 'checked' if s.phone_format_on == '1' }}><i></i><span class="sr">Check the phone number length</span></label><input id="pf" name="phone_format" value="{{ s.phone_format }}" maxlength="8" required aria-label="Phone number digits"></div>
+    <div class="frow"><label class="lbl" for="idf">Identity Format <b class="req">*</b></label><label class="switch"><input type="checkbox" name="identity_format_on" {{ 'checked' if s.identity_format_on == '1' }}><i></i><span class="sr">Check the identity number length</span></label><input id="idf" name="identity_format" value="{{ s.identity_format }}" maxlength="8" required aria-label="Identity number digits"></div>
+    <p class="help wide" style="margin:-6px 0 0">With the switch on, a phone or NID entered on a customer must have that many digits, for example [11-13] or [11].</p>
+    <div class="field"><label class="lbl" for="olr">Online Page Loading <b class="req">*</b></label><select id="olr" name="online_refresh">{% for v, l in [('0','Off'),('10','10 Seconds'),('15','15 Seconds'),('30','30 Seconds'),('60','1 Minute'),('120','2 Minutes'),('300','5 Minutes')] %}<option value="{{ v }}" {{ 'selected' if s.online_refresh == v }}>{{ l }}</option>{% endfor %}</select></div>
+    <div class="field"><label class="lbl" for="tvt">Table View Type</label><select id="tvt" name="table_view"><option value="standard" {{ 'selected' if s.table_view != 'compact' }}>Standard</option><option value="compact" {{ 'selected' if s.table_view == 'compact' }}>Compact</option></select></div>
+    <hr class="wide">
+    <div class="gm-note wide">{{ icon('alert') }}<div><b>Enable Google Maps API In Google Cloud Console To Get API Key</b><br><a class="btn sm" href="https://console.cloud.google.com/google/maps-apis" target="_blank" rel="noopener">{{ icon('link') }}Google Console</a></div></div>
+    <div class="field"><span class="lbl">Google Map Status</span><label class="switch"><input type="checkbox" name="gmap_on" {{ 'checked' if s.gmap_on == '1' }}><i></i><span class="sr">Google Map status</span></label></div>
+    <div class="field"><label class="lbl" for="gmk">Google Map API Key</label><input id="gmk" name="gmap_key" value="{{ s.gmap_key }}" placeholder="Enter API Key" maxlength="128" autocomplete="off" spellcheck="false"><div class="help">Shows a map on the customer's profile under Address Information.</div></div>
+    <div class="field"><span class="lbl">CoA Request Log</span><label class="switch"><input type="checkbox" name="coa_log" {{ 'checked' if s.coa_log == '1' }}><i></i><span class="sr">CoA request log</span></label><div class="help">Keeps a log of every disconnect request (customer page &rsaquo; CoA Logs).</div></div>
+    <div class="field"><span class="lbl">Failed Auto Renew Log</span><label class="switch"><input type="checkbox" name="renew_fail_log" {{ 'checked' if s.renew_fail_log == '1' }}><i></i><span class="sr">Failed auto renew log</span></label><div class="help">Notes it in the customer's Activities when the balance is too low to renew.</div></div>
+    <div class="field"><span class="lbl">Import From Zalpro</span><label class="switch"><input type="checkbox" disabled><i></i><span class="sr">Import from Zalpro</span></label><div class="help">Not available yet. Send a sample Zalpro export and I will build the importer.</div></div>
+    <div class="field"><span class="lbl">Mac Lock Mode <b class="req">*</b></span>
+      <div class="radios">{% for v, l in [('off','Off'),('lock','Lock'),('remove','Remove')] %}<label><input type="radio" name="mac_lock_mode" value="{{ v }}" {{ 'checked' if s.mac_lock_mode == v }}><i></i>{{ l }}</label>{% endfor %}</div>
+      <div class="help">Lock: every customer is locked to the first device that connects. Remove: clears every MAC binding in the background, then goes back to Off.</div></div>
+    <div class="field"><span class="lbl">NAS Mismatch Notification</span><label class="switch"><input type="checkbox" name="nas_mismatch_notify" {{ 'checked' if s.nas_mismatch_notify == '1' }}><i></i><span class="sr">NAS mismatch notification</span></label><div class="help">Display a NAS IP mismatch warning in the customer's profile.</div></div>
+    <div class="field"><span class="lbl">NAS Auto Update</span><label class="switch"><input type="checkbox" name="nas_auto_update" {{ 'checked' if s.nas_auto_update == '1' }}><i></i><span class="sr">NAS auto update</span></label><div class="help">Update the customer's registered NAS when a mismatch is found (5-minute check).</div></div>
+    <hr class="wide">
+    <div class="field"><label class="lbl" for="s-int">Usage update every (seconds)</label><input id="s-int" name="interim_interval" type="number" min="0" max="86400" value="{{ s.interim_interval }}"><div class="help">How often routers report usage. 600 is a good value for 20,000 customers. Changing it updates every plan.</div></div>
+    <div class="field"><label class="lbl" for="s-stale">Close silent sessions after (minutes)</label><input id="s-stale" name="stale_minutes" type="number" min="0" max="10080" value="{{ s.stale_minutes }}"><div class="help">Fixes customers shown online after a power cut. Keep it above 3× the update interval. 0 turns it off.</div></div>
+    <div class="field"><label class="lbl" for="s-coa">Router disconnect port</label><input id="s-coa" name="coa_port" type="number" min="1" max="65535" value="{{ s.coa_port }}"><div class="help">MikroTik uses 3799.</div></div>
+  </div>
+  <div class="set-foot"><button class="btn primary" type="submit">Submit</button></div>
+</form>
+{% endblock %}

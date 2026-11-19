@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}{{ 'OLTs' if kind == 'olt' else 'Devices' }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>{{ 'OLTs' if kind == 'olt' else 'Devices' }}</h1><p class="sub">{% if kind == 'olt' %}Your OLTs. {% else %}OLTs, switches, radios and servers. {% endif %}"Check all" pings each one from the panel server.{% if kind %} <a href="{{ url_for('devices') if kind != 'olt' else url_for('devices') }}">Show all devices</a>{% endif %}</p></div>
+  {% if can('network', 'edit') %}<div class="actions">
+    {% if rows %}<form method="post" action="{{ url_for('device_ping_all') }}">{{ csrf_input() }}<button class="btn" type="submit">{{ icon('refresh') }}Check all</button></form>{% endif %}
+    <button class="btn primary" data-open="dev-dlg" data-new>{{ icon('plus') }}New device</button></div>{% endif %}
+</div>
+{% if rows %}
+<section class="kpis" style="margin-top:0">
+  <div class="kpi"><span class="k">Reachable</span><span class="v" style="color:var(--ok)">{{ counts.up }}</span></div>
+  <div class="kpi"><span class="k">Not answering</span><span class="v" style="color:var(--{{ 'bad' if counts.down else 'ink' }})">{{ counts.down }}</span></div>
+  <div class="kpi"><span class="k">Not checked</span><span class="v">{{ counts.unknown }}</span></div>
+</section>
+{% endif %}
+<section class="panel">
+  {% if rows %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Device</th><th>Type</th><th>Router</th>{% if kind == 'olt' %}<th class="num">ONUs</th>{% endif %}<th>Address</th><th class="hide-sm">Location</th><th>Status</th><th></th></tr></thead>
+    <tbody>{% for d in rows %}<tr>
+      <td class="who-cell"><b>{{ d.name }}</b>{% if d.notes %}<small>{{ d.notes }}</small>{% endif %}</td>
+      <td>{% for k, t in kinds %}{% if k == d.kind %}{{ t }}{% endif %}{% endfor %}</td>
+      <td>{{ d.router or '—' }}</td>{% if kind == 'olt' %}<td class="num"><a href="{{ url_for('onus', olt=d.id) }}">{{ d.onus }}</a></td>{% endif %}<td class="mono">{{ d.ip or '—' }}</td>
+      <td class="hide-sm">{{ d.location or '—' }}{% if d.zone_name %}<small class="muted" style="display:block">{{ d.zone_name }}</small>{% endif %}</td>
+      <td>{% if d.last_status == 'up' %}<span class="dot up"></span>Reachable{% elif d.last_status == 'down' %}<span class="dot down"></span>Not answering{% else %}<span class="dot"></span>Not checked{% endif %}{% if d.last_checked %}<small class="muted" style="display:block">{{ d.last_checked|ago }}</small>{% endif %}</td>
+      <td class="act">{% if can('network', 'edit') %}
+        {% if d.ip %}<form method="post" action="{{ url_for('device_ping', did=d.id) }}">{{ csrf_input() }}<button class="btn sm" type="submit">Check</button></form>{% endif %}
+        <button class="btn sm icon" data-open="dev-dlg" data-edit='{{ {"id": d.id, "name": d.name, "kind": d.kind, "ip": d.ip, "location": d.location, "zone_id": d.zone_id or "", "notes": d.notes, "nas_id": d.nas_id or ""}|tojson }}' aria-label="Edit {{ d.name }}">{{ icon('edit') }}</button>
+        <form method="post" action="{{ url_for('device_delete', did=d.id) }}" data-confirm="Delete {{ d.name }}?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ d.name }}">{{ icon('trash') }}</button></form>{% endif %}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="empty"><h3>No devices yet</h3><p>Add your OLTs, switches and radios to see at a glance which ones stopped answering.</p></div>{% endif %}
+</section>
+
+{% if can('network', 'edit') %}
+<dialog class="modal" id="dev-dlg" aria-labelledby="dev-title">
+  <form method="post" action="{{ url_for('device_save') }}">
+    {{ csrf_input() }}<input type="hidden" name="id"><input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">
+    <div class="modal-head"><h2 id="dev-title" data-title data-title-new="New device" data-title-edit="Edit device">New device</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body"><div class="grid-2">
+      <div class="field"><label class="lbl" for="dv-name">Name</label><input id="dv-name" name="name" maxlength="128" required></div>
+      <div class="field"><label class="lbl" for="dv-kind">Type</label><select id="dv-kind" name="kind">{% for k, t in kinds %}<option value="{{ k }}" {{ 'selected' if k == kind }}>{{ t }}</option>{% endfor %}</select></div>
+      <div class="field"><label class="lbl" for="dv-nas">Connected to router</label><select id="dv-nas" name="nas_id"><option value="">None</option>{% for r in routers %}<option value="{{ r.id }}">{{ r.shortname }}</option>{% endfor %}</select></div>
+      <div class="field"><label class="lbl" for="dv-ip">IP address</label><input id="dv-ip" name="ip" spellcheck="false" placeholder="10.0.0.5"></div>
+      <div class="field"><label class="lbl" for="dv-zone">Zone</label><select id="dv-zone" name="zone_id"><option value="">None</option>{% for z in zones %}<option value="{{ z.id }}">{{ z.name }}</option>{% endfor %}</select></div>
+      <div class="field"><label class="lbl" for="dv-loc">Location</label><input id="dv-loc" name="location" maxlength="128"></div>
+      <div class="field"><label class="lbl" for="dv-notes">Notes</label><input id="dv-notes" name="notes" maxlength="255"></div>
+    </div></div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save device</button></div>
+  </form>
+</dialog>
+{% endif %}
+{% endblock %}

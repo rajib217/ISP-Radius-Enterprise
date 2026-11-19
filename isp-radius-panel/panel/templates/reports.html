@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Reports{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Reports</h1><p class="sub">{{ start|d }} to {{ end|d }}</p></div>
+  <form class="actions" method="get">
+    <input type="hidden" name="tab" value="{{ tab }}">
+    <input type="date" name="from" value="{{ start.isoformat() }}" aria-label="From" style="width:auto">
+    <input type="date" name="to" value="{{ end.isoformat() }}" aria-label="To" style="width:auto">
+    {% if tab == 'profit' %}{% include '_profit_pick.html' %}{% endif %}
+    <button class="btn primary" type="submit">Show</button>
+    {% if tab == 'collection' %}<a class="btn" href="{{ url_for('collection_csv', **{'from': start.isoformat(), 'to': end.isoformat()}) }}">{{ icon('download') }}CSV</a>{% endif %}{% if tab == 'profit' %}<a class="btn" href="{{ url_for('profit_csv', **{'from': start.isoformat(), 'to': end.isoformat(), 'seller': chosen.id if chosen else '', 'below': 1 if below else ''}) }}">{{ icon('download') }}CSV</a>{% endif %}
+  </form>
+</div>
+<div class="tabs">
+  <a class="{{ 'on' if tab == 'traffic' }}" href="{{ url_for('reports', tab='traffic', **{'from': start.isoformat(), 'to': end.isoformat()}) }}">Traffic</a>
+  <a class="{{ 'on' if tab == 'collection' }}" href="{{ url_for('reports', tab='collection', **{'from': start.isoformat(), 'to': end.isoformat()}) }}">Collection</a>
+  <a class="{{ 'on' if tab == 'customers' }}" href="{{ url_for('reports', tab='customers', **{'from': start.isoformat(), 'to': end.isoformat()}) }}">Customers</a>
+  <a class="{{ 'on' if tab == 'profit' }}" href="{{ url_for('reports', tab='profit', **{'from': start.isoformat(), 'to': end.isoformat()}) }}">Seller profit</a>
+  {% if me.role == 'admin' %}<a class="{{ 'on' if tab == 'server' }}" href="{{ url_for('reports', tab='server', **{'from': start.isoformat(), 'to': end.isoformat()}) }}">Server</a>{% endif %}
+</div>
+
+{% if tab == 'traffic' %}
+<section class="kpis" style="margin-top:0">
+  <div class="kpi"><span class="k">Downloaded</span><span class="v">{{ tot.down|bytes }}</span></div>
+  <div class="kpi"><span class="k">Uploaded</span><span class="v">{{ tot.up|bytes }}</span></div>
+  <div class="kpi"><span class="k">Sessions</span><span class="v">{{ '{:,}'.format(tot.sessions) }}</span><span class="s">{{ '{:,}'.format(tot.users) }} customers</span></div>
+</section>
+<section class="panel">
+  <div class="panel-head"><h2>Traffic per day</h2><span class="aside">Each session is counted on the day it started</span></div>
+  <div class="panel-body"><div class="chart" data-kind="bars" data-src="traffic"></div><script type="application/json" id="traffic">{{ chart|tojson }}</script></div>
+</section>
+<section class="panel" style="margin-top:16px">
+  <div class="panel-head"><h2>Top 20 customers by traffic</h2></div>
+  {% if top %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Customer</th><th class="num">Download</th><th class="num">Upload</th><th class="num">Total</th><th class="num">Sessions</th></tr></thead>
+    <tbody>{% for t in top %}<tr>
+      <td class="who-cell">{% if t.sid %}<a href="{{ url_for('subscriber_view', sid=t.sid) }}"><b class="mono">{{ t.username }}</b></a>{% else %}<b class="mono">{{ t.username }}</b>{% endif %}<small>{{ t.full_name or '—' }}</small></td>
+      <td class="num">{{ t.down|bytes }}</td><td class="num">{{ t.up|bytes }}</td><td class="num"><b>{{ (t.down + t.up)|bytes }}</b></td><td class="num">{{ t.sessions }}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="empty"><h3>No traffic in this period</h3><p>Pick a different date range.</p></div>{% endif %}
+</section>
+
+{% elif tab == 'collection' %}
+<section class="kpis" style="margin-top:0">
+  <div class="kpi"><span class="k">Collected</span><span class="v">{{ tot.total|money }}</span><span class="s">{{ currency }}</span></div>
+  <div class="kpi"><span class="k">Payments</span><span class="v">{{ '{:,}'.format(tot.c) }}</span></div>
+</section>
+<section class="panel"><div class="panel-head"><h2>Collection per day</h2></div>
+  <div class="panel-body"><div class="chart" data-kind="bars" data-src="coll"></div><script type="application/json" id="coll">{{ chart|tojson }}</script></div></section>
+<div class="split-even" style="margin-top:16px">
+  <section class="panel"><div class="panel-head"><h2>By staff member</h2></div>
+    {% if by_user %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Received by</th><th class="num">Payments</th><th class="num">Amount</th></tr></thead><tbody>{% for r in by_user %}<tr><td>{{ r.received_by or '—' }}</td><td class="num">{{ r.c }}</td><td class="num"><b>{{ r.total|money }}</b></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><p>No payments in this period.</p></div>{% endif %}</section>
+  <section class="panel"><div class="panel-head"><h2>By method</h2></div>
+    {% if by_method %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Method</th><th class="num">Payments</th><th class="num">Amount</th></tr></thead><tbody>{% for r in by_method %}<tr><td>{{ r.method }}</td><td class="num">{{ r.c }}</td><td class="num"><b>{{ r.total|money }}</b></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><p>No payments in this period.</p></div>{% endif %}</section>
+</div>
+
+{% elif tab == 'profit' %}
+{% include '_profit.html' %}
+{% elif tab == 'server' %}
+{% set n = srv.now %}
+{% if n %}
+<section class="kpis" style="margin-top:0">
+  <div class="kpi"><span class="k">CPU</span><span class="v">{{ '%.0f' % n.cpu_pct|float }}%</span><span class="s">peak {{ '%.0f' % (srv.peak.cpu|float) }}%</span></div>
+  <div class="kpi"><span class="k">RAM</span><span class="v">{{ '%.0f' % (100 * n.mem_used_mb / n.mem_total_mb if n.mem_total_mb else 0) }}%</span><span class="s">{{ '%.1f' % (n.mem_used_mb / 1024) }} / {{ '%.1f' % (n.mem_total_mb / 1024) }} GB</span></div>
+  <div class="kpi"><span class="k">Storage</span><span class="v">{{ '%.0f' % (100 * n.disk_used_gb|float / n.disk_total_gb|float if n.disk_total_gb|float else 0) }}%</span><span class="s">{{ '%.0f' % n.disk_used_gb|float }} / {{ '%.0f' % n.disk_total_gb|float }} GB</span></div>
+</section>
+<section class="kpis" style="margin-top:12px">
+  <div class="kpi"><span class="k">Database</span><span class="v">{{ '%.1f' % (n.db_mb / 1024) }} GB</span></div>
+  <div class="kpi"><span class="k">Load</span><span class="v">{{ '%.2f' % n.load1|float }}</span><span class="s">peak {{ '%.2f' % (srv.peak.load1|float) }}</span></div>
+  <div class="kpi"><span class="k">Uptime</span><span class="v">{{ srv.uptime or '—' }}</span></div>
+</section>
+<div class="split-even">
+  <section class="panel"><div class="panel-head"><h2>CPU</h2><span class="aside">Average use</span></div>
+    <div class="panel-body"><div class="chart" data-kind="line" data-src="s-cpu"></div><script type="application/json" id="s-cpu">{{ srv.charts.cpu|tojson }}</script></div></section>
+  <section class="panel"><div class="panel-head"><h2>RAM</h2><span class="aside">Memory in use</span></div>
+    <div class="panel-body"><div class="chart" data-kind="line" data-src="s-mem"></div><script type="application/json" id="s-mem">{{ srv.charts.mem|tojson }}</script></div></section>
+</div>
+<div class="split-even" style="margin-top:16px">
+  <section class="panel"><div class="panel-head"><h2>Storage</h2><span class="aside">Main disk used</span></div>
+    <div class="panel-body"><div class="chart" data-kind="line" data-src="s-disk"></div><script type="application/json" id="s-disk">{{ srv.charts.disk|tojson }}</script></div></section>
+  <section class="panel"><div class="panel-head"><h2>Load</h2><span class="aside">1-minute load average</span></div>
+    <div class="panel-body"><div class="chart" data-kind="line" data-src="s-load"></div><script type="application/json" id="s-load">{{ srv.charts.load|tojson }}</script></div></section>
+</div>
+<p class="muted" style="margin-top:12px">Peaks are for the chosen dates ({{ '{:,}'.format(srv.peak.samples) }} samples, last one at {{ n.ts.strftime('%H:%M') if n.ts.strftime else n.ts }}). Samples are taken every 5 minutes. Short periods show every sample, up to a month shows hourly averages and longer periods show daily averages. Samples older than {{ srv.keep }} days are deleted automatically.</p>
+{% else %}
+<section class="panel"><div class="empty"><h3>Collecting data</h3><p>The first server sample is taken within 5 minutes of installing this version. The charts fill in as samples arrive.</p></div></section>
+{% endif %}
+
+{% else %}
+<section class="kpis" style="margin-top:0">
+  <div class="kpi"><span class="k">Total customers</span><span class="v">{{ '{:,}'.format(totals.total) }}</span></div>
+  <div class="kpi"><span class="k">Active</span><span class="v">{{ '{:,}'.format(totals.active) }}</span></div>
+  <div class="kpi"><span class="k">Expired</span><span class="v">{{ '{:,}'.format(totals.expired) }}</span></div>
+  <div class="kpi"><span class="k">Suspended</span><span class="v">{{ '{:,}'.format(totals.suspended) }}</span></div>
+  <div class="kpi"><span class="k">New in period</span><span class="v">{{ '{:,}'.format(joined) }}</span></div>
+</section>
+<section class="panel"><div class="panel-head"><h2>New customers per day</h2></div>
+  <div class="panel-body"><div class="chart" data-kind="bars" data-src="cust"></div><script type="application/json" id="cust">{{ chart|tojson }}</script></div></section>
+<section class="panel" style="margin-top:16px"><div class="panel-head"><h2>Biggest areas</h2><a class="aside" href="{{ url_for('area_report') }}">Full area report</a></div>
+  {% if by_area %}<div class="tbl-wrap"><table class="tbl"><tbody>{% for r in by_area %}<tr><td>{{ r.area }}</td><td class="num"><b>{{ '{:,}'.format(r.c) }}</b></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><p>No customers yet.</p></div>{% endif %}</section>
+{% endif %}
+{% endblock %}

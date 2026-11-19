@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Why refused?{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Why was a customer refused?</h1><p class="sub">Type the username exactly as the router sends it. The panel checks every rule that can make RADIUS say no.</p></div></div>
+<form class="filters" method="get" action="{{ url_for('diagnose_page') }}">
+  <div class="search">{{ icon('search') }}<input type="search" name="user" value="{{ user }}" placeholder="username, for example abdollah2@ahammedpur" aria-label="Username" spellcheck="false" autofocus></div>
+  <button class="btn primary" type="submit">Check</button>
+</form>
+{% if user %}
+<section class="panel">
+  <div class="panel-head"><h2 class="mono">{{ user }}</h2>{% if sub %}<a class="aside" href="{{ url_for('subscriber_view', sid=sub.id) }}">Open subscriber &rarr;</a>{% endif %}</div>
+  <div class="panel-body stack">
+    {% if bad %}<div class="note warn"><b>Most likely reason:</b> {{ bad[0][1] }}.</div>
+    {% else %}<div class="note"><b>No rule in the panel refuses this customer.</b> If the log still says Refused, the password the router sends differs from the one saved here (use Toggle Password on the subscriber page to compare), or the router is not talking to this RADIUS server correctly.</div>{% endif %}
+    <ul class="list">
+      {% for lvl, title, detail in checks %}
+      <li><span class="badge {{ 'ok' if lvl == 'ok' else ('bad' if lvl == 'bad' else 'warn') }} plain">{{ {'ok': 'OK', 'bad': 'Problem', 'warn': 'Check'}[lvl] }}</span>
+        <div class="grow"><b>{{ title }}</b>{% if detail %}<small>{{ detail }}</small>{% endif %}</div></li>
+      {% endfor %}
+    </ul>
+    {% if attempts %}<h3 class="mini">Last attempts</h3>
+    <div class="tbl-wrap"><table class="tbl"><tbody>{% for a in attempts %}<tr><td class="nowrap">{{ a.authdate|dt('%d %b %Y, %H:%M:%S') }}</td><td><span class="badge {{ 'ok' if a.reply == 'Access-Accept' else 'bad' }}">{{ 'Accepted' if a.reply == 'Access-Accept' else 'Refused' }}</span></td></tr>{% endfor %}</tbody></table></div>{% endif %}
+  </div>
+</section>
+{% endif %}
+{% endblock %}

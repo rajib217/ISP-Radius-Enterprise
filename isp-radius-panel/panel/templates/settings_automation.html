@@ -1,0 +1,30 @@
+{% extends "settings_base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Automatic messages{% endblock %}
+{% block ssub %}Messages the panel sends by itself. Their text comes from the welcome, payment and expiry templates.{% endblock %}
+{% block sbody %}
+<form method="post" class="stack" style="max-width:820px">
+  {{ csrf_input() }}
+  <section class="panel">
+    <div class="panel-head"><h2>When something happens</h2></div>
+    <div class="panel-body stack">
+      <div class="grid-2">
+        <label class="check"><input type="checkbox" name="auto_sms_welcome" value="1" {{ 'checked' if s.auto_sms_welcome == '1' }}> SMS to a new customer (with login details)</label>
+        <label class="check"><input type="checkbox" name="auto_email_welcome" value="1" {{ 'checked' if s.auto_email_welcome == '1' }}> Email to a new customer</label>
+        <label class="check"><input type="checkbox" name="auto_sms_payment" value="1" {{ 'checked' if s.auto_sms_payment == '1' }}> SMS when a payment is received</label>
+        <label class="check"><input type="checkbox" name="auto_email_payment" value="1" {{ 'checked' if s.auto_email_payment == '1' }}> Email when a payment is received</label>
+      </div>
+      <div class="help">The welcome message contains the customer's password. Turn it on only if you want that.</div>
+    </div>
+  </section>
+  <section class="panel">
+    <div class="panel-head"><h2>Expiry reminders</h2></div>
+    <div class="panel-body grid-2">
+      <div class="field"><label class="lbl" for="a-sms">SMS: days before expiry</label><input id="a-sms" name="auto_sms_expiry_days" value="{{ s.auto_sms_expiry_days }}" placeholder="3, 1, 0"><div class="help">Example: 3, 1, 0 sends a reminder 3 days before, 1 day before and on the day. Empty = none.</div></div>
+      <div class="field"><label class="lbl" for="a-email">Email: days before expiry</label><input id="a-email" name="auto_email_expiry_days" value="{{ s.auto_email_expiry_days }}" placeholder="3, 1, 0"></div>
+      <div class="field"><label class="lbl" for="a-hour">Send reminders after (hour, 0-23)</label><input id="a-hour" name="reminder_hour" type="number" min="0" max="23" value="{{ s.reminder_hour }}"><div class="help">Server time. Each customer gets each reminder only once.</div></div>
+    </div>
+  </section>
+  <div><button class="btn primary" type="submit">Save</button></div>
+</form>
+{% endblock %}

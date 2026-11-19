@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Notices{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Notices</h1><p class="sub">Announcements shown at the top of the dashboard while they are active.</p></div>
+  {% if can('notices', 'edit') %}<div class="actions"><button class="btn primary" data-open="notice-dlg" data-new>{{ icon('plus') }}New notice</button></div>{% endif %}
+</div>
+<section class="panel">
+{% if rows %}
+<div class="table-wrap"><table>
+  <thead><tr><th>Title</th><th>Type</th><th>Shown</th><th>By</th><th></th></tr></thead>
+  <tbody>
+  {% for n in rows %}
+  <tr>
+    <td><strong>{{ n.title }}</strong><br><small class="muted">{{ n.body[:120] }}</small></td>
+    <td><span class="badge {{ n.kind }}">{{ dict(kinds).get(n.kind, n.kind) }}</span></td>
+    <td>{% if not n.active %}<span class="badge">Off</span>{% else %}{{ n.starts or 'now' }} → {{ n.ends or 'until removed' }}{% endif %}</td>
+    <td>{{ n.created_by }}</td>
+    <td class="actions-cell">{% if can('notices', 'edit') %}
+      <button class="btn sm" data-open="notice-dlg" data-edit='{{ {"id": n.id, "title": n.title, "body": n.body, "kind": n.kind, "active": 1 if n.active else 0, "starts": n.starts|string if n.starts else "", "ends": n.ends|string if n.ends else ""}|tojson }}'>{{ icon('edit') }}Edit</button>
+      <form method="post" action="{{ url_for('notice_delete', nid=n.id) }}" data-confirm="Delete this notice?" style="display:inline">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete notice">{{ icon('trash') }}</button></form>
+    {% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}<div class="empty"><h3>No notices yet</h3><p>Add one to show a message such as planned maintenance on every dashboard.</p></div>{% endif %}
+</section>
+
+{% if can('notices', 'edit') %}
+<dialog class="modal" id="notice-dlg" aria-labelledby="notice-title">
+  <form method="post" action="{{ url_for('notice_save') }}">
+    {{ csrf_input() }}<input type="hidden" name="id">
+    <div class="modal-head"><h2 id="notice-title" data-title data-title-new="New notice" data-title-edit="Edit notice">New notice</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <div class="field"><label class="lbl" for="nc-title">Title</label><input id="nc-title" name="title" maxlength="160" required></div>
+      <div class="field"><label class="lbl" for="nc-body">Message</label><textarea id="nc-body" name="body" rows="4" maxlength="5000"></textarea></div>
+      <div class="grid-2">
+        <div class="field"><label class="lbl" for="nc-kind">Type</label><select id="nc-kind" name="kind">{% for k, l in kinds %}<option value="{{ k }}">{{ l }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="nc-active">Status</label><select id="nc-active" name="active"><option value="1">Active</option><option value="0">Off</option></select></div>
+        <div class="field"><label class="lbl" for="nc-starts">Show from (optional)</label><input id="nc-starts" name="starts" type="date"></div>
+        <div class="field"><label class="lbl" for="nc-ends">Show until (optional)</label><input id="nc-ends" name="ends" type="date"></div>
+      </div>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save notice</button></div>
+  </form>
+</dialog>
+{% endif %}
+{% endblock %}

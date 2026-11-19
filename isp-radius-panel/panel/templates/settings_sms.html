@@ -1,0 +1,42 @@
+{% extends "settings_base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}SMS settings{% endblock %}
+{% block ssub %}Connect your SMS provider. Any provider with an HTTP API works.{% endblock %}
+{% block sbody %}
+<div class="split">
+<form method="post" class="stack">
+  {{ csrf_input() }}
+  <section class="panel">
+    <div class="panel-head"><h2>Gateway</h2></div>
+    <div class="panel-body stack">
+      <div class="field"><label class="lbl" for="g-url">API address</label><input id="g-url" name="sms_url" value="{{ s.sms_url }}" spellcheck="false" placeholder="https://sms.example.com/api/send?key=YOURKEY&amp;to={to}&amp;text={message}">
+        <div class="help">Copy the sending address from your provider and put <span class="mono">{to}</span> and <span class="mono">{message}</span> where the number and text go. <span class="mono">{sender}</span> is also available. Values are URL-encoded for you.</div></div>
+      <div class="grid-2">
+        <div class="field"><label class="lbl" for="g-method">Method</label><select id="g-method" name="sms_method"><option {{ 'selected' if s.sms_method == 'GET' }}>GET</option><option {{ 'selected' if s.sms_method == 'POST' }}>POST</option></select></div>
+        <div class="field"><label class="lbl" for="g-sender">Sender name / ID</label><input id="g-sender" name="sms_sender" value="{{ s.sms_sender }}" maxlength="64"></div>
+      </div>
+      <div class="field"><label class="lbl" for="g-body">POST body (only for POST)</label><textarea id="g-body" name="sms_body" rows="3" spellcheck="false" placeholder='{"to": "{to}", "text": "{message}"}'>{{ s.sms_body }}</textarea><div class="help">Start with <span class="mono">{</span> to send JSON, otherwise it is sent as a form (a=b&amp;c=d).</div></div>
+      <div class="field"><label class="lbl" for="g-ok">Success text in the reply</label><input id="g-ok" name="sms_success" value="{{ s.sms_success }}" placeholder="success" spellcheck="false"><div class="help">If set, the reply from the gateway must contain this text, or the message counts as failed. Leave empty to accept any 2xx reply.</div></div>
+    </div>
+  </section>
+  <section class="panel">
+    <div class="panel-head"><h2>Phone numbers and speed</h2></div>
+    <div class="panel-body grid-2">
+      <div class="field"><label class="lbl" for="g-cc">Country code</label><input id="g-cc" name="sms_country_code" value="{{ s.sms_country_code }}" maxlength="4" inputmode="numeric"></div>
+      <div class="field"><label class="lbl" for="g-fmt">Number format sent to gateway</label><select id="g-fmt" name="sms_number_format">{% for k, t in (('intl', '8801711000000'), ('local', '01711000000'), ('plus', '+8801711000000')) %}<option value="{{ k }}" {{ 'selected' if s.sms_number_format == k }}>{{ t }}</option>{% endfor %}</select></div>
+      <div class="field"><label class="lbl" for="g-rate">SMS per minute</label><input id="g-rate" name="sms_rate" type="number" min="1" max="3000" value="{{ s.sms_rate }}"></div>
+    </div>
+  </section>
+  <div><button class="btn primary" type="submit">Save SMS settings</button></div>
+</form>
+<section class="panel">
+  <div class="panel-head"><h2>Send a test</h2></div>
+  <form class="panel-body stack" method="post" action="{{ url_for('settings_sms_test') }}">
+    {{ csrf_input() }}
+    <p class="muted" style="margin:0">Save first, then send a test to your own phone.</p>
+    <div class="field"><label class="lbl" for="g-to">Phone number</label><input id="g-to" name="to" type="tel" required></div>
+    <div><button class="btn" type="submit">{{ icon('send') }}Send test SMS</button></div>
+  </form>
+</section>
+</div>
+{% endblock %}

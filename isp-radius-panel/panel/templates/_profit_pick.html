@@ -1,0 +1,2 @@
+<select name="seller" aria-label="Seller" style="width:auto;max-width:240px"><option value="">All sellers</option>{% for r in sellers %}<option value="{{ r.id }}" {{ 'selected' if chosen and chosen.id == r.id }}>{{ r.username }} ({{ r.role|replace('subreseller', 'sub-reseller') }}){{ ' - ' ~ r.full_name if r.full_name }}</option>{% endfor %}</select>
+<label class="chk" style="display:inline-flex;align-items:center;gap:6px"><input type="checkbox" name="below" value="1" {{ 'checked' if below }}> Include people below</label>

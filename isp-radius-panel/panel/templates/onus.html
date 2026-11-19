@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, pager %}
+{% block title %}ONUs{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>ONUs</h1><p class="sub">Optical network units read from your OLTs over SNMP.</p></div>
+  <div class="actions">
+    <a class="btn primary" href="{{ url_for('olts') }}">{{ icon('layers') }}Manage OLTs</a>
+    {% if can('network', 'edit') %}
+    <form method="post" action="{{ url_for('olt_sync_all') }}">{{ csrf_input() }}<button class="btn primary" type="submit">{{ icon('refresh') }}Refresh Metrics</button></form>
+    <button class="btn" data-open="onu-dlg" data-new>{{ icon('plus') }}Add ONU</button>{% endif %}
+  </div>
+</div>
+<section class="panel xpanel">
+  <div class="panel-head"><h2>ONUs (Optical Network Units)</h2></div>
+  <form class="onu-filters" id="onu-f" method="get" action="{{ url_for('onus') }}">
+    <div class="field"><label class="lbl" for="f-olt">Filter by OLT</label><select id="f-olt" name="olt"><option value="">All OLTs</option>{% for o in olts %}<option value="{{ o.id }}" {{ 'selected' if request.args.get('olt') == o.id|string }}>{{ o.name }}</option>{% endfor %}</select></div>
+    <div class="field"><label class="lbl" for="f-st">Status</label><select id="f-st" name="status"><option value="">All Status</option>{% for v, l in statuses %}<option value="{{ v }}" {{ 'selected' if request.args.get('status') == v }}>{{ l }}</option>{% endfor %}</select></div>
+    <div class="field"><label class="lbl" for="f-sg">Signal Status</label><select id="f-sg" name="signal"><option value="">All Signals</option>{% for v, l, c in signals %}<option value="{{ v }}" {{ 'selected' if request.args.get('signal') == v }}>{{ l }}</option>{% endfor %}<option value="none" {{ 'selected' if request.args.get('signal') == 'none' }}>No reading</option></select></div>
+    <div class="field"><label class="lbl" for="f-mp">Mapping</label><select id="f-mp" name="mapping"><option value="">All ONUs</option><option value="mapped" {{ 'selected' if request.args.get('mapping') == 'mapped' }}>Mapped</option><option value="unmapped" {{ 'selected' if request.args.get('mapping') == 'unmapped' }}>Unmapped</option></select></div>
+    <div class="btns"><button class="btn primary" type="submit">{{ icon('filter') }}Apply</button><a class="btn" href="{{ url_for('onus') }}">{{ icon('refresh') }}Reset</a></div>
+  </form>
+  <div class="listbar">
+    <select name="per" form="onu-f" aria-label="Rows per page" onchange="this.form.submit()">{% for n in (25, 50, 100, 200) %}<option value="{{ n }}" {{ 'selected' if pg.per == n }}>{{ n }}</option>{% endfor %}</select>
+    <div class="seg"><button type="button" data-xt="print">Print</button><button type="button" data-xt="copy">Copy</button><button type="button" data-xt="pdf">PDF</button><button type="button" data-xt="excel">Excel</button><button type="button" data-xt="csv">CSV</button>
+      <details class="dd"><summary>View &#9662;</summary><div class="dd-menu colmenu">{% for n in ['MAC Address','OLT Name','Slot/Card','PON : ONT','Status','Signal','RX Power','TX Power','Temp','Subscriber','Last Seen'] %}<label><input type="checkbox" data-col="{{ loop.index + 1 }}" checked> {{ n }}</label>{% endfor %}</div></details></div>
+    <div class="search">{{ icon('search') }}<input type="search" name="q" form="onu-f" value="{{ request.args.get('q', '') }}" placeholder="Type to search..." aria-label="Search"></div>
+  </div>
+  <p class="muted" style="margin:0 18px 8px">Showing {{ pg.first }} to {{ pg.last }} of {{ '{:,}'.format(pg.total) }} records</p>
+  {% if rows %}
+  <div class="tbl-wrap"><table class="tbl xtable onu-tbl">
+    <thead><tr><th>ID</th><th>MAC Address</th><th>OLT Name</th><th>Slot/Card</th><th>PON : ONT</th><th>Status</th><th>Signal</th><th>RX Power</th><th>TX Power</th><th>Temp</th><th>Subscriber</th><th>Last Seen</th><th class="no-x"></th></tr></thead>
+    <tbody>{% for o in rows %}<tr>
+      <td class="muted">{{ o.id }}</td>
+      <td><span class="chip violet mono">{{ o.mac or o.serial or o.name or '—' }}</span></td>
+      <td><span class="chip violet">{{ o.olt_name or '—' }}</span></td>
+      <td>{% if o.slot %}<span class="chip blue">Slot {{ o.slot }}</span>{% else %}—{% endif %}</td>
+      <td>{% if o.ont %}<span class="chip violet">PON {{ o.pon }} : ONT {{ o.ont }}</span>{% else %}{{ o.pon or '—' }}{% endif %}</td>
+      <td><span class="pill {{ 'ok' if o.status == 'online' else ('bad' if o.status == 'los' else 'gray') }}">{% for v, l in statuses %}{% if v == o.status %}{{ l.split(' (')[0] }}{% endif %}{% endfor %}</span></td>
+      <td>{% if o.sig %}<span class="pill {{ o.sig[2] }}">{{ o.sig[1] }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td class="muted">{{ ('%.2f dBm' % o.rx_dbm|float) if o.rx_dbm is not none else '—' }}</td>
+      <td class="muted">{{ ('%.2f dBm' % o.tx_dbm|float) if o.tx_dbm is not none else '—' }}</td>
+      <td class="muted">{{ ('%.1f °C' % o.temp_c|float) if o.temp_c is not none else '—' }}</td>
+      <td>{% if o.username %}{% if o.sid %}<a class="pill ok" href="{{ url_for('subscriber_view', sid=o.sid) }}">{{ o.username }}</a>{% else %}<span class="pill ok">{{ o.username }}</span>{% endif %}{% else %}<span class="pill warn">Unmapped</span>{% endif %}</td>
+      <td class="muted">{{ (o.last_seen|ago) if o.last_seen else ('manual' if o.source != 'snmp' else '—') }}</td>
+      <td class="act no-x"><div class="btngroup">
+        <a class="ab blue" href="{{ url_for('onu_view', oid=o.id) }}" title="View details" aria-label="View ONU">{{ icon('eye') }}</a>
+        {% if can('network', 'edit') %}
+        {% if o.olt_id %}<form method="post" action="{{ url_for('olt_sync', did=o.olt_id) }}">{{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}"><button class="ab green" type="submit" title="Refresh from OLT" aria-label="Refresh from OLT">{{ icon('refresh') }}</button></form>{% endif %}
+        <button class="ab violet" data-open="map-dlg" data-fill='{{ {"username": o.username, "action": url_for("onu_map", oid=o.id), "next": request.full_path.rstrip("?")}|tojson }}' title="Link to subscriber" aria-label="Link to subscriber">{{ icon('link') }}</button>
+        <form method="post" action="{{ url_for('onu_delete', oid=o.id) }}" data-confirm="Delete this ONU?">{{ csrf_input() }}<button class="ab red" type="submit" title="Delete" aria-label="Delete ONU">{{ icon('trash') }}</button></form>{% endif %}
+      </div></td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {{ pager(pg, keep, 'onus') }}
+  {% else %}<div class="empty"><h3>No ONUs found</h3><p>Add an OLT under Network &rsaquo; OLTs and press Sync ONUs, or change the filters.</p></div>{% endif %}
+</section>
+{% include "_onu_map.html" %}
+{% include "_onu_edit.html" %}
+{% endblock %}

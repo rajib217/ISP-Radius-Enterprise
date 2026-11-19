@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Packages{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Packages</h1><p class="sub">A plan sets the speed, price and validity. Each plan is also a RADIUS group.</p></div>
+  {% if can('plans', 'edit') %}<div class="actions"><a class="btn primary" href="{{ url_for('plan_new') }}">{{ icon('plus') }}Add Package</a></div>{% endif %}
+</div>
+
+<section class="panel">
+  {% if rows %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Plan</th><th class="num">Bandwidth</th><th>Policy</th><th class="num">Price</th><th class="num">Valid for</th><th class="hide-sm">IP pool</th><th class="num">Customers</th><th></th></tr></thead>
+    <tbody>
+    {% for p in rows %}
+      <tr>
+        <td class="who-cell"><b>{{ p.label }}</b><small class="mono">{{ p.name }}{% if p.rate %} · {{ p.rate }}{% endif %}</small></td>
+        <td class="num">{{ bw(p) or '—' }}</td>
+        <td class="mono">{{ p.policy_group or '—' }}</td>
+        <td class="num">{{ currency }} {{ p.price|money }}</td>
+        <td class="num">{{ p.duration }} {{ p.duration_type }}{{ '' if p.duration == 1 else 's' }}</td>
+        <td class="mono hide-sm">{{ p.pool_name or '—' }}</td>
+        <td class="num"><a href="{{ url_for('subscribers', plan=p.id) }}">{{ '{:,}'.format(p.users) }}</a></td>
+        <td class="act">
+          {% if can('plans', 'edit') %}
+          <a class="btn sm icon" href="{{ url_for('plan_edit', pid=p.id) }}" aria-label="Edit {{ p.label }}" title="Edit">{{ icon('edit') }}</a>
+          <form method="post" action="{{ url_for('plan_delete', pid=p.id) }}" data-confirm="Delete plan {{ p.label }}?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ p.label }}" title="Delete">{{ icon('trash') }}</button></form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <div class="empty"><h3>Create your first plan</h3><p>Plans decide how fast each customer connects. Add one such as 10 Mbps, then assign it to subscribers.</p>{% if can('plans', 'edit') %}<a class="btn primary" href="{{ url_for('plan_new') }}">{{ icon('plus') }}Add Package</a>{% endif %}</div>
+  {% endif %}
+</section>
+
+{% endblock %}

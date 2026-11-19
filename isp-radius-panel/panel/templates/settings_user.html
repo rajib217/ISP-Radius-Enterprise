@@ -1,0 +1,17 @@
+{% extends "settings_base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}User settings{% endblock %}
+{% block ssub %}Rules for panel users (staff and partners).{% endblock %}
+{% block sbody %}
+<form method="post" class="panel set-card">
+  {{ csrf_input() }}
+  <div class="panel-head"><h2>User Settings</h2></div>
+  <div class="set-form three">
+    {% for key, label in switches %}
+    <div class="field"><label class="lbl" for="u-{{ key }}">{{ label }}</label><span class="switch"><input id="u-{{ key }}" type="checkbox" name="{{ key }}" {{ 'checked' if s[key] == '1' }}><i></i></span></div>
+    {% endfor %}
+    <p class="help wide"><b>Allow Duplicate Phone</b> is enforced when a user is added or edited (off = each phone number may belong to one user). The verification switches and Allow Duplicate NID/NIC are saved only: panel users have no NID field and no OTP or email verification step yet.</p>
+  </div>
+  <div class="set-foot"><button class="btn primary" type="submit">Submit</button></div>
+</form>
+{% endblock %}

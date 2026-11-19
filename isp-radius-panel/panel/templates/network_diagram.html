@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Network diagram{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Diagram</h1><p class="sub">RADIUS server, routers (with online customers) and the devices linked to them. Link a device to a router on the OLTs page.</p></div></div>
+<section class="panel"><div class="panel-body diagram-wrap">
+  {% if empty %}<div class="empty"><h3>Nothing to draw yet</h3><p>Add routers under NAS and devices under OLTs.</p></div>{% else %}{{ svg|safe }}{% endif %}
+</div></section>
+{% endblock %}

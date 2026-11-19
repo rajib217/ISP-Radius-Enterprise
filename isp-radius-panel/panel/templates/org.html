@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Department / Zone{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Department / Zone</h1><p class="sub">Departments group your staff by job (support, technical, billing). Zones group staff, areas and devices by location.</p></div>
+  {% if can('zones', 'edit') %}<div class="actions"><button class="btn primary" data-open="{{ 'zone-dlg' if tab == 'zones' else 'dept-dlg' }}" data-new>{{ icon('plus') }}New {{ 'zone' if tab == 'zones' else 'department' }}</button></div>{% endif %}
+</div>
+<div class="tabs">
+  <a class="{{ 'on' if tab == 'departments' }}" href="{{ url_for('org') }}">Departments</a>
+  <a class="{{ 'on' if tab == 'zones' }}" href="{{ url_for('org', tab='zones') }}">Zones</a>
+</div>
+
+{% if tab == 'departments' %}
+<section class="panel">
+  {% if depts %}<div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Department</th><th>Description</th><th class="num">Users</th><th class="num">Open tickets</th><th></th></tr></thead>
+    <tbody>{% for r in depts %}<tr>
+      <td><b>{{ r.name }}</b></td><td class="muted">{{ r.description or '—' }}</td><td class="num">{{ r.users }}</td>
+      <td class="num"><a href="{{ url_for('tickets', dept=r.id, status='open') }}">{{ r.open_tickets }}</a></td>
+      <td class="act">{% if can('zones', 'edit') %}
+        <button class="btn sm icon" data-open="dept-dlg" data-edit='{{ {"id": r.id, "name": r.name, "description": r.description}|tojson }}' aria-label="Edit {{ r.name }}">{{ icon('edit') }}</button>
+        <form method="post" action="{{ url_for('dept_delete', rid=r.id) }}" data-confirm="Delete department {{ r.name }}?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ r.name }}">{{ icon('trash') }}</button></form>{% endif %}</td>
+    </tr>{% endfor %}</tbody></table></div>
+  {% else %}<div class="empty"><h3>No departments yet</h3><p>Add departments such as Support, Technical or Billing, then put staff and tickets in them.</p></div>{% endif %}
+</section>
+{% else %}
+<section class="panel">
+  {% if zones %}<div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Zone</th><th>Description</th><th class="num">Users</th><th class="num">Areas</th><th class="num">Devices</th><th></th></tr></thead>
+    <tbody>{% for r in zones %}<tr>
+      <td><b>{{ r.name }}</b></td><td class="muted">{{ r.description or '—' }}</td><td class="num">{{ r.users }}</td><td class="num">{{ r.areas }}</td><td class="num">{{ r.devices }}</td>
+      <td class="act">{% if can('zones', 'edit') %}
+        <button class="btn sm icon" data-open="zone-dlg" data-edit='{{ {"id": r.id, "name": r.name, "description": r.description}|tojson }}' aria-label="Edit {{ r.name }}">{{ icon('edit') }}</button>
+        <form method="post" action="{{ url_for('zone_delete', rid=r.id) }}" data-confirm="Delete zone {{ r.name }}?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ r.name }}">{{ icon('trash') }}</button></form>{% endif %}</td>
+    </tr>{% endfor %}</tbody></table></div>
+  {% else %}<div class="empty"><h3>No zones yet</h3><p>Zones are bigger regions, such as North or Old Town. Areas, staff and devices can belong to one.</p></div>{% endif %}
+</section>
+{% endif %}
+
+{% for kind, ep, title in (('dept', 'dept_save', 'department'), ('zone', 'zone_save', 'zone')) %}
+<dialog class="modal" id="{{ kind }}-dlg" aria-labelledby="{{ kind }}-title">
+  <form method="post" action="{{ url_for(ep) }}">
+    {{ csrf_input() }}<input type="hidden" name="id">
+    <div class="modal-head"><h2 id="{{ kind }}-title" data-title data-title-new="New {{ title }}" data-title-edit="Edit {{ title }}">New {{ title }}</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <div class="field"><label class="lbl" for="{{ kind }}-name">Name</label><input id="{{ kind }}-name" name="name" maxlength="64" required></div>
+      <div class="field"><label class="lbl" for="{{ kind }}-desc">Description</label><input id="{{ kind }}-desc" name="description" maxlength="255"></div>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save</button></div>
+  </form>
+</dialog>
+{% endfor %}
+{% endblock %}

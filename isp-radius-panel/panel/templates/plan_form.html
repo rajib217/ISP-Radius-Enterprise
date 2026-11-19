@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% set editing = p.id is defined %}
+{% block title %}{{ 'Edit Package' if editing else 'Add Package' }}{% endblock %}
+{% macro policy_select(name, value='', blank='None') %}
+  <select id="{{ name }}" name="{{ name }}" {{ caller() if caller else '' }}><option value="">{{ blank }}</option>
+  {% for g in policies %}<option value="{{ g }}" {{ 'selected' if value == g }}>{{ g }}</option>{% endfor %}</select>
+{% endmacro %}
+{% macro switch(name, on, dep='') %}
+  <label class="check sw"><input type="checkbox" name="{{ name }}" value="1" {{ 'checked' if on }} {% if dep %}data-switch="{{ dep }}"{% endif %}><span>{{ 'On' if on else 'Off' }}</span></label>
+{% endmacro %}
+{% block content %}
+<div class="page-head">
+  <div><h1>{{ 'Edit Package' if editing else 'Add Package' }}</h1><p class="sub"><a href="{{ url_for('plans') }}">Packages</a> &middot; {{ p.label if editing else 'New' }}</p></div>
+</div>
+<form method="post" action="{{ url_for('plan_save') }}" id="plan-form" class="pkg">
+  {{ csrf_input() }}{% if editing %}<input type="hidden" name="id" value="{{ p.id }}">{% endif %}
+
+  <section class="panel"><div class="panel-body stack">
+    <div class="field"><span class="lbl">Auto Renew</span>{{ switch('auto_renew', p.auto_renew) }}
+      <div class="help">System will auto renew active subscribers before/after expiration based on package, salesperson and subscriber settings.</div></div>
+    <div class="grid-2">
+      <div class="field"><label class="lbl" for="pk-name">Name <b class="req">*</b></label><input id="pk-name" name="name" value="{{ p.name or '' }}" {{ 'readonly' if editing }} pattern="[A-Za-z0-9_\-]{2,64}" placeholder="10Mbps" required><div class="help">Also the RADIUS group name. Cannot change later.</div></div>
+      <div class="field"><label class="lbl" for="billing_type">Billing Type <b class="req">*</b></label><select id="billing_type" name="billing_type"><option value="prepaid" {{ 'selected' if p.billing_type != 'postpaid' }}>Prepaid</option><option value="postpaid" {{ 'selected' if p.billing_type == 'postpaid' }}>Postpaid</option></select><div class="help">Saved for reports. Not used for billing yet.</div></div>
+      <div class="field"><span class="lbl">Require Subscriber Balance For Auto-Renew (Postpaid Only)</span>{{ switch('require_balance', p.require_balance) }}<div class="help"><b>OFF:</b> reseller or subscriber balance | <b>ON:</b> subscriber balance only</div></div>
+      <div></div>
+      <div class="field"><label class="lbl" for="pk-desc">Description <b class="req">*</b></label><input id="pk-desc" name="description" value="{{ p.description or '' }}" maxlength="255" required placeholder="Enter Description"></div>
+      <div class="field"><label class="lbl" for="pk-inv">Invoice Description</label><input id="pk-inv" name="invoice_desc" value="{{ p.invoice_desc or '' }}" maxlength="255" placeholder="Enter Invoice Description"></div>
+      <div class="field"><label class="lbl" for="pk-bw">Bandwidth</label><input id="pk-bw" name="bandwidth_value" type="number" min="0" step="any" value="{% set bwv = p.get('bandwidth_value') %}{{ ('%g' % bwv) if bwv else '' }}" placeholder="Bandwidth"></div>
+      <div class="field"><label class="lbl" for="pk-bwt">Bandwidth Type</label><select id="pk-bwt" name="bandwidth_type"><option value="">Select A Type</option>{% for t in ('Kbps','Mbps','Gbps') %}<option {{ 'selected' if p.bandwidth_type == t }}>{{ t }}</option>{% endfor %}</select><div class="help">Shown on lists and receipts. The speed limit itself comes from the Policy below.</div></div>
+      <div class="field"><label class="lbl" for="pk-price">Price ({{ currency }})</label><input id="pk-price" name="price" type="number" min="0" step="0.01" value="{{ p.price if editing else 0 }}"></div>
+      <div class="field"><label class="lbl" for="pl-pool">IP pool name on router</label><input id="pl-pool" name="pool_name" value="{{ p.pool_name or '' }}" placeholder="pppoe-pool" spellcheck="false"></div>
+      <div class="field"><label class="lbl" for="pl-sim">Devices at once</label><input id="pl-sim" name="simultaneous_use" type="number" min="1" max="10" value="{{ p.simultaneous_use or 1 }}"></div>
+    </div>
+  </div></section>
+
+  <section class="panel"><div class="panel-body grid-2">
+    <div class="field"><label class="lbl" for="service_type">Service Type <b class="req">*</b></label><select id="service_type" name="service_type">{% for s in services %}<option {{ 'selected' if p.service_type == s }}>{{ s }}</option>{% endfor %}</select></div>
+    <div class="field"><label class="lbl" for="fees">Tax/Extra Fee</label>
+      <select id="fees" name="fees" multiple size="3">{% for f in fees %}<option value="{{ f.id }}" {{ 'selected' if f.id in sel_fees }}>{{ f.name }} ({{ f.value }}{{ '%' if f.mode == 'percent' }})</option>{% endfor %}</select>
+      <div class="help">Added to the suggested amount when renewing. {% if not fees %}Create them under Package &gt; Tax/Extra Fee.{% endif %}</div></div>
+  </div></section>
+
+  <section class="panel"><div class="panel-body grid-2">
+    <div class="field"><label class="lbl" for="duration">Duration <b class="req">*</b></label><input id="duration" name="duration" type="number" min="1" value="{{ p.duration or 30 }}" required></div>
+    <div class="field"><label class="lbl" for="duration_type">Duration Type <b class="req">*</b></label><select id="duration_type" name="duration_type">{% for v, l in (('day','Day'),('week','Week'),('month','Month'),('year','Year')) %}<option value="{{ v }}" {{ 'selected' if (p.duration_type or 'day') == v }}>{{ l }}</option>{% endfor %}</select></div>
+    <div class="field"><span class="lbl">Auto Generate Invoice</span>{{ switch('auto_invoice', p.auto_invoice, 'inv') }}</div>
+    <div class="field"><label class="lbl" for="invoice_day">Day of month (1-31)</label><input id="invoice_day" name="invoice_day" type="number" min="1" max="31" value="{{ p.invoice_day or '' }}" data-dep="inv" placeholder="Day Of Month (1-31)"><div class="help">Saved for later. There is no invoice generator in this version.</div></div>
+  </div></section>
+
+  <section class="panel"><div class="panel-body grid-2">
+    <div class="field"><span class="lbl">Fixed Expire Day</span>{{ switch('fixed_expire_on', p.fixed_expire_day, 'fed') }}</div>
+    <div class="field"><label class="lbl" for="fixed_expire_day">Day of month</label><input id="fixed_expire_day" name="fixed_expire_day" type="number" min="1" max="31" value="{{ p.fixed_expire_day or '' }}" data-dep="fed" placeholder="Enter A Day"><div class="help">Every renewal ends on this day of the month (shorter months use their last day).</div></div>
+    <div class="field"><span class="lbl">Fixed Expire Day Acct.</span>{{ switch('fixed_expire_acct', p.fixed_expire_acct, 'fea') }}</div>
+    <div class="field"><label class="lbl" for="fixed_expire_acct_mode">Accounting</label><select id="fixed_expire_acct_mode" name="fixed_expire_acct_mode" data-dep="fea"><option value="daily" {{ 'selected' if p.fixed_expire_acct_mode != 'monthly' }}>Daily</option><option value="monthly" {{ 'selected' if p.fixed_expire_acct_mode == 'monthly' }}>Monthly</option></select><div class="help">Saved for reports only.</div></div>
+    <div class="field"><span class="lbl">Fixed Expire Time</span>{{ switch('fixed_expire_time_on', p.fixed_expire_time, 'fet') }}</div>
+    <div class="field"><label class="lbl" for="fixed_expire_time">Time</label><input id="fixed_expire_time" name="fixed_expire_time" type="time" value="{{ p.fixed_expire_time or '' }}" data-dep="fet"><div class="help">The login stops at this time on the expiry day (default: end of the day).</div></div>
+  </div></section>
+
+  <section class="panel"><div class="panel-body grid-2">
+    <div class="field"><label class="lbl" for="policy_group">Policy <b class="req">*</b></label>{{ policy_select('policy_group', p.policy_group, 'Search Group Name Here...') }}<div class="help">The RADIUS group every customer on this package joins. Put the speed limit (<code>Mikrotik-Rate-Limit</code>) in it under Package &gt; Policy.{% if editing and not p.speed_from_policy %} <b>This package still has its own speed limit ({{ p.rate_custom or ('%sM/%sM' % (p.upload_mbps, p.download_mbps)) }}). After you save, the speed comes only from the Policy you choose here.</b>{% endif %}</div></div>
+  </div></section>
+
+  <section class="panel"><div class="panel-body stack">
+    <div class="field"><label class="lbl" for="expired_policy">Next Expired Action</label>{{ policy_select('expired_policy', p.expired_policy, 'Disconnect (no policy)') }}<div class="help">Set a policy to keep expired subscribers online with restricted access. Leave it empty to disconnect them instead.</div></div>
+    <div class="field"><label class="lbl" for="disabled_policy">Next Disabled Action</label>{{ policy_select('disabled_policy', p.disabled_policy, 'Disconnect (no policy)') }}<div class="help">Set a policy to keep disabled (suspended) subscribers online with restricted access. Leave it empty to disconnect them instead.</div></div>
+  </div></section>
+
+  <section class="panel"><div class="panel-body stack">
+    {% for kind, label, ph in (('total', 'Data Quota (GB)', 'Volume Ex: 300 GB'), ('daily', 'Daily Data Quota', 'Ex: 10 GB'), ('weekly', 'Weekly Data Quota', 'Ex: 100 GB')) %}
+    <div class="quota">
+      <label class="lbl" for="quota_{{ kind }}_gb">{{ label }}</label>
+      <input id="quota_{{ kind }}_gb" name="quota_{{ kind }}_gb" type="number" min="0" step="0.01" value="{{ p['quota_%s_gb' % kind] or '' }}" placeholder="{{ ph }}">
+      <select name="quota_{{ kind }}_action" data-action-for="{{ kind }}" aria-label="{{ label }} action">{% for v, l in actions %}<option value="{{ v }}" {{ 'selected' if p['quota_%s_action' % kind] == v }}>{{ l }}</option>{% endfor %}</select>
+      {% call policy_select('quota_%s_policy' % kind, p['quota_%s_policy' % kind], 'Search Group Name Here...') %}data-policy-for="{{ kind }}"{% endcall %}
+    </div>
+    {% endfor %}
+    <div class="quota"><label class="lbl" for="quota_weekly_reset">Weekly Reset Day</label>
+      <select id="quota_weekly_reset" name="quota_weekly_reset">{% for d in weekdays %}<option value="{{ loop.index0 }}" {{ 'selected' if (p.quota_weekly_reset or 0) == loop.index0 }}>{{ d }}</option>{% endfor %}</select></div>
+    <div class="quota"><label class="lbl" for="quota_session_min">Session Quota (Min)</label>
+      <input id="quota_session_min" name="quota_session_min" type="number" min="0" value="{{ p.quota_session_min or '' }}" placeholder="Example: 10 Minutes">
+      <span class="help">The router ends each session after this time; the customer can reconnect.</span></div>
+    <div class="help">Data quotas are checked every 5 minutes from the accounting records. When one is used up the customer is disconnected, and then either refused or moved to the chosen policy until the day, week or package period starts again.</div>
+  </div></section>
+
+  <div class="form-foot"><a class="btn" href="{{ url_for('plans') }}">Cancel</a><button class="btn primary" type="submit">Submit</button></div>
+</form>
+{% endblock %}

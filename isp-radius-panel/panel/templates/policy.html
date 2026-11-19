@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Policy{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Policy</h1><p class="sub">RADIUS attributes grouped by name. Reply attributes are sent to the router (speed, pool, timeouts). Check attributes must match for a customer to log in.</p></div>
+  {% if can('plans', 'edit') %}<div class="actions"><button class="btn primary" type="button" data-policy-new>{{ icon('plus') }}Add Policy</button></div>{% endif %}
+</div>
+<section class="panel">
+  <div class="panel-body row-gap">
+    <div class="row-gap">
+      <label class="muted" for="policy-size">Show</label>
+      <select id="policy-size" class="w-auto"><option value="25">25</option><option value="50">50</option><option value="100" selected>100</option><option value="0">All</option></select>
+      <button class="btn sm" type="button" data-export="print">Print</button>
+      <button class="btn sm" type="button" data-export="copy">Copy</button>
+      <button class="btn sm" type="button" data-export="csv">CSV</button>
+    </div>
+    <div class="row-gap"><label class="muted" for="policy-q">Search</label><input id="policy-q" type="search" class="w-220" placeholder="Group or attribute"></div>
+  </div>
+  {% if groups %}
+  <div class="tbl-wrap"><table class="tbl" id="policy-table">
+    <thead><tr><th>No</th><th>Actions</th><th>Name</th><th>Attribute</th><th>Type</th><th>OP</th><th>Value</th><th>Packages</th><th>Subscribers</th></tr></thead>
+    {% for gr in groups %}<tbody class="pgrp">
+      <tr class="pgrp-head"><td>{{ loop.index }}</td>
+        <td class="act">{% if can('plans', 'edit') %}<details class="dd"><summary class="btn sm">Actions &#9662;</summary><div class="dd-menu">
+          <button type="button" data-policy-edit='{{ {"name": gr.name, "rows": gr.edit}|tojson }}'>Edit policy</button>
+          <form method="post" action="{{ url_for('policy_delete') }}" data-confirm="Delete policy {{ gr.name }}?">{{ csrf_input() }}<input type="hidden" name="group" value="{{ gr.name }}"><button type="submit" class="danger-text">Delete policy</button></form>
+        </div></details>{% endif %}</td>
+        <td><span class="pill info">{{ gr.name }}</span></td><td></td><td></td><td></td><td></td>
+        <td>{{ gr.packages }}</td><td>{{ gr.users }}</td></tr>
+      {% for r in gr.rows %}<tr class="pgrp-row"><td></td>
+        <td class="act">{% if can('plans', 'edit') %}<details class="dd"><summary class="btn sm">Actions &#9662;</summary><div class="dd-menu">
+          <button type="button" data-policy-edit='{{ {"name": gr.name, "rows": gr.edit}|tojson }}'>Edit policy</button>
+          <form method="post" action="{{ url_for('policy_attr_delete') }}" data-confirm="Remove {{ r.attribute }} from {{ gr.name }}?">{{ csrf_input() }}<input type="hidden" name="group" value="{{ gr.name }}"><input type="hidden" name="ptype" value="{{ r.ptype }}"><input type="hidden" name="id" value="{{ r.id }}"><button type="submit" class="danger-text">Delete attribute</button></form>
+        </div></details>{% endif %}</td>
+        <td></td><td>{{ r.attribute }}</td>
+        <td><span class="badge {{ 'ok' if r.ptype == 'reply' else 'warn' }}">{{ r.ptype|capitalize }}</span></td>
+        <td>{{ r.op }}</td><td>{{ r.value }}</td><td></td><td></td></tr>{% endfor %}
+    </tbody>{% endfor %}
+  </table></div>
+  <div class="panel-body muted" id="policy-info"></div>
+  {% else %}<div class="empty"><h3>No policies yet</h3><p>Use Add Policy to create the first group of attributes.</p></div>
+  <div class="hide"><span id="policy-info"></span></div>{% endif %}
+</section>
+
+{% if can('plans', 'edit') %}
+<dialog class="modal wide" id="policy-dlg" aria-labelledby="policy-title">
+  <form method="post" action="{{ url_for('policy_save') }}">
+    {{ csrf_input() }}<input type="hidden" name="orig">
+    <div class="modal-head"><h2 id="policy-title" data-title>Add policy</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <div class="field"><label class="lbl" for="pol-group">Group Name</label><input id="pol-group" name="group" maxlength="64" required placeholder="e.g. suspended"></div>
+      <div id="policy-rows" class="stack"></div>
+      <div><button class="btn" type="button" data-policy-add>{{ icon('plus') }}Add More</button></div>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Close</button><button class="btn primary" type="submit">Submit</button></div>
+  </form>
+</dialog>
+<template id="policy-row-tpl">
+  <div class="prow">
+    <div class="field"><label class="lbl">Policy Type</label><select name="ptype">{% for v, l in types %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
+    <div class="field"><label class="lbl">Attribute Name</label><input name="attribute" maxlength="64" list="policy-attrs" placeholder="Mikrotik-Rate-Limit"></div>
+    <div class="field"><label class="lbl">Attribute OP</label><select name="op">{% for o in ops %}<option value="{{ o }}">{{ o }}</option>{% endfor %}</select></div>
+    <div class="field"><label class="lbl">Attribute Value</label><input name="value" maxlength="253"></div>
+    <button class="btn sm danger" type="button" data-policy-del>Delete</button>
+  </div>
+</template>
+<datalist id="policy-attrs"><option>Mikrotik-Rate-Limit</option><option>Framed-Pool</option><option>Framed-IP-Address</option><option>Session-Timeout</option><option>Idle-Timeout</option><option>Acct-Interim-Interval</option><option>Simultaneous-Use</option><option>Auth-Type</option><option>Reply-Message</option><option>Mikrotik-Address-List</option></datalist>
+{% endif %}
+{% endblock %}

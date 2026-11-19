@@ -1,0 +1,31 @@
+{% extends "settings_base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Partner management{% endblock %}
+{% block ssub %}Partner tiers, names and commission.{% endblock %}
+{% block sbody %}
+<form method="post" class="panel set-card">
+  {{ csrf_input() }}
+  <div class="panel-head"><h2>Partner Management Settings</h2></div>
+  <div class="set-form one wide-form">
+    <h3 class="sec">Commission</h3>
+    <div class="field"><label class="lbl" for="p-com">Commission Sellers</label><span class="switch"><input id="p-com" type="checkbox" disabled><i></i></span>
+      <div class="help">Commission selling (partners earn a percentage of what they collect) is not built in this panel yet, so this switch is disabled.</div></div>
+    <hr class="dash">
+    <h3 class="sec">Partner Tiers And Names</h3>
+    <div class="tier-grid">
+      <span class="th">Tier</span><span class="th">ON/OFF</span><span class="th">Name</span><span class="th">Plural Name</span>
+      {% for key, one, many in tiers %}
+      <div class="tier-name" style="padding-left: {{ loop.index0 * 22 }}px"><b>{% if loop.index0 %}&#8627; {% endif %}{{ s['tier_name_' ~ key] or one }}</b><small>{{ counts.get(key, 0) }} active user{{ '' if counts.get(key, 0) == 1 else 's' }}{% if key in off and s['tier_on_' ~ key] == '1' %} · off because the tier above is off{% endif %}</small></div>
+      <span class="switch"><input type="checkbox" name="tier_on_{{ key }}" aria-label="{{ one }} on or off" {{ 'checked' if s['tier_on_' ~ key] == '1' }}><i></i></span>
+      <input name="tier_name_{{ key }}" value="{{ s['tier_name_' ~ key] }}" placeholder="{{ one }}" maxlength="30" aria-label="{{ one }} name">
+      <input name="tier_plural_{{ key }}" value="{{ s['tier_plural_' ~ key] }}" placeholder="{{ many }}" maxlength="30" aria-label="{{ one }} plural name">
+      {% endfor %}
+      <div class="tier-name"><b>General Name</b></div><span></span>
+      <input name="general_name" value="{{ s.general_name }}" placeholder="Reseller" maxlength="30" aria-label="General name">
+      <input name="general_plural" value="{{ s.general_plural }}" placeholder="Resellers" maxlength="30" aria-label="General plural name">
+    </div>
+    <p class="help">OFF blocks the login of that tier's users and logs them out, stops auto-renew for their subscribers, and hides the tier from menus and add forms. A tier is OFF while its parent is OFF. Nothing is deleted: switching ON restores everything. Leave a name empty to use the normal word; a plural left empty uses the name. Up to 30 letters, digits, spaces, "-" or ".". Renamed tiers show in the menu, user lists and role pickers. The General Name is saved but nothing uses it yet. Text already saved (activity logs, ledger notes) keeps the old words.</p>
+  </div>
+  <div class="set-foot"><button class="btn primary" type="submit">Submit</button></div>
+</form>
+{% endblock %}

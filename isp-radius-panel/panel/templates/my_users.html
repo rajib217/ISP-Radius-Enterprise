@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}My Users{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>My Users</h1><p class="sub">People directly under you. Balance you give them is taken from your own balance ({{ currency }} {{ '{:,.2f}'.format(me.balance|float) }}).</p></div>
+{% if can_fn('usr.add') and child_label %}<div class="head-actions"><button class="btn primary" data-open="usr-dlg" data-new>{{ icon('plus') }}Add {{ child_label|lower }}</button></div>{% endif %}</div>
+<section class="panel">
+  {% if rows %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>User</th><th>Type</th><th class="num">Balance</th><th class="num">Users below</th><th class="num">Subscribers</th><th>Status</th>{% if can_fn('usr.balance') or can_fn('usr.edit') or can_fn('usr.password') or can_fn('usr.pkg_assign') or can_fn('usr.delete') %}<th></th>{% endif %}</tr></thead>
+    <tbody>{% for r in rows %}
+      <tr><td class="who-cell"><b>{{ r.full_name or r.username }}</b><small class="mono">{{ r.username }}</small></td><td>{{ r.role_label }}</td>
+        <td class="num">{{ currency }} {{ '{:,.2f}'.format(r.balance|float) }}</td><td class="num">{{ r.kids }}{% if r.max_children is not none %} / {{ r.max_children }}{% endif %}</td><td class="num">{{ '{:,}'.format(r.subs) }}</td>
+        <td><span class="badge {{ 'ok' if r.is_active else 'bad' }}">{{ 'Active' if r.is_active else 'Disabled' }}</span></td>
+        {% if can_fn('usr.balance') or can_fn('usr.edit') or can_fn('usr.password') or can_fn('usr.pkg_assign') or can_fn('usr.delete') %}<td class="nowrap row-gap">
+          {% if can_fn('usr.balance') %}<button type="button" class="wallet-ic" data-open="bal-dlg" data-fill='{{ {"user_id": r.id, "user_label": r.username}|tojson }}' title="Add balance" aria-label="Add balance to {{ r.username }}">{{ icon('wallet') }}</button>{% endif %}
+          {% if can_fn('usr.edit') %}<button type="button" class="btn sm" data-open="usr-dlg" data-edit='{{ {"id": r.id, "username": r.username, "full_name": r.full_name, "phone": r.phone, "email": r.email, "identity": r.identity, "address": r.address, "max_children": r.max_children if r.max_children is not none else ""}|tojson }}'>Edit</button>
+            <form method="post" action="{{ url_for('my_user_toggle', aid=r.id) }}" style="display:inline" data-confirm="{{ 'Disable' if r.is_active else 'Enable' }} {{ r.username }}?">{{ csrf_input() }}<button class="btn sm">{{ 'Disable' if r.is_active else 'Enable' }}</button></form>{% endif %}
+          {% if can_fn('usr.password') %}<button type="button" class="btn sm" data-open="pw-dlg" data-fill='{{ {"action": url_for("my_user_password", aid=r.id), "pw_user": r.username}|tojson }}' data-pw="{{ url_for('my_user_password', aid=r.id) }}">Password</button>{% endif %}
+          {% if can_fn('usr.pkg_assign') or can_fn('usr.delete') %}<a class="btn sm" href="{{ url_for('my_user_packages', aid=r.id) }}">Packages</a>{% endif %}
+        </td>{% endif %}</tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="empty"><h3>Nobody is under you yet</h3><p>Sub-resellers and retailers created under your account appear here.</p></div>{% endif %}
+</section>
+{% if can_fn('usr.add') or can_fn('usr.edit') %}
+<dialog class="modal" id="usr-dlg" aria-labelledby="usr-title">
+  <form method="post" action="{{ url_for('my_user_save') }}" autocomplete="off">
+    {{ csrf_input() }}<input type="hidden" name="id">
+    <div class="modal-head"><h2 id="usr-title" data-title data-title-new="Add {{ (child_label or 'user')|lower }}" data-title-edit="Edit user">Add {{ (child_label or 'user')|lower }}</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body"><div class="grid-2">
+      <div class="field"><label class="lbl" for="u-name">Full Name <b class="req">*</b></label><input id="u-name" name="full_name" required maxlength="128"></div>
+      <div class="field"><label class="lbl" for="u-user">Username <b class="req">*</b></label><input id="u-user" name="username" data-lock-on-edit required spellcheck="false"></div>
+      <div class="field"><label class="lbl" for="u-pass">Password <b class="req" data-new-only>*</b></label><input id="u-pass" name="password" type="password" minlength="8" autocomplete="new-password"><div class="help">At least 8 characters. When editing, leave empty to keep the current one.</div></div>
+      <div class="field"><label class="lbl" for="u-id">Identity <b class="req">*</b></label><input id="u-id" name="identity" maxlength="64" required></div>
+      <div class="field"><label class="lbl" for="u-phone">Phone <b class="req">*</b></label><input id="u-phone" name="phone" type="tel" required></div>
+      <div class="field"><label class="lbl" for="u-mail">Email <b class="req">*</b></label><input id="u-mail" name="email" type="email" required></div>
+      {% if can_fn('usr.retlimit') and me.role == 'reseller' %}<div class="field"><label class="lbl" for="u-cap">Retailer limit</label><input id="u-cap" name="max_children" type="number" min="0" max="100000" placeholder="No limit"><div class="help">The most retailers this sub-reseller may create{% if me.max_children is not none %} (not more than {{ me.max_children }}){% endif %}.</div></div>{% endif %}
+      <div class="field"><label class="lbl" for="u-addr">Address</label><input id="u-addr" name="address" maxlength="255"></div>
+    </div></div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Close</button><button class="btn primary" type="submit">Save</button></div>
+  </form>
+</dialog>
+{% endif %}
+{% if can_fn('usr.password') %}
+<dialog class="modal" id="pw-dlg" aria-labelledby="pw-title">
+  <form method="post" action="" id="pw-form" autocomplete="off">
+    {{ csrf_input() }}<input type="hidden" name="action">
+    <div class="modal-head"><h2 id="pw-title">Change password</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack"><div class="field"><label class="lbl">User</label><input name="pw_user" class="plainval" readonly></div>
+      <div class="field"><label class="lbl" for="pw-new">New password <b class="req">*</b></label><input id="pw-new" name="password" type="password" minlength="8" required autocomplete="new-password"></div></div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Close</button><button class="btn primary" type="submit">Save</button></div>
+  </form>
+</dialog>
+<script>(function(){var d=document.getElementById("pw-dlg");if(!d)return;d.addEventListener("opened",function(){var f=document.getElementById("pw-form");f.action=f.elements.action.value;});})();</script>
+{% endif %}
+{% if can_fn('usr.balance') %}
+<dialog class="modal" id="bal-dlg" aria-labelledby="bal-title">
+  <form method="post" action="{{ url_for('user_transfer') }}">
+    {{ csrf_input() }}<input type="hidden" name="user_id" value="">
+    <div class="modal-head"><h2 id="bal-title">Add Balance</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <div class="field"><label class="lbl">User</label><input name="user_label" class="plainval" readonly value=""></div>
+      <div class="field"><label class="lbl" for="bal-method">Payment Method <b class="req">*</b></label><select id="bal-method" name="method" required><option value="">Select A Method</option>{% for v, l in methods %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
+      <div class="field"><label class="lbl" for="bal-amt">Amount <b class="req">*</b></label><input id="bal-amt" name="amount" type="number" step="0.01" placeholder="Enter Amount" required><div class="help">This amount is taken from your balance and added to theirs. Use a minus sign to take it back.</div></div>
+      <div class="field"><label class="lbl" for="bal-note">Note</label><textarea id="bal-note" name="note" rows="3" maxlength="255"></textarea></div>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Close</button><button class="btn primary" type="submit">Submit</button></div>
+  </form>
+</dialog>
+{% endif %}
+{% endblock %}

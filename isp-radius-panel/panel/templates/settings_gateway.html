@@ -1,0 +1,34 @@
+{% extends "settings_base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}{{ gw[1] }}{% endblock %}
+{% block ssub %}bKash payment gateway settings{% endblock %}
+{% block sbody %}
+<form method="post" class="panel set-card">
+  {{ csrf_input() }}
+  <div class="panel-head"><h2>{{ icon('phone') }} bKash Settings</h2></div>
+  <div class="set-form">
+    <div class="field"><label class="lbl" for="b-on">Status</label><span class="switch"><input id="b-on" type="checkbox" name="bkash_on" {{ 'checked' if s.bkash_on == '1' }}><i></i></span></div>
+    <div class="field"><span class="lbl">Mode <b class="req">*</b></span>
+      <label class="radio"><input type="radio" name="bkash_mode" value="live" {{ 'checked' if s.bkash_mode != 'sandbox' }}> Live</label>
+      <label class="radio"><input type="radio" name="bkash_mode" value="sandbox" {{ 'checked' if s.bkash_mode == 'sandbox' }}> Sandbox</label></div>
+    <div class="field"><label class="lbl" for="b-key">Key <b class="req">*</b></label><input id="b-key" name="bkash_key" value="{{ s.bkash_key }}" autocomplete="off" spellcheck="false"></div>
+    <div class="field"><label class="lbl" for="b-sec">Secret <b class="req">*</b></label><input id="b-sec" name="bkash_secret" type="password" value="{{ s.bkash_secret }}" autocomplete="new-password"></div>
+    <div class="field"><label class="lbl" for="b-usr">Username <b class="req">*</b></label><input id="b-usr" name="bkash_user" value="{{ s.bkash_user }}" autocomplete="off" spellcheck="false"></div>
+    <div class="field"><label class="lbl" for="b-pw">Password <b class="req">*</b></label><input id="b-pw" name="bkash_pass" type="password" value="{{ s.bkash_pass }}" autocomplete="new-password"></div>
+    <div class="field"><label class="lbl" for="b-fee">Transaction Fee</label><input id="b-fee" name="bkash_fee" type="number" min="0" step="any" value="{{ s.bkash_fee }}"></div>
+    <div class="field"><label class="lbl" for="b-ft">Fee Type</label><select id="b-ft" name="bkash_fee_type"><option value="percent" {{ 'selected' if s.bkash_fee_type != 'fixed' }}>Percentage (*)</option><option value="fixed" {{ 'selected' if s.bkash_fee_type == 'fixed' }}>Fixed amount</option></select></div>
+    <div class="field wide"><label class="lbl" for="b-cb">Callback address (optional)</label><input id="b-cb" name="bkash_callback_base" value="{{ s.bkash_callback_base }}" placeholder="https://panel.yourdomain.com" spellcheck="false"><div class="help">The public address bKash sends the reseller back to after paying. Leave empty to use the address the reseller opened the panel from. bKash may require an https:// address registered on your merchant account.</div></div>
+    <div class="field"><label class="lbl" for="b-mer">bKash Merchant Number / Short Code (optional)</label><input id="b-mer" name="bkash_merchant" value="{{ s.bkash_merchant }}" placeholder="Leave empty unless you know it" spellcheck="false"><div class="help">Optional. The merchant wallet number or short code bKash sends in its webhooks (creditShortCode). When set, webhook payments for any other merchant are refused. Leave it empty unless you have checked this value in a real bKash webhook log. Separate several with commas.</div></div>
+    <div class="field"><label class="lbl" for="b-top">Webhook Topic ARN(s) (optional)</label><textarea id="b-top" name="bkash_topics" rows="3" placeholder="arn:aws:sns:ap-southeast-1:...:..." spellcheck="false">{{ s.bkash_topics }}</textarea><div class="help">Optional. bKash's SNS topic ARN(s), copied from the TopicArn of a real bKash webhook log. When set, messages from any other topic are refused. Separate several with commas or new lines.</div></div>
+    <div class="field wide"><span class="lbl">Webhook Payment Reference</span>
+      <div class="help" style="margin:0 0 8px">What your customers type as the reference when they pay your bKash merchant. Webhook payments are matched to a subscriber by this value only.</div>
+      {% for key, label, help in refs %}
+      <label class="ref-opt"><input type="radio" name="bkash_ref" value="{{ key }}" {{ 'checked' if s.bkash_ref == key }}><span><b>{{ label }}</b><small>{{ help }}</small></span></label>
+      {% endfor %}
+      <div class="help" style="margin-top:8px">Any option other than Automatic needs the bKash Merchant Number above. A reference that matches no subscriber is not credited and is logged.</div>
+    </div>
+    <div class="note-box wide" style="border-style:solid">{{ icon('alert') }}<span>These settings are used for reseller <b>Add Balance</b> (bKash checkout). They are not yet used to receive customer payments by webhook; record those under Accounting &rsaquo; Receive payment. Use Sandbox mode with your bKash test credentials to try it first.</span></div>
+  </div>
+  <div class="set-foot"><button class="btn primary" type="submit">Submit</button></div>
+</form>
+{% endblock %}

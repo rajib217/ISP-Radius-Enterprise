@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, simple_pager %}
+{% block title %}Logs{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Logs</h1><p class="sub">Login attempts seen by RADIUS, and actions taken in this panel.</p></div></div>
+<section class="panel">
+  {% include "_logs_tabs.html" %}
+  <form class="filters" method="get">
+    <input type="hidden" name="tab" value="{{ tab }}">
+    <div class="search">{{ icon('search') }}<input type="search" name="q" value="{{ request.args.get('q', '') }}" placeholder="{{ 'Username starts with…' if tab == 'auth' else 'Admin, action or target starts with…' }}" aria-label="Search"></div>
+    {% if tab == 'auth' %}
+    <select name="result" aria-label="Result" onchange="this.form.submit()">
+      <option value="">All results</option>
+      <option value="accept" {{ 'selected' if request.args.get('result') == 'accept' }}>Accepted</option>
+      <option value="reject" {{ 'selected' if request.args.get('result') == 'reject' }}>Refused</option>
+    </select>
+    {% endif %}
+    <button class="btn" type="submit">Search</button>
+  </form>
+  {% if rows %}
+  <div class="tbl-wrap"><table class="tbl">
+    {% if tab == 'auth' %}
+    <thead><tr><th>Time</th><th>Username</th><th>Result</th></tr></thead>
+    <tbody>{% for r in rows %}<tr><td class="nowrap">{{ r.authdate|dt('%d %b %Y, %H:%M:%S') }}</td><td class="mono">{{ r.username or '(empty)' }}</td><td><span class="badge {{ 'ok' if r.reply == 'Access-Accept' else 'bad' }}">{{ 'Accepted' if r.reply == 'Access-Accept' else 'Refused' }}</span>{% if r.reply != 'Access-Accept' and r.username %} <a class="btn sm" href="{{ url_for('diagnose_page', user=r.username) }}">Why?</a>{% endif %}</td></tr>{% endfor %}</tbody>
+    {% else %}
+    <thead><tr><th>Time</th><th>Who</th><th>Action</th><th>Target</th><th class="hide-sm">Details</th><th class="hide-sm">From</th></tr></thead>
+    <tbody>{% for r in rows %}<tr><td class="nowrap">{{ r.created_at|dt('%d %b %Y, %H:%M:%S') }}</td><td>{{ r.admin or '—' }}</td><td>{{ r.action|replace('_', ' ') }}</td><td class="mono">{{ r.target or '—' }}</td><td class="hide-sm muted">{{ r.detail or '' }}</td><td class="hide-sm mono muted">{{ r.ip }}</td></tr>{% endfor %}</tbody>
+    {% endif %}
+  </table></div>
+  {{ simple_pager(page, has_next, keep, 'logs') }}
+  {% else %}
+  <div class="empty"><h3>Nothing logged</h3><p>{{ 'Login attempts appear here as customers connect.' if tab == 'auth' else 'Changes made in this panel are recorded here.' }}</p></div>
+  {% endif %}
+</section>
+{% endblock %}

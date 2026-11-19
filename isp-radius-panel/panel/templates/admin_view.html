@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}{{ u.username }}{% endblock %}
+{% block content %}
+{% set seller = u.role in ('reseller', 'subreseller', 'retailer') %}
+<div class="page-head"><div><h1>Users</h1><p class="sub"><a href="{{ url_for('dashboard') }}">Home</a> &middot; <a href="{{ url_for('admins') }}">All Users</a> &middot; {{ u.username }}</p></div></div>
+
+<div class="sv-actions">
+  <button class="pbtn" data-open="admin-dlg" data-edit='{{ {"id": u.id, "username": u.username, "full_name": u.full_name, "role": u.role, "phone": u.phone, "email": u.email, "is_active": 1 if u.is_active else 0, "sms_on": 1 if u.sms_on else 0, "email_on": 1 if u.email_on else 0, "identity": u.identity, "country": u.country, "province": u.province, "city": u.city, "address": u.address, "department_id": u.department_id or "", "zone_id": u.zone_id or "", "parent_id": u.parent_id or "", "max_children": u.max_children if u.max_children is not none else "", "plans": allowed}|tojson }}'>{{ icon('edit') }}Edit Profile</button>
+  <button class="pbtn" data-open="ps-dlg">{{ icon('sliders') }}Profile Settings</button>
+  {% if u.role != 'admin' %}<a class="pbtn" href="{{ url_for('admin_packages', aid=u.id) }}">{{ icon('package') }}Assign Packages</a>{% endif %}
+  <button class="pbtn" data-open="bal-dlg">{{ icon('wallet') }}Add Balance</button>
+  <button class="pbtn" data-open="ph-dlg">{{ icon('camera') }}Photo</button>
+  <button class="pbtn" data-open="iv-dlg">{{ icon('file') }}Invoice Settings</button>
+  {% if can('notes') %}<a class="pbtn" href="{{ url_for('notes') }}">{{ icon('note') }}Add Note</a>{% endif %}
+  <button class="pbtn" data-open="pw-dlg">{{ icon('user') }}Password</button>
+  {% if u.id != me.id %}<form method="post" action="{{ url_for('admin_delete', aid=u.id) }}" data-confirm="Delete {{ u.username }}?">{{ csrf_input() }}<input type="hidden" name="next" value="{{ url_for('admins') }}"><button class="pbtn red" type="submit">{{ icon('trash') }}Delete Profile</button></form>
+  {% if u.role != 'admin' and u.is_active %}<form method="post" action="{{ url_for('admin_switch', aid=u.id) }}" data-confirm="Sign in as {{ u.username }}? You can switch back from the yellow bar.">{{ csrf_input() }}<button class="pbtn" type="submit">{{ icon('swap') }}Switch Profile</button></form>{% endif %}{% endif %}
+</div>
+
+<section class="panel sv-head">
+  <div class="sv-top">
+    <div class="avatar-wrap">{% if u.photo %}<img class="pavatar img" src="{{ url_for('admin_photo', aid=u.id, v=u.photo) }}" alt="">{% else %}<span class="pavatar ph">{{ icon('user') }}</span>{% endif %}</div>
+    <div class="sv-id">
+      <h2>{{ u.full_name or u.username }} <span class="pill pt-{{ u.ptype|lower }}">{{ u.ptype }}</span></h2>
+      <div class="chips"><span class="chip blue">{{ icon('user') }}{{ u.role_label }}</span>{% if u.parent_name %}<span class="chip violet">{{ icon('user') }}{{ u.parent_name }}</span>{% endif %}<span class="chip {{ 'green' if u.is_active else 'gray' }}">{{ 'Active' if u.is_active else 'Disabled' }}</span></div>
+    </div>
+    <details class="dd sv-more"><summary class="pbtn">Actions &#9662;</summary>
+      <div class="dd-menu"><span class="menu-title muted" style="display:block;padding:6px 12px;font-size:12px">MENUS</span>
+        <button type="button" data-open="role-dlg">Change Profile Type</button>
+        <button type="button" data-open="role-dlg">Change Role</button>
+        {% if u.role != 'admin' %}<a href="{{ url_for('role_permissions', role=u.role) }}">Set permission</a>{% endif %}
+      </div></details>
+  </div>
+  <div class="kpis ksv">
+    <div class="kpi"><div><small>Packages</small><b>{{ shown|length }}</b></div><i class="ki violet">{{ icon('package') }}</i></div>
+    <div class="kpi"><div><small>Subscribers</small><b>{{ subs_n }}</b></div><i class="ki green">{{ icon('users') }}</i></div>
+    <div class="kpi"><div><small>Subresellers</small><b>{{ kids.get('subreseller', 0) }}</b></div><i class="ki red">{{ icon('users') }}</i></div>
+    <div class="kpi"><div><small>Retailers</small><b>{{ kids.get('retailer', 0) }}</b></div><i class="ki amber">{{ icon('briefcase') }}</i></div>
+    <div class="kpi"><div><small>Balance</small><b style="color:var(--fiber)">{{ '{:,.2f}'.format(u.balance|float) }}</b></div><i class="ki violet">{{ icon('wallet') }}</i></div>
+  </div>
+  <nav class="sv-tabs" aria-label="Sections">
+    {% for key, label, ic in [('profile','Profile','user'),('reports','Reports','chart'),('packages','Packages','package'),('ledgers','Ledgers','file'),('subscribers','Subscribers','users')] %}<a href="#{{ key }}" data-tab="{{ key }}">{{ icon(ic) }}{{ label }}</a>{% endfor %}
+  </nav>
+</section>
+
+<div class="sv-pane" id="tab-profile">
+<div class="cards3">
+  <section class="panel kvc"><div class="panel-head"><h2>{{ icon('briefcase') }}Organization</h2></div>
+    <div class="kvc-body"><dl><dt>ISP</dt><dd>{{ isp or '—' }}</dd><dt>Department</dt><dd>{{ u.dept or '—' }}</dd><dt>Zone</dt><dd>{{ u.zone or '—' }}</dd><dt>Belongs To</dt><dd>{{ u.parent_name or '—' }}</dd></dl></div></section>
+  <section class="panel kvc"><div class="panel-head"><h2>{{ icon('phone') }}Contact Information</h2></div>
+    <div class="kvc-body"><dl><dt>Phone</dt><dd>{{ u.phone or '—' }}</dd><dt>Email</dt><dd>{{ u.email or '—' }}</dd><dt>Identity</dt><dd>{{ u.identity or '—' }}</dd><dt>SMS Status</dt><dd class="{{ 'g' if u.sms_on else 'r' }}">{{ 'Active' if u.sms_on else 'Off' }}</dd><dt>Email Status</dt><dd class="{{ 'g' if u.email_on else 'r' }}">{{ 'Active' if u.email_on else 'Off' }}</dd></dl></div></section>
+  <section class="panel kvc"><div class="panel-head"><h2>{{ icon('pin') }}Location</h2></div>
+    <div class="kvc-body"><dl><dt>Address</dt><dd>{{ u.address or '—' }}</dd><dt>City</dt><dd>{{ u.city or '—' }}</dd><dt>Province</dt><dd>{{ u.province or '—' }}</dd><dt>Country</dt><dd>{{ u.country or '—' }}</dd></dl></div></section>
+  <section class="panel kvc"><div class="panel-head"><h2>{{ icon('user') }}Profile Details</h2></div>
+    <div class="kvc-body"><dl><dt>Full Name</dt><dd>{{ u.full_name or '—' }}</dd><dt>Username</dt><dd>{{ u.username }}</dd>
+      <dt>Profile Type</dt><dd class="g">{{ u.ptype }}</dd>
+      <dt>Role</dt><dd>{{ u.role_label }}</dd><dt>Profile Status</dt><dd class="{{ 'g' if u.is_active else 'r' }}">{{ 'Active' if u.is_active else 'Disabled' }}</dd></dl></div></section>
+  <section class="panel kvc"><div class="panel-head"><h2>{{ icon('activity') }}Activity</h2></div>
+    <div class="kvc-body"><dl><dt>Created By</dt><dd>{{ u.created_by or '—' }}</dd><dt>Join Date</dt><dd>{{ u.created_at|dt }}</dd><dt>Last Login</dt><dd>{{ u.last_login|dt if u.last_login else 'Never' }}</dd></dl></div></section>
+  <section class="panel kvc"><div class="panel-head"><h2>{{ icon('package') }}Package Access</h2></div>
+    <div class="kvc-body"><dl><dt>Can sell</dt><dd>{% if u.role == 'admin' or not restricted %}All {{ all_count }} packages{% else %}{{ shown|length }} of {{ all_count }} packages{% endif %}</dd></dl></div></section>
+</div>
+</div>
+
+<div class="sv-pane" id="tab-reports" hidden>
+  <section class="panel"><div class="panel-head"><h2>Collections</h2></div>
+    <div class="panel-body"><div class="kpis"><div class="kpi"><div><small>Today</small><b>{{ rep.today_total|money }}</b></div></div><div class="kpi"><div><small>This month</small><b>{{ rep.month_total|money }}</b></div></div><div class="kpi"><div><small>All time</small><b>{{ rep.all_total|money }}</b></div></div><div class="kpi"><div><small>Payments</small><b>{{ rep.payments }}</b></div></div></div></div></section>
+</div>
+
+<div class="sv-pane" id="tab-packages" hidden>
+  <section class="panel"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Package</th><th>Bandwidth</th><th>Duration</th><th class="num">Price</th></tr></thead><tbody>
+    {% for p in shown %}<tr><td><b>{{ p.label or p.name }}</b></td><td>{{ p.rate }}</td><td>{{ p.duration or p.validity_days }} {{ p.duration_type or 'day' }}{{ '' if (p.duration or p.validity_days) == 1 else 's' }}</td><td class="num">{{ currency }} {{ p.price|money }}</td></tr>
+    {% else %}<tr><td colspan="4" class="muted">No packages yet.</td></tr>{% endfor %}</tbody></table></div></section>
+</div>
+
+<div class="sv-pane" id="tab-ledgers" hidden>
+  <section class="panel"><div class="panel-head"><h2>Balance ledger</h2></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Method</th><th class="num">Amount</th><th class="num">Balance after</th><th>Note</th><th>By</th></tr></thead><tbody>
+    {% for w in wallet %}<tr><td>{{ w.created_at|dt }}</td><td>{{ w.method|capitalize if w.method else '—' }}</td><td class="num {{ 'g' if w.amount > 0 else 'r' }}">{{ '{:+,.2f}'.format(w.amount|float) }}</td><td class="num">{{ '{:,.2f}'.format(w.balance_after|float) }}</td><td>{{ w.note or '' }}</td><td>{{ w.created_by }}</td></tr>
+    {% else %}<tr><td colspan="6" class="muted">No balance changes yet.</td></tr>{% endfor %}</tbody></table></div></section>
+  <section class="panel"><div class="panel-head"><h2>Payments received</h2></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Subscriber</th><th>Method</th><th class="num">Days</th><th class="num">Amount</th><th>Note</th></tr></thead><tbody>
+    {% for l in ledger %}<tr><td>{{ l.paid_at|dt }}</td><td>{{ l.username }}</td><td>{{ l.method }}</td><td class="num">{{ l.days_added }}</td><td class="num">{{ currency }} {{ l.amount|money }}</td><td>{{ l.note or '' }}</td></tr>
+    {% else %}<tr><td colspan="6" class="muted">No payments received yet.</td></tr>{% endfor %}</tbody></table></div>
+    <div class="panel-body muted">Latest 50 payments received by {{ u.username }}.</div></section>
+</div>
+
+<div class="sv-pane" id="tab-subscribers" hidden>
+  <section class="panel"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Username</th><th>Name</th><th>Phone</th><th>Package</th><th>Expiry</th><th>Status</th></tr></thead><tbody>
+    {% for s in subs %}<tr><td><a href="{{ url_for('subscriber_view', sid=s.id) }}">{{ s.username }}</a></td><td>{{ s.full_name or '—' }}</td><td>{{ s.phone or '—' }}</td><td>{{ s.plan_label or '—' }}</td><td>{{ s.expiry_date|d if s.expiry_date else '—' }}</td><td><span class="badge {{ 'ok' if s.status == 'active' else 'bad' }}">{{ s.status|capitalize }}</span></td></tr>
+    {% else %}<tr><td colspan="6" class="muted">No subscribers yet.</td></tr>{% endfor %}</tbody></table></div>
+    <div class="panel-body"><a class="btn sm" href="{{ url_for('subscribers', seller=u.username) }}">Open the full list</a>{% if subs_n > 100 %} <span class="muted">Showing the latest 100 of {{ subs_n }}.</span>{% endif %}</div></section>
+</div>
+
+{% include "_admin_dialog.html" %}
+
+<dialog class="modal" id="role-dlg" aria-labelledby="role-title">
+  <form method="post" action="{{ url_for('admin_role') }}">
+    {{ csrf_input() }}<input type="hidden" name="next" value="{{ url_for('admin_view', aid=u.id) }}"><input type="hidden" name="user_id" value="{{ u.id }}">
+    <div class="modal-head"><h2 id="role-title">Change role for {{ u.username }}</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body"><div class="field"><label class="lbl" for="cr-role">New role</label><select id="cr-role" name="role">{% for k, label in role_opts %}<option value="{{ k }}" {{ 'selected' if k == u.role }}>{{ label }}</option>{% endfor %}</select></div></div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Change role</button></div>
+  </form>
+</dialog>
+{% set bal_user = u %}{% include "_balance_dialog.html" %}
+<dialog class="modal" id="ps-dlg" aria-labelledby="ps-title">
+  <form method="post" action="{{ url_for('admin_profile_settings', aid=u.id) }}">
+    {{ csrf_input() }}
+    <div class="modal-head"><h2 id="ps-title">Profile Settings</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <div class="field"><label class="lbl" for="ps-st">Profile status</label><select id="ps-st" name="status"><option value="active" {{ 'selected' if u.is_active }}>Active</option><option value="disabled" {{ 'selected' if not u.is_active }}>Disabled</option></select><div class="help">A disabled user cannot sign in.</div></div>
+      <label class="mod-row"><span>SMS notifications<br><small class="muted">Allow SMS to this user</small></span><span class="switch"><input type="checkbox" name="sms_on" {{ 'checked' if u.sms_on }}><i></i></span></label>
+      <label class="mod-row"><span>Email notifications<br><small class="muted">Allow email to this user</small></span><span class="switch"><input type="checkbox" name="email_on" {{ 'checked' if u.email_on }}><i></i></span></label>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save</button></div>
+  </form>
+</dialog>
+<dialog class="modal" id="ph-dlg" aria-labelledby="ph-title">
+  <form method="post" action="{{ url_for('admin_photo_save', aid=u.id) }}" enctype="multipart/form-data">
+    {{ csrf_input() }}
+    <div class="modal-head"><h2 id="ph-title">Photo</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body"><div class="field"><label class="lbl" for="ph-file">PNG or JPG, up to 2 MB</label><input id="ph-file" type="file" name="file" accept="image/png,image/jpeg"></div></div>
+    <div class="modal-foot">{% if u.photo %}<button class="btn danger" type="submit" name="remove" value="1" formnovalidate>Remove photo</button>{% endif %}<span style="flex:1"></span><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save</button></div>
+  </form>
+</dialog>
+<dialog class="modal" id="iv-dlg" aria-labelledby="iv-title">
+  <form method="post" action="{{ url_for('admin_invoice_settings', aid=u.id) }}">
+    {{ csrf_input() }}
+    <div class="modal-head"><h2 id="iv-title">Invoice Settings</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <div class="field"><label class="lbl" for="iv-n">Business name</label><input id="iv-n" name="inv_name" maxlength="100" value="{{ u.inv_name }}" placeholder="{{ isp_name }}"></div>
+      <div class="field"><label class="lbl" for="iv-a">Address</label><input id="iv-a" name="inv_address" maxlength="255" value="{{ u.inv_address }}"></div>
+      <div class="field"><label class="lbl" for="iv-p">Phone</label><input id="iv-p" name="inv_phone" maxlength="40" value="{{ u.inv_phone }}"></div>
+      <div class="field"><label class="lbl" for="iv-f">Footer note</label><input id="iv-f" name="inv_footer" maxlength="255" value="{{ u.inv_footer }}" placeholder="Thank you for your payment."></div>
+      <div class="help">Shown at the top and bottom of payment receipts for this user's subscribers. Empty fields use the main ISP name.</div>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save</button></div>
+  </form>
+</dialog>
+<dialog class="modal" id="pw-dlg" aria-labelledby="pw-title">
+  <form method="post" action="{{ url_for('admin_password', aid=u.id) }}" autocomplete="off">
+    {{ csrf_input() }}
+    <div class="modal-head"><h2 id="pw-title">New password for {{ u.username }}</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body"><div class="field"><label class="lbl" for="pw-new">New password</label><input id="pw-new" name="password" type="password" minlength="8" required autocomplete="new-password"><div class="help">At least 8 characters.</div></div></div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Change password</button></div>
+  </form>
+</dialog>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var tabs = document.querySelectorAll("[data-tab]"), panes = document.querySelectorAll(".sv-pane");
+  function show(key) {
+    if (!document.getElementById("tab-" + key)) key = "profile";
+    panes.forEach(function (p) { p.hidden = p.id !== "tab-" + key; });
+    tabs.forEach(function (t) { t.classList.toggle("on", t.dataset.tab === key); });
+  }
+  tabs.forEach(function (t) { t.addEventListener("click", function (e) { e.preventDefault(); history.replaceState(null, "", "#" + t.dataset.tab); show(t.dataset.tab); }); });
+  show((location.hash || "#profile").slice(1));
+  {% if open_balance %}document.addEventListener("DOMContentLoaded",function(){var b=document.querySelector('[data-open="bal-dlg"]');if(b)b.click();});{% endif %}
+})();
+</script>
+{% endblock %}

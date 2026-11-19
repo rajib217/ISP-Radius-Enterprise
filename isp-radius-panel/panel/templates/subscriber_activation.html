@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Activation{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Activation</h1><p class="sub"><a href="{{ url_for('dashboard') }}">Home</a> &middot; <a href="{{ url_for('subscribers') }}">Subscribers</a> &middot; Activation</p></div>
+</div>
+
+{% include '_activation_form.html' %}
+{% endblock %}
+{% block scripts %}<script src="{{ asset('js/activation.js') }}"></script>{% endblock %}

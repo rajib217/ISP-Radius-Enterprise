@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, pager %}
+{% block title %}Dues{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Dues</h1><p class="sub">{{ '{:,}'.format(tot.c) }} customer{{ '' if tot.c == 1 else 's' }} with an expired package · {{ currency }} {{ tot.amount|money }} to collect</p></div>
+  {% if tot.c and (can('sms', 'edit')) %}<div class="actions"><a class="btn" href="{{ url_for('sms_compose', status='expired', plan=request.args.get('plan', ''), area=request.args.get('area', '')) }}">{{ icon('send') }}SMS these customers</a></div>{% endif %}
+</div>
+<section class="panel">
+  <form class="filters panel-body" method="get" style="padding-bottom:0">
+    <div class="search">{{ icon('search') }}<input type="search" name="q" value="{{ request.args.get('q', '') }}" placeholder="Username, name or phone" aria-label="Search"></div>
+    <select name="plan" aria-label="Plan"><option value="">All plans</option>{% for p in plans %}<option value="{{ p.id }}" {{ 'selected' if request.args.get('plan') == p.id|string }}>{{ p.label }}</option>{% endfor %}</select>
+    <select name="area" aria-label="Area"><option value="">All areas</option>{% for a in areas %}<option {{ 'selected' if request.args.get('area') == a }}>{{ a }}</option>{% endfor %}</select>
+    <button class="btn" type="submit">Filter</button>
+  </form>
+  {% if rows %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Customer</th><th class="hide-sm">Area</th><th>Package</th><th>Expired</th><th class="num">Due</th><th></th></tr></thead>
+    <tbody>{% for r in rows %}<tr>
+      <td class="who-cell"><a href="{{ url_for('subscriber_view', sid=r.id) }}"><b class="mono">{{ r.username }}</b></a><small>{{ r.full_name or '—' }}{% if r.phone %} · {{ r.phone }}{% endif %}</small></td>
+      <td class="hide-sm">{{ r.area or '—' }}</td><td>{{ r.plan_label or '—' }}</td>
+      <td class="nowrap">{{ r.expiry_date|d }}<small class="muted" style="display:block">{{ r.days_over }} day{{ '' if r.days_over == 1 else 's' }} ago</small></td>
+      <td class="num"><b>{{ r.price|money }}</b></td>
+      <td class="act">{% if can('accounting', 'edit') %}<a class="btn sm primary" href="{{ url_for('subscriber_view', sid=r.id, renew=1) }}">{{ icon('card') }}Receive</a>{% endif %}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {{ pager(pg, keep, 'dues') }}
+  {% else %}<div class="empty"><h3>No dues</h3><p>Nobody has an expired package right now.</p></div>{% endif %}
+</section>
+{% endblock %}

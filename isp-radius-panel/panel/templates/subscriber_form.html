@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, field %}
+{% block title %}{{ 'New subscriber' if mode == 'new' else 'Edit ' ~ sub.username }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ 'New subscriber' if mode == 'new' else 'Edit subscriber' }}</h1>
+    <p class="sub">{% if mode == 'edit' %}<span class="mono">{{ sub.username }}</span> · changes apply the next time the customer connects{% else %}The login you enter here is what the customer types into their router.{% endif %}</p>
+  </div>
+</div>
+
+<form method="post" class="stack" style="max-width: 860px" autocomplete="off">
+  {{ csrf_input() }}
+  <section class="panel">
+    <div class="panel-head"><h2>PPPoE login</h2></div>
+    <div class="panel-body grid-2">
+      {% if mode == 'new' %}
+        {{ field('Username', 'username', form.username, errors.username, attrs='required autofocus autocapitalize="off" spellcheck="false"', help='Letters, numbers and . _ @ -') }}
+      {% else %}
+        {{ field('Username', 'username', sub.username, None, attrs='readonly', help='The username cannot be changed. Create a new subscriber instead.') }}
+      {% endif %}
+      <div class="field {{ 'bad' if errors.password }}">
+        <label class="lbl" for="password">Password</label>
+        <div class="input-row">
+          <input id="password" name="password" type="{{ 'text' if mode == 'new' else 'password' }}"{% if mode == 'edit' and not can_fn('svc.conn_pw') %} disabled{% endif %} value="{{ form.password or '' }}" {{ 'required' if mode == 'new' }} autocomplete="new-password" spellcheck="false">
+          <button class="btn" type="button" data-gen="password">Generate</button>
+        </div>
+        {% if errors.password %}<div class="err">{{ errors.password }}</div>
+        {% else %}<div class="help">{{ '4–64 characters, no spaces.' if mode == 'new' else 'Leave empty to keep the current password.' }}</div>{% endif %}
+      </div>
+      <div class="field {{ 'bad' if errors.plan_id }}">
+        <label class="lbl" for="f-plan">Plan</label>
+        <select id="f-plan" name="plan_id"{% if mode == 'edit' and not can_fn('svc.packages') %} disabled{% endif %}>
+          <option value="">No plan (no speed limit)</option>
+          {% for p in plans %}<option value="{{ p.id }}" {{ 'selected' if form.plan_id|string == p.id|string }}>{{ p.label }}{% if bw(p) %} · {{ bw(p) }}{% endif %}{% if p.price %} · {{ currency }} {{ p.price|money }}{% endif %}</option>{% endfor %}
+        </select>
+        {% if errors.plan_id %}<div class="err">{{ errors.plan_id }}</div>{% endif %}
+      </div>
+      <div class="field">
+        <label class="lbl" for="f-status">Account status</label>
+        <select id="f-status" name="status"{% if not can_fn('svc.profile_status') %} disabled{% endif %}>
+          <option value="active" {{ 'selected' if form.status != 'suspended' }}>Active</option>
+          <option value="suspended" {{ 'selected' if form.status == 'suspended' }}>Suspended (cannot connect)</option>
+        </select>
+      </div>
+      <div class="field {{ 'bad' if errors.expiry_date }}">
+        <label class="lbl" for="expiry_date">Expiry date</label>
+        <input id="expiry_date" name="expiry_date" type="date" value="{{ form.expiry_date or '' }}"{% if not can_fn('sub.expiry') %} disabled{% endif %}>
+        {% if not can_fn('sub.expiry') %}<div class="help">{{ 'The expiry date changes only when the customer is activated.' if mode == 'edit' else 'A new customer starts expired. Use Activation to start the service.' }}</div>{% endif %}
+        {% if errors.expiry_date %}<div class="err">{{ errors.expiry_date }}</div>{% endif %}
+        {% if can_fn('sub.expiry') %}<div class="chips" style="margin-top:8px">
+          <button type="button" class="chip" data-add-days="30" data-target="expiry_date">+30 days</button>
+          <button type="button" class="chip" data-add-days="90" data-target="expiry_date">+90 days</button>
+          <button type="button" class="chip" data-add-days="365" data-target="expiry_date">+1 year</button>
+          <button type="button" class="chip" data-add-days="none" data-target="expiry_date">No expiry</button>
+        </div>{% endif %}
+      </div>
+      {{ field('Fixed IP address', 'static_ip', form.static_ip, errors.static_ip, attrs='inputmode="decimal" placeholder="Optional, e.g. 10.20.0.15" spellcheck="false"' ~ ('' if can_fn('svc.ip') else ' disabled'), help='Leave empty to take an address from the plan\'s pool.') }}
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Customer details</h2></div>
+    <div class="panel-body grid-2">
+      {{ field('Full name', 'full_name', form.full_name, errors.full_name) }}
+      {{ field('Phone', 'phone', form.phone, errors.phone, type='tel') }}
+      {{ field('Identity (NID)', 'identity', form.identity, errors.identity) }}
+      {{ field('Email', 'email', form.email, errors.email, type='email') }}
+      {{ field('Area', 'area', form.area, errors.area, help='Pick from your areas or type a new one.', attrs='list="area-list" maxlength="64"') }}
+      <datalist id="area-list">{% for a in areas %}<option value="{{ a }}">{% endfor %}</datalist>
+      <div class="field span-2 {{ 'bad' if errors.address }}">
+        <label class="lbl" for="f-address">Address</label>
+        <input id="f-address" name="address" value="{{ form.address or '' }}">
+        {% if errors.address %}<div class="err">{{ errors.address }}</div>{% endif %}
+      </div>
+      <div class="field span-2">
+        <label class="lbl" for="f-notes">Notes</label>
+        <textarea id="f-notes" name="notes" rows="3">{{ form.notes or '' }}</textarea>
+      </div>
+    </div>
+  </section>
+
+  <div class="row">
+    <button class="btn primary" type="submit">{{ 'Create subscriber' if mode == 'new' else 'Save changes' }}</button>
+    <a class="btn" href="{{ url_for('subscribers') if mode == 'new' else url_for('subscriber_view', sid=sub.id) }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

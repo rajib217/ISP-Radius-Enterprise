@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Server tools{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Server tools</h1><p class="sub">Check that everything is running and test a customer login.</p></div>
+  {% if me.role == 'admin' %}<div class="actions"><form method="post" action="{{ url_for('tools_reload') }}" data-confirm="Restart the RADIUS server now? It takes about a second. Connected customers stay online.">{{ csrf_input() }}<button class="btn" type="submit">{{ icon('refresh') }}Restart RADIUS</button></form></div>{% endif %}
+</div>
+
+<div class="cols">
+  <section class="panel c-5">
+    <div class="panel-head"><h2>Services</h2></div>
+    <ul class="list">
+      {% for label, svc, state in services %}
+      <li><span class="grow"><b>{{ label }}</b><small class="mono">{{ svc }}</small></span><span class="badge {{ 'ok' if state == 'active' else 'bad' }}">{{ 'Running' if state == 'active' else state|capitalize }}</span></li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section class="panel c-7">
+    <div class="panel-head"><h2>Test a customer login</h2></div>
+    <form class="panel-body stack" method="post" autocomplete="off">
+      {{ csrf_input() }}
+      <p class="muted">Sends a real login request to this server, exactly like a router would. It shows whether the password, plan and expiry allow the customer in.</p>
+      <div class="grid-2">
+        <div class="field"><label class="lbl" for="t-user">Username</label><input id="t-user" name="username" value="{{ result.user if result else '' }}" required spellcheck="false"></div>
+        <div class="field"><label class="lbl" for="t-pass">Password</label><input id="t-pass" name="password" type="password" required autocomplete="new-password"></div>
+      </div>
+      <div><button class="btn primary" type="submit">Run test</button></div>
+      {% if result %}
+        <div class="note {{ '' if result.ok else 'warn' }}" role="status"><b>{{ 'Login accepted' if result.ok else 'Login refused or no answer' }}</b> for <span class="mono">{{ result.user }}</span></div>
+        <pre class="log" style="border-radius:var(--r-sm)">{{ result.output }}</pre>
+      {% endif %}
+    </form>
+  </section>
+
+  <section class="panel c-12">
+    <div class="panel-head"><h2>RADIUS server log</h2><span class="aside">Last 80 lines</span></div>
+    <pre class="log">{{ log }}</pre>
+  </section>
+</div>
+{% endblock %}

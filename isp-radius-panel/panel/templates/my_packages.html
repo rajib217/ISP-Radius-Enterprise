@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}My Packages{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>My Packages</h1><p class="sub">{{ 'The plans you are allowed to sell' if restricted else 'All plans you can sell' }}, with your own sales this month.</p></div></div>
+<section class="panel">
+  {% if rows %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Package</th><th class="num">Speed</th><th class="num">Price</th><th class="num">Valid for</th><th class="num">All customers</th><th class="num">Added by me</th><th class="num">My payments (month)</th><th class="num">My collection (month)</th></tr></thead>
+    <tbody>{% for p in rows %}
+      <tr>
+        <td class="who-cell"><b>{{ p.label }}</b><small class="mono">{{ p.name }}</small></td>
+        <td class="num">{{ p.rate }}</td>
+        <td class="num">{{ currency }} {{ p.price|money }}</td>
+        <td class="num">{{ p.duration or p.validity_days }} {{ p.duration_type or "day" }}{{ "" if (p.duration or p.validity_days) == 1 else "s" }}</td>
+        <td class="num">{{ '{:,}'.format(p.total) }}</td>
+        <td class="num">{{ '{:,}'.format(p.mine) }}</td>
+        <td class="num">{{ p.month.payments }}</td>
+        <td class="num"><b>{{ p.month.amount|money }}</b></td>
+      </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="empty"><h3>No packages available</h3><p>Ask an administrator to create plans or to allow some for you.</p></div>{% endif %}
+</section>
+{% endblock %}

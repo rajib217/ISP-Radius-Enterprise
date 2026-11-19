@@ -1,0 +1,46 @@
+{% extends "settings_base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Alerts{% endblock %}
+{% block ssub %}Telegram messages on your phone when something goes wrong.{% endblock %}
+{% block sbody %}
+<form method="post" class="stack" style="max-width:820px" autocomplete="off">
+  {{ csrf_input() }}
+  <section class="panel">
+    <div class="panel-head"><h2>Connect Telegram</h2></div>
+    <div class="panel-body stack">
+      <ol class="muted" style="margin:0;padding-left:20px;display:grid;gap:4px">
+        <li>On your phone open Telegram, search <b>@BotFather</b>, send <code>/newbot</code>, choose a name. It gives you a <b>token</b>.</li>
+        <li>Paste the token below and press <b>Save</b>.</li>
+        <li>Open your new bot in Telegram, press <b>Start</b> and send it any word.</li>
+        <li>Press <b>Find my chat ID</b>, then <b>Send test message</b>. For a group: add the bot to the group, send a message there, then press Find.</li>
+      </ol>
+      <div class="grid-2">
+        <div class="field"><label class="lbl" for="t-token">Bot token</label><input id="t-token" name="tg_token" type="password" spellcheck="false" placeholder="{{ 'Saved. Leave empty to keep it.' if has_token else '123456789:AAH...' }}" autocomplete="new-password"></div>
+        <div class="field"><label class="lbl" for="t-chat">Chat ID</label><input id="t-chat" name="tg_chat" value="{{ s.tg_chat }}" spellcheck="false" placeholder="Filled in by Find my chat ID"></div>
+      </div>
+      <label class="check"><input type="checkbox" name="tg_on" value="1" {{ 'checked' if s.tg_on == '1' }}> Send alerts to Telegram</label>
+      <div class="row-gap"><button class="btn" type="submit" name="action" value="find">Find my chat ID</button><button class="btn" type="submit" name="action" value="test">Send test message</button></div>
+      <div class="help">The server needs internet access to api.telegram.org. The token is stored in the panel database; anyone with the token can send messages as your bot, so keep it private.</div>
+    </div>
+  </section>
+  <section class="panel">
+    <div class="panel-head"><h2>What to tell me about</h2></div>
+    <div class="panel-body stack">
+      <label class="check"><input type="checkbox" name="al_nas" value="1" {{ 'checked' if s.al_nas == '1' }}> A router (NAS) stops answering ping, and when it is back <span class="muted">(after 2 failed checks, about 10 minutes)</span></label>
+      <div class="grid-2"><label class="check"><input type="checkbox" name="al_drop" value="1" {{ 'checked' if s.al_drop == '1' }}> Online customers suddenly drop</label>
+        <div class="field"><label class="lbl" for="a-dp">Drop of at least (% in 10 minutes)</label><input id="a-dp" name="al_drop_pct" type="number" min="5" max="90" value="{{ s.al_drop_pct }}"><div class="help">Only when at least 20 customers were online.</div></div></div>
+      <label class="check"><input type="checkbox" name="al_radius" value="1" {{ 'checked' if s.al_radius == '1' }}> FreeRADIUS stops running</label>
+      <label class="check"><input type="checkbox" name="al_server" value="1" {{ 'checked' if s.al_server == '1' }}> This server is overloaded</label>
+      <div class="grid-3">
+        <div class="field"><label class="lbl" for="a-cpu">CPU above (%)</label><input id="a-cpu" name="al_cpu" type="number" min="50" max="100" value="{{ s.al_cpu }}"></div>
+        <div class="field"><label class="lbl" for="a-ram">RAM above (%)</label><input id="a-ram" name="al_ram" type="number" min="50" max="100" value="{{ s.al_ram }}"></div>
+        <div class="field"><label class="lbl" for="a-disk">Disk above (%)</label><input id="a-disk" name="al_disk" type="number" min="50" max="99" value="{{ s.al_disk }}"></div>
+      </div>
+      <div class="grid-2"><label class="check"><input type="checkbox" name="al_daily" value="1" {{ 'checked' if s.al_daily == '1' }}> Morning summary</label>
+        <div class="field"><label class="lbl" for="a-hr">Send after (hour, 0-23, server time)</label><input id="a-hr" name="al_daily_hour" type="number" min="0" max="23" value="{{ s.al_daily_hour }}"></div></div>
+      <div class="help">Each problem is announced once, and once more when it is fixed. The check runs every 5 minutes.</div>
+    </div>
+  </section>
+  <div><button class="btn primary" type="submit" name="action" value="save">Save</button></div>
+</form>
+{% endblock %}

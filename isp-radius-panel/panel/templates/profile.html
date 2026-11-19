@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, field %}
+{% block title %}My Profile{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>My Profile</h1><p class="sub">Signed in as <span class="mono">{{ u.username }}</span> · {{ u.role|capitalize }}{% if u.dept %} · {{ u.dept }}{% endif %}{% if u.zone %} · {{ u.zone }}{% endif %}</p></div></div>
+
+<section class="kpis" style="margin-top:0">
+  <div class="kpi"><span class="k">Collected today</span><span class="v">{{ pay.today_total|money }}</span><span class="s">{{ currency }}</span></div>
+  <div class="kpi"><span class="k">Collected this month</span><span class="v">{{ pay.month_total|money }}</span><span class="s">{{ pay.payments }} payment{{ '' if pay.payments == 1 else 's' }}</span></div>
+  <div class="kpi"><span class="k">Customers added</span><span class="v">{{ '{:,}'.format(mine.subs) }}</span></div>
+</section>
+
+<div class="split-even" style="margin-top:16px">
+  <section class="panel">
+    <div class="panel-head"><h2>My details</h2></div>
+    <form class="panel-body stack" method="post">
+      {{ csrf_input() }}<input type="hidden" name="section" value="details">
+      {{ field('Full name', 'full_name', u.full_name) }}
+      {{ field('Phone', 'phone', u.phone, type='tel') }}
+      {{ field('Email', 'email', u.email, type='email') }}
+      <div><button class="btn primary" type="submit">Save details</button></div>
+    </form>
+  </section>
+  <section class="panel">
+    <div class="panel-head"><h2>Change password</h2></div>
+    <form class="panel-body stack" method="post" autocomplete="off">
+      {{ csrf_input() }}<input type="hidden" name="section" value="password">
+      <div class="field"><label class="lbl" for="c-cur">Current password</label><input id="c-cur" name="current" type="password" autocomplete="current-password" required></div>
+      <div class="field"><label class="lbl" for="c-new">New password</label><input id="c-new" name="new" type="password" minlength="8" autocomplete="new-password" required><div class="help">At least 8 characters.</div></div>
+      <div class="field"><label class="lbl" for="c-again">New password again</label><input id="c-again" name="again" type="password" minlength="8" autocomplete="new-password" required></div>
+      <div><button class="btn primary" type="submit">Change password</button></div>
+    </form>
+  </section>
+</div>
+
+<section class="panel" style="margin-top:16px">
+  <div class="panel-head"><h2>My recent activity</h2></div>
+  {% if activity %}
+  <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Time</th><th>Action</th><th>Target</th><th class="hide-sm">Details</th></tr></thead>
+  <tbody>{% for r in activity %}<tr><td class="nowrap">{{ r.created_at|dt }}</td><td>{{ r.action|replace('_', ' ') }}</td><td class="mono">{{ r.target or '—' }}</td><td class="hide-sm muted">{{ r.detail or '' }}</td></tr>{% endfor %}</tbody></table></div>
+  {% else %}<div class="empty"><h3>No activity yet</h3><p>What you do in the panel is listed here.</p></div>{% endif %}
+</section>
+{% endblock %}

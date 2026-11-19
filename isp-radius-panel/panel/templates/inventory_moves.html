@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, pager %}
+{% block title %}Stock log{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Stock log</h1><p class="sub">Every purchase, use, assignment and count, newest first.</p></div></div>
+<section class="panel">
+  <form class="filters panel-body" method="get" style="padding-bottom:0">
+    <div class="search">{{ icon('search') }}<input type="search" name="q" value="{{ request.args.get('q', '') }}" placeholder="Item, customer or serial" aria-label="Search"></div>
+    <select name="item" aria-label="Item"><option value="">All items</option>{% for i in items %}<option value="{{ i.id }}" {{ 'selected' if request.args.get('item') == i.id|string }}>{{ i.name }}</option>{% endfor %}</select>
+    <select name="kind" aria-label="Type"><option value="">All types</option>{% for k, t in kinds %}<option value="{{ k }}" {{ 'selected' if request.args.get('kind') == k }}>{{ t }}</option>{% endfor %}</select>
+    <input type="date" name="from" value="{{ request.args.get('from', '') }}" aria-label="From"><input type="date" name="to" value="{{ request.args.get('to', '') }}" aria-label="To">
+    <button class="btn" type="submit">Filter</button>
+  </form>
+  {% if rows %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Date</th><th>Item</th><th>What happened</th><th class="num">Qty</th><th>Customer</th><th class="hide-sm">Serial</th><th class="hide-sm">By</th></tr></thead>
+    <tbody>{% for m in rows %}<tr>
+      <td class="nowrap">{{ m.created_at|dt }}</td><td>{{ m.item_name }}</td>
+      <td><span class="badge {{ 'ok' if m.kind in ('in', 'return') else ('info' if m.kind == 'adjust' else 'warn') }}">{% for k, t in kinds %}{% if k == m.kind %}{{ t.split(' (')[0] }}{% endif %}{% endfor %}</span>{% if m.note %}<small class="muted" style="display:block">{{ m.note }}</small>{% endif %}</td>
+      <td class="num"><b>{{ m.qty }}</b> {{ m.unit }}</td>
+      <td>{% if m.sid %}<a class="mono" href="{{ url_for('subscriber_view', sid=m.sid) }}">{{ m.username }}</a>{% else %}{{ m.username or '—' }}{% endif %}</td>
+      <td class="hide-sm mono">{{ m.serial or '—' }}</td><td class="hide-sm">{{ m.by_user }}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {{ pager(pg, keep, 'inventory_moves') }}
+  {% else %}<div class="empty"><h3>No movements found</h3><p>Stock changes made from the Inventory page are listed here.</p></div>{% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,21 @@
+<section class="kpis" style="margin-top:0">
+  <div class="kpi"><span class="k">Customers paid</span><span class="v">{{ ptot.collected|money }}</span><span class="s">{{ currency }} · {{ '{:,}'.format(ptot.sales) }} sales</span></div>
+  <div class="kpi"><span class="k">Package cost</span><span class="v">{{ ptot.cost|money }}</span><span class="s">{{ currency }} taken from seller balances</span></div>
+  <div class="kpi"><span class="k">Seller profit</span><span class="v">{{ ptot.profit|money }}</span><span class="s">{{ currency }}</span></div>
+</section>
+<section class="panel"><div class="panel-head"><h2>Profit per day</h2><span class="aside">Customer payment minus the package price the seller paid</span></div>
+  <div class="panel-body"><div class="chart" data-kind="bars" data-src="prof"></div><script type="application/json" id="prof">{{ chart|tojson }}</script></div></section>
+<section class="panel" style="margin-top:16px">
+  <div class="panel-head"><h2>{% if chosen %}{{ chosen.username }}{% if below %} and everyone below{% endif %}{% else %}Per reseller, sub-reseller and retailer{% endif %}</h2></div>
+  {% if prof %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>User</th><th>Role</th><th class="num">Sales</th><th class="num">Customers paid</th><th class="num">Package cost</th><th class="num">Profit</th><th class="num">Margin</th></tr></thead><tbody>
+  {% for r in prof %}<tr><td><b>{{ r.username }}</b>{% if r.full_name %}<br><span class="muted">{{ r.full_name }}</span>{% endif %}</td><td>{{ r.role|replace('subreseller', 'Sub-reseller')|capitalize }}</td><td class="num">{{ r.sales }}</td><td class="num">{{ r.collected|money }}</td><td class="num">{{ r.cost|money }}</td><td class="num"><b>{{ r.profit|money }}</b></td><td class="num">{{ r.margin }}%</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% else %}<div class="empty"><p>No seller sales with a recorded package cost in this period.</p></div>{% endif %}
+  {% if chosen and sales %}
+  <div class="panel-head" style="border-top:1px solid var(--line)"><h2>Sales</h2><span class="aside">{{ sales|length }} shown{{ ' (latest 500, download the CSV for all)' if sales_cut }}</span></div>
+  <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th>{% if below %}<th>Seller</th>{% endif %}<th>Customer</th><th class="num">Days</th><th>Method</th><th class="num">Customer paid</th><th class="num">Package cost</th><th class="num">Profit</th></tr></thead><tbody>
+  {% for r in sales %}<tr><td>{{ r.paid_at|dt }}</td>{% if below %}<td>{{ r.seller }}</td>{% endif %}<td>{{ r.username }}</td><td class="num">{{ r.days_added }}</td><td>{{ r.method }}</td><td class="num">{{ r.amount|money }}</td><td class="num">{{ r.cost|money }}</td><td class="num"><b>{{ r.profit|money }}</b></td></tr>{% endfor %}
+  </tbody></table></div>
+  {% endif %}
+  <p class="muted" style="padding:12px 16px 14px;margin:0">Profit is counted only for activations and renewals made on or after this feature was installed, and only where a package price is set for the seller (Users &gt; Assign Packages). Older payments, extra fees and manual payments are not included. {% if unit_note %}You see yourself and everyone below you.{% endif %}</p>
+</section>

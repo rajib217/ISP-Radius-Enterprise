@@ -1,0 +1,31 @@
+{% extends "settings_base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}General settings{% endblock %}
+{% block ssub %}Company details and defaults for the whole panel.{% endblock %}
+{% block sbody %}
+<form method="post" class="panel set-card">
+  {{ csrf_input() }}
+  <div class="panel-head"><h2>General Settings</h2></div>
+  <div class="set-form">
+    <div class="field wide"><span class="lbl">Show Credit</span><label class="switch"><input type="checkbox" name="show_credit" {{ 'checked' if s.show_credit == '1' }}><i></i><span class="sr">Show credit</span></label><div class="help">Shows a small “Powered by” line at the bottom of every page.</div></div>
+    <div class="field"><label class="lbl" for="g-name">Company Name <b class="req">*</b></label><input id="g-name" name="isp_name" value="{{ s.isp_name }}" maxlength="64" required></div>
+    <div class="field"><label class="lbl" for="g-slogan">Company Slogan <b class="req">*</b></label><input id="g-slogan" name="company_slogan" value="{{ s.company_slogan }}" maxlength="120" required></div>
+    <div class="field"><label class="lbl" for="g-phone">Support Phone <b class="req">*</b></label><input id="g-phone" name="support_phone" value="{{ s.support_phone }}" maxlength="32" required></div>
+    <div class="field"><label class="lbl" for="g-mail">Support Email <b class="req">*</b></label><input id="g-mail" name="support_email" type="email" value="{{ s.support_email }}" maxlength="120" required></div>
+    <div class="field"><label class="lbl" for="g-tz">Local Timezone <b class="req">*</b></label><select id="g-tz" name="timezone" required>{% for z in zones %}<option value="{{ z }}" {{ 'selected' if z == s.timezone }}>{{ z }}</option>{% endfor %}</select></div>
+    <div class="field"><label class="lbl" for="g-cur">Default Currency <b class="req">*</b></label><select id="g-cur" name="currency" required>{% for c in currencies %}<option {{ 'selected' if c == s.currency }}>{{ c }}</option>{% endfor %}</select></div>
+    <div class="field"><label class="lbl" for="g-addr">Address <b class="req">*</b></label><input id="g-addr" name="address" value="{{ s.address }}" maxlength="200" required></div>
+    <div class="field"><label class="lbl" for="g-city">City <b class="req">*</b></label><input id="g-city" name="city" value="{{ s.city }}" maxlength="80" required></div>
+    <div class="field"><label class="lbl" for="g-country">Country <b class="req">*</b></label><input id="g-country" name="country" value="{{ s.country }}" maxlength="80" required></div>
+    <div class="field"><label class="lbl" for="g-zip">Zip Code <b class="req">*</b></label><input id="g-zip" name="zip_code" value="{{ s.zip_code }}" maxlength="16" required></div>
+    <div class="field"><label class="lbl" for="g-lat">Latitude</label><input id="g-lat" name="latitude" value="{{ s.latitude }}" placeholder="Latitude" inputmode="decimal"></div>
+    <div class="field"><label class="lbl" for="g-lng">Longitude</label><input id="g-lng" name="longitude" value="{{ s.longitude }}" placeholder="Longitude" inputmode="decimal"></div>
+    <hr class="wide">
+    <div class="field"><label class="lbl" for="g-md">Meta Description</label><input id="g-md" name="meta_description" value="{{ s.meta_description }}" maxlength="200"></div>
+    <div class="field"><label class="lbl" for="g-mk">Meta Keyword</label><input id="g-mk" name="meta_keyword" value="{{ s.meta_keyword }}" maxlength="200"></div>
+    <div class="field"><label class="lbl" for="g-ma">Meta Author</label><input id="g-ma" name="meta_author" value="{{ s.meta_author }}" placeholder="Meta Author" maxlength="80"></div>
+    <div class="field"><label class="lbl" for="g-cp">Copyright Text</label><input id="g-cp" name="copyright_text" value="{{ s.copyright_text }}" placeholder="Copyright Text" maxlength="120"></div>
+  </div>
+  <div class="set-foot"><button class="btn primary" type="submit">Submit</button></div>
+</form>
+{% endblock %}

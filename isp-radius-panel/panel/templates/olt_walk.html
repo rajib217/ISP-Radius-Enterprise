@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}SNMP walk{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>SNMP walk</h1><p class="sub"><a href="{{ url_for('olts') }}">OLTs</a> &middot; {{ d.name }} ({{ d.ip }}). Lists the values under an OID so you can find where your OLT keeps its ONUs.</p></div></div>
+<section class="panel"><div class="panel-body stack">
+  <form method="get" class="row-gap"><input name="oid" value="{{ oid }}" class="w-220" style="width:340px" spellcheck="false" aria-label="OID"><button class="btn primary" type="submit">Walk</button></form>
+  <div class="row-gap"><span class="muted">Try:</span>
+    <a class="chip" href="?oid=1.3.6.1.2.1.1">System</a><a class="chip" href="?oid=1.3.6.1.2.1.2.2.1.2">Interface names</a><a class="chip" href="?oid=1.3.6.1.2.1.2.2.1.8">Interface status</a><a class="chip" href="?oid=1.3.6.1.4.1">Vendor (enterprises)</a></div>
+  <p class="muted">Shows at most 300 rows. To narrow the vendor tree, add numbers to the OID (for example 1.3.6.1.4.1.2011 for Huawei, 1.3.6.1.4.1.3902 for ZTE).</p>
+</div></section>
+{% if error %}<section class="panel" style="margin-top:16px"><div class="panel-body"><b style="color:var(--bad)">{{ error }}</b></div></section>
+{% elif ran %}<section class="panel" style="margin-top:16px">
+  {% if rows %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>OID</th><th>Value</th></tr></thead><tbody>{% for o, v in rows %}<tr><td class="mono">{{ o }}</td><td>{{ v }}</td></tr>{% endfor %}</tbody></table></div>
+  {% else %}<div class="empty"><h3>Nothing under that OID</h3><p>The OLT answered but has no values there.</p></div>{% endif %}</section>{% endif %}
+{% endblock %}

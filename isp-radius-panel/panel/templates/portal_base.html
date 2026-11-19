@@ -1,0 +1,36 @@
+{% from "_macros.html" import icon %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}My connection{% endblock %} · {{ isp or 'Customer portal' }}</title>
+  {% if brand.favicon %}<link rel="icon" href="{{ brand.favicon }}">{% else %}<link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">{% endif %}
+  <script>try{var t=localStorage.getItem("isp-theme");if(!t&&window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches)t="dark";if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+  <style>
+    body { background: var(--paper); }
+    .pt { max-width: 880px; margin: 0 auto; padding: 16px; display: grid; gap: 16px; }
+    .pt-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .pt-top b { font-family: var(--display); font-size: 17px; }
+    .pt-hero { padding: 20px; border-radius: 14px; background: var(--surface); border: 1px solid var(--rule); display: grid; gap: 6px; }
+    .pt-hero.expired, .pt-hero.suspended { border-color: var(--bad); }
+    .pt-days { font-family: var(--display); font-size: 40px; font-weight: 700; line-height: 1.1; }
+    .pt-hero.expired .pt-days, .pt-hero.suspended .pt-days { color: var(--bad); }
+    .pt-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+    .pt-bars { display: flex; align-items: flex-end; gap: 4px; height: 90px; }
+    .pt-bars i { flex: 1; background: var(--fiber); border-radius: 3px 3px 0 0; min-height: 0; opacity: .85; }
+    .pt-meter { height: 8px; border-radius: 8px; background: var(--rule); overflow: hidden; }
+    .pt-meter i { display: block; height: 100%; background: var(--fiber); }
+    .pt-flash { padding: 10px 14px; border-radius: 10px; background: var(--info-soft); color: var(--info); }
+    .pt-flash.error { background: var(--bad-soft); color: var(--bad); } .pt-flash.success { background: var(--ok-soft); color: var(--ok); }
+    .pt .panel { padding: 16px; } .pt h2 { margin: 0 0 10px; font-size: 16px; }
+  </style>
+</head>
+<body>
+<div class="pt">
+  {% block top %}{% endblock %}
+  {% for cat, msg in get_flashed_messages(with_categories=true) %}<div class="pt-flash {{ cat }}" role="status">{{ msg }}</div>{% endfor %}
+  {% block content %}{% endblock %}
+</div>
+</body>
+</html>

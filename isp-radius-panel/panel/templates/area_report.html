@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Area report{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Area report</h1><p class="sub">Customers, online now and collection by area. Collection is for {{ start|d }} to {{ end|d }}.</p></div>
+  <form class="actions" method="get"><input type="date" name="from" value="{{ start.isoformat() }}" aria-label="From" style="width:auto"><input type="date" name="to" value="{{ end.isoformat() }}" aria-label="To" style="width:auto"><button class="btn primary" type="submit">Show</button></form>
+</div>
+<section class="panel">
+  {% if rows %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Area</th><th class="num">Customers</th><th class="num">Active</th><th class="num">Expired</th><th class="num">Suspended</th><th class="num">Online now</th><th class="num">Payments</th><th class="num">Collected</th></tr></thead>
+    <tbody>{% for r in rows %}<tr>
+      <td><b>{{ r.label }}</b></td>
+      <td class="num"><a href="{{ url_for('subscribers', area=r.name) }}">{{ '{:,}'.format(r.total) }}</a></td>
+      <td class="num">{{ r.active }}</td><td class="num">{{ r.expired }}</td><td class="num">{{ r.suspended }}</td><td class="num">{{ r.online }}</td>
+      <td class="num">{{ r.paid.payments }}</td><td class="num"><b>{{ r.paid.amount|money }}</b></td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="empty"><h3>No customers yet</h3><p>The report fills in as you add customers with an area.</p></div>{% endif %}
+</section>
+{% endblock %}

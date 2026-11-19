@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, field %}
+{% block title %}New ticket{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>New ticket</h1><p class="sub">Record what the customer reported.</p></div></div>
+<section class="panel" style="max-width:760px">
+  <form class="panel-body stack" method="post">
+    {{ csrf_input() }}
+    <div class="grid-2">
+      {{ field('Customer username', 'username', form.username, errors.username, help='Leave empty for a general ticket.', attrs='spellcheck="false" autofocus') }}
+      {{ field('Subject', 'subject', form.subject, errors.subject, attrs='maxlength="200" required') }}
+      <div class="field"><label class="lbl" for="f-category">Category</label><select id="f-category" name="category">{% for k, t in categories %}<option value="{{ k }}" {{ 'selected' if form.category == k }}>{{ t }}</option>{% endfor %}</select></div>
+      <div class="field"><label class="lbl" for="f-priority">Priority</label><select id="f-priority" name="priority">{% for k, t in priorities %}<option value="{{ k }}" {{ 'selected' if form.priority == k }}>{{ t }}</option>{% endfor %}</select></div>
+      <div class="field"><label class="lbl" for="f-dept">Department</label><select id="f-dept" name="department_id"><option value="">None</option>{% for d in depts %}<option value="{{ d.id }}" {{ 'selected' if form.department_id == d.id|string }}>{{ d.name }}</option>{% endfor %}</select></div>
+      <div class="field"><label class="lbl" for="f-assign">Assign to</label><select id="f-assign" name="assigned_to"><option value="">Nobody yet</option>{% for s in staff %}<option value="{{ s.id }}" {{ 'selected' if form.assigned_to == s.id|string }}>{{ s.full_name or s.username }}</option>{% endfor %}</select></div>
+    </div>
+    <div class="field {{ 'bad' if errors.body }}"><label class="lbl" for="f-body">Details</label><textarea id="f-body" name="body" rows="5" maxlength="5000">{{ form.body }}</textarea>{% if errors.body %}<div class="err">{{ errors.body }}</div>{% endif %}</div>
+    <div class="row-gap"><button class="btn primary" type="submit">Create ticket</button><a class="btn" href="{{ url_for('tickets') }}">Cancel</a></div>
+  </form>
+</section>
+{% endblock %}

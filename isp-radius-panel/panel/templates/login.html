@@ -1,0 +1,45 @@
+{% from "_macros.html" import icon %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · RADIUS Panel</title>
+  {% if brand.favicon %}<link rel="icon" href="{{ brand.favicon }}">{% else %}<link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">{% endif %}
+  <script>try{var t=localStorage.getItem("isp-theme");if(!t&&window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches)t="dark";if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+</head>
+<body>
+<div class="login">
+  <section class="login-art" aria-hidden="true">
+    <svg class="rings" viewBox="0 0 620 620"><circle cx="310" cy="310" r="282" fill="none" stroke="#8f74ff" stroke-width="44"/><circle cx="310" cy="310" r="185" fill="none" stroke="#35d0dc" stroke-width="44"/><circle cx="310" cy="310" r="70" fill="#fff"/></svg>
+    <div style="position:relative;display:flex;align-items:center;gap:10px">
+      <svg viewBox="0 0 32 32" width="30" height="30"><circle cx="16" cy="16" r="13" fill="none" stroke="#8f74ff" stroke-width="3"/><circle cx="16" cy="16" r="7.6" fill="none" stroke="#35d0dc" stroke-width="3"/><circle cx="16" cy="16" r="2.4" fill="#fff"/></svg>
+      <b style="font-size:16px">RADIUS Panel</b>
+    </div>
+    <div>
+      <h2>Every customer, every session, one console.</h2>
+      <p>Manage PPPoE subscribers, plans and routers on your own FreeRADIUS server.</p>
+    </div>
+  </section>
+  <section class="login-form">
+    <form method="post" autocomplete="on">
+      {{ csrf_input() }}
+      <div>
+        <h1>Sign in</h1>
+        <p class="muted" style="margin-top:4px">Use your panel administrator account.</p>
+      </div>
+      {% if error %}<div class="note warn" role="alert">{{ error }}</div>{% endif %}
+      <div class="field">
+        <label class="lbl" for="u">Username</label>
+        <input id="u" name="username" autocomplete="username" autofocus required>
+      </div>
+      <div class="field">
+        <label class="lbl" for="p">Password</label>
+        <input id="p" name="password" type="password" autocomplete="current-password" required>
+      </div>
+      <button class="btn primary" type="submit" style="height:42px">Sign in</button>
+    </form>
+  </section>
+</div>
+</body>
+</html>

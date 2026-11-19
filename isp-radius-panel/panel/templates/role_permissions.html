@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Permissions{% endblock %}
+{% block content %}
+<h1 class="perm-title">Modules &amp; Permissions (Role: {{ label }})</h1>
+<form method="post" class="permform" id="permForm">
+  {{ csrf_input() }}<input type="hidden" name="tab" id="permTab" value="{{ tab }}">
+  <div class="permtabs" role="tablist">
+    {% for t in tabs %}<button type="button" class="ptab {{ 'on' if (tab == loop.index0|string) or (not tab and loop.first) }}" data-ptab="{{ loop.index0 }}" role="tab">{{ icon(t.icon) }}{{ t.title }}</button>{% endfor %}
+  </div>
+  {% for t in tabs %}
+  <div class="pfpane {{ '' if (tab == loop.index0|string) or (not tab and loop.first) else 'hide' }}" data-pane="{{ loop.index0 }}">
+    <div class="pfgroups">
+      {% for g in t.groups %}
+      <section class="pfgroup {{ 'wide' if g.wide }}">
+        <h3>{{ g.title }}</h3>
+        <div class="pfcols" style="--n:{{ g.cols|length }}">
+          {% for col in g.cols %}<div class="pfcol">
+            {% for it in col %}
+            <label class="pfitem"><input type="checkbox" name="{{ it.key }}" value="1" {{ 'checked' if it.key in ticked }}><i></i>
+              <span><b>{{ it.label }}</b>{% if 'd' in it.flags %}<em class="pfdanger">&#9888; DANGEROUS PERMISSION</em>{% endif %}{% if it.note %}<small class="{{ 'pfdanger' if 'd' in it.flags }}">{{ it.note }}</small>{% endif %}</span></label>
+            {% endfor %}
+          </div>{% endfor %}
+        </div>
+      </section>{% endfor %}
+    </div>
+  </div>{% endfor %}
+  <div class="pffoot"><button type="button" class="btn pfsel" id="pfSel"><svg class="i" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5 9-10"/></svg>Select/Deselect</button>
+    <button class="btn pfsave" type="submit">Update</button></div>
+</form>
+{% endblock %}
+{% block scripts %}<script>
+(function(){var f=document.getElementById("permForm");if(!f)return;
+function q(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s));}
+q(".ptab").forEach(function(b){b.addEventListener("click",function(){var n=b.dataset.ptab;q(".ptab").forEach(function(x){x.classList.toggle("on",x===b)});q(".pfpane").forEach(function(p){p.classList.toggle("hide",p.dataset.pane!==n)});document.getElementById("permTab").value=n;});});
+document.getElementById("pfSel").addEventListener("click",function(){var pane=q(".pfpane").filter(function(p){return !p.classList.contains("hide")})[0];if(!pane)return;var boxes=q("input[type=checkbox]",pane);var all=boxes.every(function(c){return c.checked});boxes.forEach(function(c){c.checked=!all});});
+})();
+</script>{% endblock %}

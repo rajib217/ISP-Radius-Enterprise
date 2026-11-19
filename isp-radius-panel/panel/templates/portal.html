@@ -1,0 +1,68 @@
+{% extends "portal_base.html" %}
+{% block top %}<div class="pt-top"><b>{{ isp or 'My connection' }}</b>
+  <form method="post" action="{{ url_for('portal_logout') }}">{{ csrf_input() }}<button class="btn sm">Sign out</button></form></div>{% endblock %}
+{% block content %}
+<section class="pt-hero {{ state }}">
+  <span class="muted">{{ sub.full_name or sub.username }} <span class="mono">({{ sub.username }})</span></span>
+  {% if state == 'suspended' %}<div class="pt-days">Suspended</div><span>Your account is switched off. Please contact us.</span>
+  {% elif state == 'expired' %}<div class="pt-days">Expired</div><span>Your connection ended on {{ sub.expiry_date|d }} ({{ -left }} day{{ '' if left == -1 else 's' }} ago).</span>
+  {% elif left is none %}<div class="pt-days">No expiry</div>
+  {% else %}<div class="pt-days">{{ left }} day{{ '' if left == 1 else 's' }} left</div><span>Valid until {{ sub.expiry_date|d }}</span>{% endif %}
+  <div class="row-gap" style="margin-top:6px">
+    {% if sub.plan_label or sub.plan_name %}<span class="badge info">{{ sub.plan_label or sub.plan_name }}{% if sub.download_mbps %} · {{ sub.download_mbps }}/{{ sub.upload_mbps }} Mbps{% endif %}</span>{% endif %}
+    <span class="badge {{ 'ok' if online else 'warn' }}">{{ 'Online' if online else 'Offline' }}</span>
+  </div>
+</section>
+
+<section class="panel" id="pay">
+  <h2>Renew</h2>
+  {% if terms.ok %}
+    <p>{{ sub.plan_label or sub.plan_name }} for {{ terms.days }} days: <b>{{ cur }} {{ terms.amount|money }}</b>{% if terms.fee %} + bKash fee {{ cur }} {{ terms.fee|money }}{% endif %}. Your expiry moves forward when bKash confirms the payment.</p>
+    <form method="post" action="{{ url_for('portal_pay') }}">{{ csrf_input() }}<button class="btn primary" type="submit">Pay {{ cur }} {{ (terms.amount + terms.fee)|money }} with bKash</button></form>
+  {% else %}<p class="muted" style="margin:0">{{ terms.why }}</p>{% endif %}
+  {% if tries %}<div class="tbl-wrap" style="margin-top:12px"><table class="tbl"><thead><tr><th>Payment attempt</th><th class="num">Amount</th><th>Status</th></tr></thead><tbody>
+    {% for t in tries %}<tr><td class="nowrap">{{ t.created_at|dt }}</td><td class="num">{{ cur }} {{ (t.amount|float + t.fee|float)|money }}</td><td><span class="badge {{ 'ok' if t.status == 'completed' else ('warn' if t.status == 'pending' else 'bad') }}">{{ t.status|capitalize }}</span></td></tr>{% endfor %}
+  </tbody></table></div>{% endif %}
+</section>
+
+{% if usage %}
+<section class="panel"><h2>Usage this month</h2>
+  <div class="pt-grid" style="margin-bottom:14px">
+    <div><span class="muted">Download</span><div class="pt-days" style="font-size:26px">{{ usage.down|bytes }}</div></div>
+    <div><span class="muted">Upload</span><div class="pt-days" style="font-size:26px">{{ usage.up|bytes }}</div></div>
+    <div><span class="muted">Sessions</span><div class="pt-days" style="font-size:26px">{{ usage.n }}</div></div>
+  </div>
+  {% if usage.quota %}<div class="pt-meter" aria-label="{{ usage.pct }}% of the quota used"><i style="width:{{ usage.pct }}%"></i></div><p class="muted" style="margin:6px 0 14px">{{ usage.pct }}% of your {{ usage.quota|round(0)|int }} GB package volume used</p>{% endif %}
+  <span class="muted">Last 14 days (download + upload)</span>
+  <div class="pt-bars" role="img" aria-label="Daily usage, last 14 days">{% for b in usage.bars %}<i style="height:{{ b.h }}%" title="{{ b.day }}: {{ b.v|bytes }}"></i>{% endfor %}</div>
+</section>
+{% endif %}
+
+<section class="panel"><h2>Invoices</h2>
+  {% if invoices %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th class="num">Amount</th><th>Method</th><th>Valid until</th><th></th></tr></thead><tbody>
+    {% for p in invoices %}<tr><td class="nowrap">{{ p.paid_at|dt }}</td><td class="num">{{ cur }} {{ p.amount|money }}</td><td>{{ p.method }}</td><td>{{ p.period_to|d }}</td><td><a class="btn sm" href="{{ url_for('portal_invoice', pid=p.id) }}">Invoice</a></td></tr>{% endfor %}
+  </tbody></table></div>{% else %}<p class="muted" style="margin:0">No payments yet.</p>{% endif %}
+</section>
+
+{% if sessions is not none %}
+<section class="panel"><h2>Recent sessions</h2>
+  {% if sessions %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Started</th><th>Length</th><th class="num">Download</th><th class="num">Upload</th><th>IP</th></tr></thead><tbody>
+    {% for r in sessions %}<tr><td class="nowrap">{{ r.acctstarttime|dt }}</td><td>{% if r.acctstoptime %}{{ r.acctsessiontime|dur }}{% else %}<span class="badge ok">Online</span>{% endif %}</td><td class="num">{{ r.acctoutputoctets|bytes }}</td><td class="num">{{ r.acctinputoctets|bytes }}</td><td class="mono">{{ r.framedipaddress or '—' }}</td></tr>{% endfor %}
+  </tbody></table></div>{% else %}<p class="muted" style="margin:0">No sessions yet.</p>{% endif %}
+</section>
+{% endif %}
+
+<section class="panel" id="account"><h2>My details</h2>
+  <dl class="kv" style="display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:0 0 14px">
+    <dt class="muted">Phone</dt><dd style="margin:0">{{ sub.phone or '—' }}</dd><dt class="muted">Address</dt><dd style="margin:0">{{ sub.address or '—' }}{% if sub.area %}, {{ sub.area }}{% endif %}</dd>
+  </dl>
+  {% if can_pw %}<details><summary class="btn sm">Change password</summary>
+    <form method="post" action="{{ url_for('portal_password') }}" style="display:grid;gap:10px;max-width:320px;margin-top:12px" autocomplete="off">{{ csrf_input() }}
+      <div class="field"><label class="lbl" for="pc">Current password</label><input id="pc" name="current" type="password" required autocomplete="current-password"></div>
+      <div class="field"><label class="lbl" for="pn">New password</label><input id="pn" name="new" type="password" minlength="6" required autocomplete="new-password"></div>
+      <div class="field"><label class="lbl" for="pa">New password again</label><input id="pa" name="again" type="password" minlength="6" required autocomplete="new-password"></div>
+      <button class="btn primary" type="submit">Save password</button>
+      <p class="help">This is also your internet (PPPoE) password. Update it on your router after changing it.</p>
+    </form></details>{% endif %}
+</section>
+{% endblock %}

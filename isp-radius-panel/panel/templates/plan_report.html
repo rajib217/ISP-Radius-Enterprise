@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Plan report{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Plan report</h1><p class="sub">How many customers each plan has and what active customers bring in per month.</p></div></div>
+<section class="kpis" style="margin-top:0">
+  <div class="kpi"><span class="k">Customers</span><span class="v">{{ '{:,}'.format(tot.subs) }}</span></div>
+  <div class="kpi"><span class="k">Active</span><span class="v">{{ '{:,}'.format(tot.active) }}</span></div>
+  <div class="kpi"><span class="k">Monthly value</span><span class="v">{{ tot.monthly|money }}</span><span class="s">{{ currency }}, active × price</span></div>
+</section>
+<div class="split">
+  <section class="panel">
+    {% if rows %}
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>Plan</th><th class="num">Price</th><th class="num">Customers</th><th class="num">Active</th><th class="num hide-sm">Expired</th><th class="num hide-sm">Suspended</th><th class="num">Online</th><th class="num">Monthly value</th></tr></thead>
+      <tbody>{% for r in rows %}<tr>
+        <td class="who-cell"><b>{{ r.label }}</b><small>{{ bw(r) }}</small></td>
+        <td class="num">{{ r.price|money }}</td>
+        <td class="num"><a href="{{ url_for('subscribers', plan=r.id) }}">{{ '{:,}'.format(r.total) }}</a></td>
+        <td class="num">{{ r.active }}</td><td class="num hide-sm">{{ r.expired }}</td><td class="num hide-sm">{{ r.suspended }}</td><td class="num">{{ r.online }}</td>
+        <td class="num"><b>{{ r.monthly|money }}</b></td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}<div class="empty"><h3>No plans yet</h3><p>Create plans first.</p></div>{% endif %}
+  </section>
+  <section class="panel"><div class="panel-head"><h2>Customers per plan</h2></div>
+    <div class="panel-body"><div class="chart" data-kind="donut" data-src="planmix"></div><script type="application/json" id="planmix">{{ chart|tojson }}</script></div></section>
+</div>
+{% endblock %}

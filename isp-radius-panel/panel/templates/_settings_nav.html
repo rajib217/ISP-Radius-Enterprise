@@ -1,0 +1,22 @@
+{% from "_macros.html" import icon %}
+{% macro link(key, label, ic, href, out=false) %}<a class="{{ 'on' if tab == key }}" href="{{ href }}">{{ icon(ic) }}<span>{{ label }}</span>{% if out %}<em>&rarr;</em>{% endif %}</a>{% endmacro %}
+<nav class="set-nav" aria-label="Settings">
+  <h6>System</h6>
+  {{ link('general', 'General', 'sliders', url_for('settings')) }}
+  {{ link('software', 'Software', 'server', url_for('settings_software')) }}
+  {{ link('modules', 'Software Modules', 'layers', url_for('settings_modules')) }}
+  {{ link('logs', 'Log Engine', 'file', url_for('settings_logs')) }}
+  {{ link('backup', 'Backup & Restore', 'archive', url_for('settings_backup')) }}
+  <h6>Customers and partners</h6>
+  {{ link('subscriber', 'Subscriber', 'users', url_for('settings_subscriber')) }}
+  {{ link('x2', 'Quick Pay', 'bolt', url_for('receive'), true) }}
+  {{ link('user', 'User', 'user', url_for('settings_user')) }}
+  {{ link('partners', 'Partner Management', 'briefcase', url_for('settings_partners')) }}
+  <h6>Notifications</h6>
+  {{ link('sms', 'SMS', 'phone', url_for('settings_sms')) }}
+  {{ link('email', 'Email', 'mail', url_for('settings_email')) }}
+  {{ link('automation', 'Automatic messages', 'send', url_for('settings_automation')) }}
+  {{ link('alerts', 'Alerts (Telegram)', 'alert', url_for('settings_alerts')) }}
+  <h6>Payment gateways</h6>
+  {% for slug, name, ic in gateways %}{{ link('gw-' ~ slug, name, ic, url_for('settings_gateway', slug=slug)) }}{% endfor %}
+</nav>

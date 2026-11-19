@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Add Balance{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Add Balance</h1><p class="sub"><a href="{{ url_for('dashboard') }}">Home</a> &middot; Add Balance</p></div></div>
+<section class="panel payform">
+  <form method="post" autocomplete="off">
+    {{ csrf_input() }}
+    <div class="panel-head"><h2>Add Payment</h2></div>
+    <div class="pf-body">
+      {% if not ready %}<div class="notice warn" role="status">{{ icon('alert') }}<div><strong>bKash is not set up yet</strong><p>Ask your administrator to switch bKash on under Settings &gt; Payment Gateway.</p></div></div>{% endif %}
+      <div class="pf-row"><label for="pm">Payment Method <b class="req">*</b></label><select id="pm" name="method" required><option value="">Select Method</option><option value="bkash">bKash</option></select></div>
+      <div class="pf-row"><label for="pn">Note</label><input id="pn" name="note" maxlength="255" placeholder="Note"></div>
+      <div class="pf-row"><label for="pa">Amount <b class="req">*</b></label><input id="pa" name="amount" type="number" min="1" step="0.01" required placeholder="Amount"></div>
+      {% if s.bkash_fee and s.bkash_fee != '0' %}<p class="muted pf-help">bKash charges a fee of {{ s.bkash_fee }}{{ '%' if s.bkash_fee_type != 'fixed' else ' ' ~ currency }} on top. It is shown on the bKash page; only the amount you enter is added to your balance.</p>{% endif %}
+    </div>
+    <div class="pf-foot"><a class="btn" href="{{ url_for('dashboard') }}">Close</a><button class="btn primary" type="submit">Submit</button></div>
+  </form>
+</section>
+
+<section class="panel"><div class="panel-head"><h2>Recent top-ups</h2></div>
+  {% if history %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th class="num">Amount</th><th>bKash transaction</th><th>Status</th></tr></thead><tbody>
+    {% for h in history %}<tr><td class="nowrap">{{ h.created_at|dt }}</td><td class="num">{{ currency }} {{ '{:,.2f}'.format(h.amount|float) }}</td><td class="mono">{{ h.trx_id or '—' }}</td>
+      <td><span class="badge {{ 'ok' if h.status == 'completed' else ('warn' if h.status == 'pending' else 'bad') }}">{{ h.status|capitalize }}</span>{% if h.message %} <small class="muted">{{ h.message }}</small>{% endif %}</td></tr>{% endfor %}
+  </tbody></table></div>{% else %}<div class="empty"><p>No top-ups yet.</p></div>{% endif %}
+</section>
+
+{% endblock %}

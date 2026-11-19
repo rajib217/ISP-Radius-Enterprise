@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, pager %}
+{% block title %}Online now{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Online now</h1><p class="sub">{{ '{:,}'.format(pg.total) }} live session{{ '' if pg.total == 1 else 's' }}{% if request.args.get('nas') or request.args.get('q') %} match{{ 'es' if pg.total == 1 }}{% endif %}</p></div>
+  <div class="actions">
+    {% if app_cfg.online_refresh|int > 0 %}<label class="check btn" style="cursor:pointer"><input type="checkbox" data-autorefresh data-interval="{{ app_cfg.online_refresh|int }}"> Refresh every {{ app_cfg.online_refresh|int }} s</label>{% endif %}
+    <a class="btn" href="{{ request.full_path.rstrip('?') }}">{{ icon('refresh') }}Refresh</a>
+  </div>
+</div>
+
+<section class="panel">
+  <form class="filters" method="get">
+    <div class="search">{{ icon('search') }}<input type="search" name="q" value="{{ request.args.get('q', '') }}" placeholder="Username, IP or MAC starts with…" aria-label="Search sessions"></div>
+    <select name="nas" aria-label="Router" onchange="this.form.submit()">
+      <option value="">All routers</option>
+      {% for n in nases %}<option value="{{ n.ip }}" {{ 'selected' if request.args.get('nas') == n.ip }}>{{ n.name }} ({{ n.c }})</option>{% endfor %}
+    </select>
+    <select name="per" aria-label="Rows per page" onchange="this.form.submit()">
+      {% for n in (50, 100, 200) %}<option value="{{ n }}" {{ 'selected' if pg.per == n }}>{{ n }} per page</option>{% endfor %}
+    </select>
+    <button class="btn" type="submit">Search</button>
+  </form>
+  {% if rows %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Customer</th><th>IP address</th><th class="hide-sm">MAC / caller</th><th>Router</th><th>Connected</th><th class="num">Down</th><th class="num">Up</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td class="who-cell">
+          {% if r.sid %}<a href="{{ url_for('subscriber_view', sid=r.sid) }}"><b class="mono">{{ r.username }}</b></a>{% else %}<b class="mono">{{ r.username }}</b>{% endif %}
+          <small>{{ r.full_name or ('Not in the subscriber list' if not r.sid else '—') }}</small>
+        </td>
+        <td class="mono">{{ r.framedipaddress or '—' }}</td>
+        <td class="mono hide-sm">{{ r.callingstationid or '—' }}</td>
+        <td>{{ r.nas_name }}</td>
+        <td class="nowrap" title="Since {{ r.acctstarttime|dt }}">{{ r.uptime|dur }}</td>
+        <td class="num">{{ r.acctoutputoctets|bytes }}</td>
+        <td class="num">{{ r.acctinputoctets|bytes }}</td>
+        <td class="act">
+          <form method="post" action="{{ url_for('online_disconnect') }}" data-confirm="Disconnect {{ r.username }}?">
+            {{ csrf_input() }}<input type="hidden" name="id" value="{{ r.radacctid }}"><input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">
+            <button class="btn sm" type="submit">{{ icon('power') }}Disconnect</button>
+            {% if me.role == 'admin' %}<button class="btn sm icon" type="submit" name="force" value="1" title="Disconnect, and remove from this list even if the router does not answer" aria-label="Force remove" data-confirm="Remove this session from the list even if the router does not confirm?">{{ icon('trash') }}</button>{% endif %}
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {{ pager(pg, keep, 'online') }}
+  {% else %}
+  <div class="empty"><h3>Nobody is online</h3><p>{% if request.args.get('q') or request.args.get('nas') %}No live session matches this search.{% else %}Sessions appear here once a router sends RADIUS accounting to this server.{% endif %}</p></div>
+  {% endif %}
+</section>
+{% endblock %}

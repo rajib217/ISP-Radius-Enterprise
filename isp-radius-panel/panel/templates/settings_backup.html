@@ -1,0 +1,151 @@
+{% extends "settings_base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Backup &amp; Restore{% endblock %}
+{% block ssub %}Database backups, restore from a file, and the copy kept in Google Drive.{% endblock %}
+{% block sbody %}
+
+<section class="panel set-card">
+  <div class="panel-head"><h2>{{ icon('archive') }} Backup &amp; Restore</h2></div>
+  <div class="panel-body stack" id="bk-status">
+    {% if running %}
+      <div class="note-box" style="border-style:solid;background:var(--info-soft);border-color:var(--info);color:var(--info)">{{ icon('refresh') }}<span><b>{{ 'Restoring' if st.kind == 'restore' else 'Working' }}:</b> {{ st.msg or 'Please wait…' }} This page reloads by itself when it finishes.</span></div>
+    {% elif st.state == 'error' %}
+      <div class="note-box" style="border-style:solid">{{ icon('alert') }}<span>{{ st.msg }}</span></div>
+    {% elif st.state == 'ok' %}
+      <div class="note-box" style="border-style:solid;background:var(--ok-soft);border-color:var(--ok);color:var(--ok)">{{ icon('check') }}<span>{{ st.msg }}</span></div>
+    {% endif %}
+    <div class="push-status">
+      <div><span>Last automatic or manual backup</span><b>{{ last.time or 'Never' }}</b></div>
+      <div><span>Result</span><b>{% if not last.time %}—{% elif last.ok %}<span class="pill ok">Saved</span>{% else %}<span class="pill bad">Problem</span>{% endif %}</b></div>
+      <div><span>Backups on this server</span><b>{{ files|length }}</b></div>
+      <div><span>Free disk space</span><b>{{ free|bytes }}</b></div>
+    </div>
+    {% if last.time and not last.ok %}<p class="help" style="margin:0">{{ last.msg }}</p>{% endif %}
+    <div class="row-gap">
+      <form method="post" action="{{ url_for('backup_run') }}">{{ csrf_input() }}<button class="btn primary" type="submit" {{ 'disabled' if running }}>{{ icon('archive') }}Back up now</button></form>
+      <button class="btn violet" type="button" data-open="up-dlg" {{ 'disabled' if running }}>{{ icon('upload') }}Upload a backup file</button>
+    </div>
+  </div>
+</section>
+
+<form method="post" action="{{ url_for('backup_save') }}" class="panel set-card" id="bk-form" style="margin-top:16px">
+  {{ csrf_input() }}
+  <div class="panel-head"><h2>{{ icon('server') }} Automatic backup</h2></div>
+  <div class="set-form">
+    <div class="field"><label class="lbl" for="b-on">Backup every day</label><span class="switch"><input id="b-on" type="checkbox" name="backup_on" {{ 'checked' if s.backup_on == '1' }}><i></i></span></div>
+    <div class="field"><label class="lbl" for="b-hour">Start after</label><select id="b-hour" name="backup_hour">{% for h in hours %}<option value="{{ h }}" {{ 'selected' if s.backup_hour|int == h }}>{{ '%02d:00' % h }}</option>{% endfor %}</select><div class="help">Pick a quiet hour. The backup does not lock the database, but it uses the disk for a few minutes.</div></div>
+    <div class="field"><label class="lbl" for="b-keep">Keep on this server</label><input id="b-keep" name="backup_keep" type="number" min="1" max="90" value="{{ s.backup_keep }}"><div class="help">Number of newest backups. Older ones are deleted automatically.</div></div>
+    <div class="field"><label class="lbl">Folder</label><input value="{{ folder }}" readonly><div class="help">You can also copy a <code>.sql.gz</code> file here with scp; it will appear in the list.</div></div>
+  </div>
+
+  <div class="panel-head" style="border-top:1px solid var(--rule)"><h2>{{ icon('globe') }} Google Drive</h2>{% if drive_ready %}<span class="pill ok">Connected</span>{% else %}<span class="pill gray">Not connected</span>{% endif %}</div>
+  <div class="set-form">
+    <div class="field"><label class="lbl" for="g-on">Copy every backup to Google Drive</label><span class="switch"><input id="g-on" type="checkbox" name="gdrive_on" {{ 'checked' if s.gdrive_on == '1' }}><i></i></span></div>
+    <div class="field"><label class="lbl" for="g-keep">Keep on Google Drive</label><input id="g-keep" name="gdrive_keep" type="number" min="1" max="365" value="{{ s.gdrive_keep }}"><div class="help">Number of newest backups. Older ones are removed from the Drive folder.</div></div>
+    <div class="field"><label class="lbl" for="g-id">Client ID</label><input id="g-id" name="gdrive_client_id" value="{{ s.gdrive_client_id }}" autocomplete="off" spellcheck="false" placeholder="123456-abc.apps.googleusercontent.com"></div>
+    <div class="field"><label class="lbl" for="g-sec">Client Secret</label><input id="g-sec" name="gdrive_client_secret" type="password" autocomplete="new-password" placeholder="{{ 'Saved. Type to replace' if s.gdrive_client_secret else 'GOCSPX-…' }}"></div>
+    <div class="note-box wide" style="grid-column:1/-1;border-style:solid;background:var(--info-soft);border-color:var(--info);color:var(--info);align-items:flex-start">{{ icon('alert') }}<span>
+      <b>One-time Google setup (about 5 minutes, free):</b>
+      <ol style="margin:6px 0 0 18px;padding:0">
+        <li>Open <b>console.cloud.google.com</b>, create a project, then <b>APIs &amp; Services &rsaquo; Library</b> and enable <b>Google Drive API</b>.</li>
+        <li><b>OAuth consent screen</b>: choose External, fill the app name and your email, then press <b>Publish app</b> so it is <b>In production</b>. In Testing mode Google signs the panel out every 7 days.</li>
+        <li><b>Credentials &rsaquo; Create credentials &rsaquo; OAuth client ID</b>, type <b>TVs and Limited Input devices</b>. Paste the Client ID and Secret above and press Save.</li>
+        <li>Press <b>Connect Google Drive</b>, open the Google link and enter the code. Google may warn that the app is not verified; press Advanced, then continue. The panel can only see files it created itself.</li>
+      </ol></span></div>
+    {% if device %}
+    <div class="wide" style="grid-column:1/-1;border:1px solid var(--rule);border-radius:10px;padding:16px">
+      <b>Approve on Google</b>
+      <p class="help" style="margin:6px 0 10px">1. Open <a href="{{ device.url }}" target="_blank" rel="noopener"><b>{{ device.url }}</b></a><br>2. Enter this code: <b class="mono" style="font-size:20px;letter-spacing:2px">{{ device.user_code }}</b><br>3. Choose your Google account and allow access, then press the button below.</p>
+      <button class="btn primary" type="submit" form="g-check">{{ icon('check') }}I have approved it</button>
+    </div>
+    {% endif %}
+  </div>
+  <div class="set-foot" style="justify-content:space-between;gap:8px;flex-wrap:wrap">
+    <div class="row-gap">
+      <button class="btn violet" type="submit" form="g-connect" {{ 'disabled' if not s.gdrive_client_id }}>{{ icon('bolt') }}{{ 'Reconnect Google Drive' if drive_ready else 'Connect Google Drive' }}</button>
+      {% if drive_ready %}<button class="btn" type="submit" form="g-test">Test</button>
+      <a class="btn" href="{{ url_for('settings_backup', drive=1) }}#drive-list">Show Drive backups</a>
+      <button class="btn danger" type="submit" form="g-off" data-confirm="Disconnect Google Drive? Files already on Drive are kept.">Disconnect</button>{% endif %}
+    </div>
+    <button class="btn primary" type="submit">Save</button>
+  </div>
+</form>
+<form id="g-connect" method="post" action="{{ url_for('drive_connect') }}">{{ csrf_input() }}</form>
+<form id="g-check" method="post" action="{{ url_for('drive_check') }}">{{ csrf_input() }}</form>
+<form id="g-test" method="post" action="{{ url_for('drive_test') }}">{{ csrf_input() }}</form>
+<form id="g-off" method="post" action="{{ url_for('drive_disconnect') }}">{{ csrf_input() }}</form>
+
+{% if drive_files is not none or drive_err %}
+<section class="panel set-card" id="drive-list" style="margin-top:16px">
+  <div class="panel-head"><h2>Backups on Google Drive</h2></div>
+  {% if drive_err %}<div class="panel-body"><div class="note-box" style="border-style:solid">{{ icon('alert') }}<span>{{ drive_err }}</span></div></div>
+  {% elif drive_files %}
+  <div class="tbl-wrap"><table class="tbl"><thead><tr><th>File</th><th class="num">Size</th><th class="hide-sm">Created</th><th></th></tr></thead><tbody>
+    {% for f in drive_files %}<tr><td class="mono">{{ f.name }}</td><td class="num">{{ (f.size|int)|bytes }}</td><td class="hide-sm nowrap">{{ f.createdTime[:16]|replace('T', ' ') }} UTC</td>
+      <td class="act"><form method="post" action="{{ url_for('drive_fetch') }}">{{ csrf_input() }}<input type="hidden" name="file_id" value="{{ f.id }}"><button class="btn sm" type="submit" {{ 'disabled' if running }}>{{ icon('download') }}Download to server</button></form></td></tr>{% endfor %}
+  </tbody></table></div>
+  {% else %}<div class="empty"><h3>No backups on Drive yet</h3><p>They appear here after the first backup with Google Drive switched on.</p></div>{% endif %}
+</section>
+{% endif %}
+
+<section class="panel set-card" style="margin-top:16px">
+  <div class="panel-head"><h2>Backups on this server</h2></div>
+  {% if files %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>File</th><th class="hide-sm">Type</th><th class="num">Size</th><th class="hide-sm">Created</th><th></th></tr></thead>
+    <tbody>{% for f in files %}<tr>
+      <td class="mono" style="word-break:break-all">{{ f.name }}</td>
+      <td class="hide-sm"><span class="pill {{ {'auto': 'ok', 'manual': 'info', 'uploaded': 'violet', 'drive': 'violet', 'pre-restore': 'warn'}[f.kind] }}">{{ {'auto': 'Automatic', 'manual': 'Manual', 'uploaded': 'Uploaded', 'drive': 'From Drive', 'pre-restore': 'Before a restore'}[f.kind] }}</span></td>
+      <td class="num">{{ f.size|bytes }}</td><td class="hide-sm nowrap">{{ f.mtime|dt }}</td>
+      <td class="act">
+        <button class="btn sm" type="button" data-open="rs-dlg" data-restore="{{ f.name }}" {{ 'disabled' if running }}>{{ icon('refresh') }}Restore</button>
+        <a class="btn sm icon" href="{{ url_for('backup_download', name=f.name) }}" aria-label="Download {{ f.name }}" title="Download">{{ icon('download') }}</a>
+        <form method="post" action="{{ url_for('backup_delete', name=f.name) }}" data-confirm="Delete {{ f.name }} from this server?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ f.name }}" {{ 'disabled' if running }}>{{ icon('trash') }}</button></form>
+      </td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="empty"><h3>No backups yet</h3><p>Press Back up now, or upload a backup file you downloaded earlier.</p></div>{% endif %}
+</section>
+
+<dialog class="modal" id="up-dlg" aria-labelledby="up-title">
+  <form method="post" action="{{ url_for('backup_upload') }}" enctype="multipart/form-data">
+    {{ csrf_input() }}
+    <div class="modal-head"><h2 id="up-title">Upload a backup file</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <div class="field"><label class="lbl" for="up-file">Backup file (.sql.gz)</label><input id="up-file" name="file" type="file" accept=".gz,.sql.gz" required><div class="help">Only a file made by this panel. It is checked, then added to the list; nothing changes until you press Restore. For files over about 1 GB, copy them into the folder above with scp instead.</div></div>
+    </div>
+    <div class="modal-foot"><span style="flex:1"></span><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Upload</button></div>
+  </form>
+</dialog>
+
+<dialog class="modal" id="rs-dlg" aria-labelledby="rs-title">
+  <form method="post" action="" id="rs-form">
+    {{ csrf_input() }}
+    <div class="modal-head"><h2 id="rs-title">Restore this backup</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <div class="note-box" style="align-items:flex-start">{{ icon('alert') }}<span>This <b>replaces everything</b> in the database with the contents of <b class="mono" id="rs-name" style="word-break:break-all"></b>: subscribers, payments, packages, RADIUS users and settings. Anything entered after that backup is lost. The current data is saved first as a "Before a restore" backup. Customers cannot log in for the minute or two it takes, so do it at a quiet time.</span></div>
+      <div class="field"><label class="lbl" for="rs-conf">Type RESTORE to confirm</label><input id="rs-conf" name="confirm" autocomplete="off" required></div>
+      <div class="field"><label class="lbl" for="rs-pw">Your password</label><input id="rs-pw" name="password" type="password" autocomplete="current-password" required></div>
+    </div>
+    <div class="modal-foot"><span style="flex:1"></span><button type="button" class="btn" data-close>Cancel</button><button class="btn danger" type="submit">Restore now</button></div>
+  </form>
+</dialog>
+
+<script>
+(function () {
+  var base = "{{ url_for('backup_restore', name='X') }}".slice(0, -1);
+  document.querySelectorAll("[data-restore]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      document.getElementById("rs-form").action = base + encodeURIComponent(b.dataset.restore);
+      document.getElementById("rs-name").textContent = b.dataset.restore;
+      document.getElementById("rs-conf").value = ""; document.getElementById("rs-pw").value = "";
+    });
+  });
+  {% if running %}
+  var timer = setInterval(function () {
+    fetch("{{ url_for('backup_status') }}", {credentials: "same-origin"}).then(function (r) { return r.json(); })
+      .then(function (d) { if (!d.running) { clearInterval(timer); location.reload(); } }).catch(function () {});
+  }, 4000);
+  {% endif %}
+})();
+</script>
+{% endblock %}

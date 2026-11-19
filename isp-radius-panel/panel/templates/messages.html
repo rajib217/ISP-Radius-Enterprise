@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, pager %}
+{% block title %}Messages{% endblock %}
+{% block content %}
+{% set ch = request.args.get('channel', '') %}
+<div class="page-head">
+  <div><h1>{{ 'SMS' if ch == 'sms' else ('Email' if ch == 'email' else 'Messages') }} log</h1><p class="sub">Everything queued, sent or failed.{% if sender != 'active' %} <b style="color:var(--bad)">The sender service is {{ sender }}.</b>{% endif %}</p></div>
+  <div class="actions">
+    {% if counts.get('failed') and (can('sms', 'edit') or can('email', 'edit')) %}<form method="post" action="{{ url_for('messages_retry') }}">{{ csrf_input() }}<input type="hidden" name="channel" value="{{ ch }}"><input type="hidden" name="batch" value="{{ request.args.get('batch', '') }}"><button class="btn" type="submit">{{ icon('refresh') }}Retry failed</button></form>{% endif %}
+    {% if counts.get('pending') and (can('sms', 'edit') or can('email', 'edit')) %}<form method="post" action="{{ url_for('messages_cancel') }}" data-confirm="Cancel all waiting messages shown here?">{{ csrf_input() }}<input type="hidden" name="channel" value="{{ ch }}"><input type="hidden" name="batch" value="{{ request.args.get('batch', '') }}"><button class="btn danger" type="submit">Cancel waiting</button></form>{% endif %}
+  </div>
+</div>
+<div class="chips">
+  <a class="chip {{ 'on' if not request.args.get('status') }}" href="{{ url_for('messages', **dict(keep, status=None)) }}">All</a>
+  <a class="chip {{ 'on' if request.args.get('status') == 'pending' }}" href="{{ url_for('messages', **dict(keep, status='pending')) }}">Waiting <b>{{ counts.get('pending', 0) }}</b></a>
+  <a class="chip {{ 'on' if request.args.get('status') == 'sent' }}" href="{{ url_for('messages', **dict(keep, status='sent')) }}">Sent <b>{{ counts.get('sent', 0) }}</b></a>
+  <a class="chip {{ 'on' if request.args.get('status') == 'failed' }}" href="{{ url_for('messages', **dict(keep, status='failed')) }}">Failed <b>{{ counts.get('failed', 0) }}</b></a>
+</div>
+<section class="panel">
+  <form class="filters panel-body" method="get" style="padding-bottom:0">
+    {% for k in ('channel', 'status', 'batch') %}{% if request.args.get(k) %}<input type="hidden" name="{{ k }}" value="{{ request.args.get(k) }}">{% endif %}{% endfor %}
+    <div class="search">{{ icon('search') }}<input type="search" name="q" value="{{ request.args.get('q', '') }}" placeholder="Phone or email starts with…" aria-label="Search"></div>
+    <button class="btn" type="submit">Search</button>
+  </form>
+  {% if rows %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Queued</th><th>Type</th><th>To</th><th>Message</th><th>Status</th></tr></thead>
+    <tbody>{% for m in rows %}<tr>
+      <td class="nowrap">{{ m.created_at|dt }}<small class="muted" style="display:block">{{ m.created_by or 'automatic' }}</small></td>
+      <td>{{ 'SMS' if m.channel == 'sms' else 'Email' }}</td>
+      <td class="who-cell"><span class="mono">{{ m.to_addr }}</span>{% if m.sid %}<small><a href="{{ url_for('subscriber_view', sid=m.sid) }}">customer</a></small>{% endif %}</td>
+      <td style="max-width:360px">{% if m.subject %}<b>{{ m.subject }}</b><br>{% endif %}<span class="muted">{{ m.body[:140] }}{{ '…' if m.body|length > 140 }}</span></td>
+      <td><span class="badge {{ {'pending': 'info', 'sent': 'ok', 'failed': 'bad'}.get(m.status, 'mute') }}">{{ {'pending': 'Waiting', 'sent': 'Sent', 'failed': 'Failed'}.get(m.status, m.status) }}</span>{% if m.sent_at %}<small class="muted" style="display:block">{{ m.sent_at|dt }}</small>{% endif %}{% if m.error %}<small style="display:block;color:var(--bad)">{{ m.error }}</small>{% endif %}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {{ pager(pg, keep, 'messages') }}
+  {% else %}<div class="empty"><h3>No messages</h3><p>Messages you send and automatic ones appear here.</p></div>{% endif %}
+</section>
+{% endblock %}

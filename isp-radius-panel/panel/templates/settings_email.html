@@ -1,0 +1,41 @@
+{% extends "settings_base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Email settings{% endblock %}
+{% block ssub %}Connect an email account so the panel can send messages to customers.{% endblock %}
+{% block sbody %}
+<div class="split">
+<form method="post" class="stack">
+  {{ csrf_input() }}
+  <section class="panel">
+    <div class="panel-head"><h2>Mail server (SMTP)</h2></div>
+    <div class="panel-body grid-2">
+      <div class="field"><label class="lbl" for="m-host">Server</label><input id="m-host" name="smtp_host" value="{{ s.smtp_host }}" placeholder="smtp.gmail.com" spellcheck="false"></div>
+      <div class="field"><label class="lbl" for="m-port">Port</label><input id="m-port" name="smtp_port" type="number" min="1" max="65535" value="{{ s.smtp_port }}"></div>
+      <div class="field"><label class="lbl" for="m-sec">Security</label><select id="m-sec" name="smtp_security">{% for k, t in (('starttls', 'STARTTLS (port 587)'), ('ssl', 'SSL / TLS (port 465)'), ('none', 'None (port 25)')) %}<option value="{{ k }}" {{ 'selected' if s.smtp_security == k }}>{{ t }}</option>{% endfor %}</select></div>
+      <div class="field"><label class="lbl" for="m-user">Username</label><input id="m-user" name="smtp_user" value="{{ s.smtp_user }}" autocomplete="off" spellcheck="false"></div>
+      <div class="field span-2"><label class="lbl" for="m-pass">Password</label><input id="m-pass" name="smtp_pass" type="password" autocomplete="new-password" placeholder="{{ 'Saved. Leave empty to keep it.' if s.smtp_pass else '' }}">
+        {% if s.smtp_pass %}<label class="check" style="margin-top:6px"><input type="checkbox" name="clear_pass" value="1" style="width:auto"> Remove the saved password</label>{% endif %}
+        <div class="help">For Gmail use an app password, not your normal password.</div></div>
+    </div>
+  </section>
+  <section class="panel">
+    <div class="panel-head"><h2>Sender</h2></div>
+    <div class="panel-body grid-2">
+      <div class="field"><label class="lbl" for="m-from">From address</label><input id="m-from" name="smtp_from" type="email" value="{{ s.smtp_from }}" placeholder="billing@yourisp.com"></div>
+      <div class="field"><label class="lbl" for="m-fname">From name</label><input id="m-fname" name="smtp_from_name" value="{{ s.smtp_from_name }}" placeholder="{{ s.isp_name }}"></div>
+      <div class="field"><label class="lbl" for="m-rate">Emails per minute</label><input id="m-rate" name="email_rate" type="number" min="1" max="600" value="{{ s.email_rate }}"><div class="help">Stay under your provider's limit.</div></div>
+    </div>
+  </section>
+  <div><button class="btn primary" type="submit">Save email settings</button></div>
+</form>
+<section class="panel">
+  <div class="panel-head"><h2>Send a test</h2></div>
+  <form class="panel-body stack" method="post" action="{{ url_for('settings_email_test') }}">
+    {{ csrf_input() }}
+    <p class="muted" style="margin:0">Save first, then send a test to your own address.</p>
+    <div class="field"><label class="lbl" for="m-to">Send to</label><input id="m-to" name="to" type="email" required></div>
+    <div><button class="btn" type="submit">{{ icon('send') }}Send test email</button></div>
+  </form>
+</section>
+</div>
+{% endblock %}

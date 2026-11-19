@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% set is_sms = channel == 'sms' %}
+{% block title %}{{ 'SMS' if is_sms else 'Email' }} compose{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>{{ 'Send SMS' if is_sms else 'Send email' }}</h1><p class="sub">Write once, send to one customer, a group, or {{ 'a list of numbers' if is_sms else 'everyone with an email address' }}.</p></div>
+  <div class="actions"><a class="btn" href="{{ url_for('templates_page', kind=channel) }}">Templates</a><a class="btn" href="{{ url_for('messages', channel=channel) }}">Sent log</a></div>
+</div>
+{% if not ready %}
+<div class="state-banner warn" style="margin-bottom:16px">{{ 'The SMS gateway' if is_sms else 'The email server' }} is not set up yet, so messages will wait in the queue. {% if me.role == 'admin' %}<a href="{{ url_for('settings_sms' if is_sms else 'settings_email') }}">Set it up now</a>.{% else %}Ask an administrator to set it up.{% endif %}</div>
+{% elif sender != 'active' %}
+<div class="state-banner warn" style="margin-bottom:16px">The sender service is not running ({{ sender }}). Messages will wait until it starts: <span class="mono">systemctl start isp-panel-sender</span>.</div>
+{% endif %}
+<form method="post" id="compose-form" data-channel="{{ channel }}" class="split">
+  {{ csrf_input() }}
+  <section class="panel">
+    <div class="panel-head"><h2>Message</h2></div>
+    <div class="panel-body stack">
+      <div class="field"><label class="lbl" for="cp-tpl">Start from a template</label>
+        <select id="cp-tpl" data-template><option value="">Write my own</option>{% for t in tpls %}<option value="{{ t.id or '' }}x" data-subject="{{ t.subject }}" data-body="{{ t.body }}">{{ t.name }}{{ ' (built-in)' if t.system and not t.custom }}</option>{% endfor %}</select></div>
+      {% if not is_sms %}<div class="field"><label class="lbl" for="cp-subject">Subject</label><input id="cp-subject" name="subject" maxlength="200" value="{{ form.subject }}" required></div>{% endif %}
+      <div class="field"><label class="lbl" for="cp-body">Message</label>
+        <textarea id="cp-body" name="body" rows="{{ 6 if is_sms else 12 }}" required maxlength="{{ 1000 if is_sms else 10000 }}">{{ form.body }}</textarea>
+        {% if is_sms %}<div class="counter" data-sms-count></div>{% endif %}
+        <div class="help">Click a name to put it in the message. It is replaced with each customer's own details.</div>
+        <div class="var-chips">{% for v in variables %}{% if v != 'password' %}<button type="button" data-var="{{ v }}">{{ '{' + v + '}' }}</button>{% endif %}{% endfor %}</div></div>
+    </div>
+  </section>
+  <section class="panel">
+    <div class="panel-head"><h2>Send to</h2><span class="aside" data-audience-count></span></div>
+    <div class="panel-body stack">
+      <label class="check"><input type="radio" name="audience" value="filter" {{ 'checked' if form.audience == 'filter' }}> A group of customers</label>
+      <div data-aud="filter" class="stack">
+        <div class="field"><label class="lbl" for="cp-plan">Plan</label><select id="cp-plan" name="plan"><option value="">Any plan</option>{% for p in plans %}<option value="{{ p.id }}" {{ 'selected' if form.plan == p.id|string }}>{{ p.label }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="cp-area">Area</label><select id="cp-area" name="area"><option value="">Any area</option>{% for a in areas %}<option {{ 'selected' if form.area == a }}>{{ a }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="cp-status">Status</label><select id="cp-status" name="status">
+          {% for k, t in (('', 'Any status'), ('active', 'Active'), ('expiring', 'Expiring in 7 days'), ('expired', 'Expired'), ('suspended', 'Suspended'), ('online', 'Online now'), ('offline', 'Offline')) %}<option value="{{ k }}" {{ 'selected' if form.status == k }}>{{ t }}</option>{% endfor %}</select></div>
+      </div>
+      <label class="check"><input type="radio" name="audience" value="single" {{ 'checked' if form.audience == 'single' }}> One customer</label>
+      <div data-aud="single" class="field"><label class="lbl" for="cp-user">Username</label><input id="cp-user" name="username" value="{{ form.username }}" spellcheck="false"></div>
+      {% if is_sms %}
+      <label class="check"><input type="radio" name="audience" value="numbers" {{ 'checked' if form.audience == 'numbers' }}> Phone numbers I type</label>
+      <div data-aud="numbers" class="field"><label class="lbl" for="cp-numbers">Numbers</label><textarea id="cp-numbers" name="numbers" rows="4" placeholder="01711000000, 01811000000">{{ form.numbers }}</textarea><div class="help">Separate with commas, spaces or new lines.</div></div>
+      {% endif %}
+      <button class="btn primary" type="submit" data-confirm-count>{{ icon('send') }}Queue {{ 'SMS' if is_sms else 'email' }}</button>
+      <p class="muted" style="margin:0">Messages are sent in the background at the speed set in Settings. Customers without a valid {{ 'phone number' if is_sms else 'email address' }} are skipped.</p>
+    </div>
+  </section>
+</form>
+{% endblock %}

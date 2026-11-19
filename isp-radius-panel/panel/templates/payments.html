@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, pager %}
+{% block title %}Payments{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Payments</h1><p class="sub">{{ '{:,}'.format(tot.c) }} payment{{ '' if tot.c == 1 else 's' }} · {{ currency }} {{ tot.total|money }}</p></div>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('payments_export', **keep) }}">{{ icon('download') }}Export CSV</a>
+    {% if can('accounting', 'edit') %}<a class="btn" href="{{ url_for('receive') }}">{{ icon('card') }}Receive payment</a>
+    <button class="btn primary" data-open="pay-dlg" data-new>{{ icon('plus') }}Add other payment</button>{% endif %}
+  </div>
+</div>
+<section class="panel">
+  <form class="filters panel-body" method="get" style="padding-bottom:0">
+    <div class="search">{{ icon('search') }}<input type="search" name="q" value="{{ request.args.get('q', '') }}" placeholder="Username or note" aria-label="Search"></div>
+    <select name="method" aria-label="Method"><option value="">All methods</option>{% for m in methods %}<option {{ 'selected' if request.args.get('method') == m }}>{{ m }}</option>{% endfor %}</select>
+    <select name="by" aria-label="Received by"><option value="">Everyone</option>{% for s in staff %}<option {{ 'selected' if request.args.get('by') == s }}>{{ s }}</option>{% endfor %}</select>
+    <input type="date" name="from" value="{{ request.args.get('from', '') }}" aria-label="From"><input type="date" name="to" value="{{ request.args.get('to', '') }}" aria-label="To">
+    <button class="btn" type="submit">Filter</button>
+  </form>
+  {% if rows %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Receipt</th><th>Date</th><th>Customer</th><th class="num">Amount</th><th>Method</th><th class="hide-sm">Valid until</th><th class="hide-sm">Received by</th><th></th></tr></thead>
+    <tbody>{% for p in rows %}<tr>
+      <td class="mono"><a href="{{ url_for('receipt', pid=p.id) }}">#{{ p.id }}</a></td>
+      <td class="nowrap">{{ p.paid_at|dt }}</td>
+      <td class="who-cell">{% if p.sid %}<a href="{{ url_for('subscriber_view', sid=p.sid) }}"><b class="mono">{{ p.username }}</b></a>{% else %}<b class="mono">{{ p.username }}</b>{% endif %}<small>{{ p.full_name or '—' }}{% if p.note %} · {{ p.note }}{% endif %}</small></td>
+      <td class="num"><b>{{ p.amount|money }}</b></td>
+      <td>{{ p.method }}</td>
+      <td class="hide-sm">{{ p.period_to|d if p.period_to else '—' }}</td>
+      <td class="hide-sm">{{ p.received_by or '—' }}</td>
+      <td class="act"><a class="btn sm icon" href="{{ url_for('receipt', pid=p.id) }}" aria-label="Receipt #{{ p.id }}" title="Receipt">{{ icon('printer') }}</a>
+        {% if me.role == 'admin' %}<form method="post" action="{{ url_for('payment_delete', pid=p.id) }}" data-confirm="Delete payment #{{ p.id }}? The customer's expiry date is not changed.">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete payment {{ p.id }}">{{ icon('trash') }}</button></form>{% endif %}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {{ pager(pg, keep, 'payments') }}
+  {% else %}<div class="empty"><h3>No payments found</h3><p>Renewals and payments you record appear here.</p></div>{% endif %}
+</section>
+
+{% if can('accounting', 'edit') %}
+<dialog class="modal" id="pay-dlg" aria-labelledby="pay-title">
+  <form method="post" action="{{ url_for('payment_add') }}">
+    {{ csrf_input() }}
+    <div class="modal-head"><h2 id="pay-title">Add other payment</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <p class="muted" style="margin:0">For money that does not renew the connection: installation fee, device sale, old dues. To renew, use Receive payment.</p>
+      <div class="grid-2">
+        <div class="field"><label class="lbl" for="pp-user">Username</label><input id="pp-user" name="username" required spellcheck="false"></div>
+        <div class="field"><label class="lbl" for="pp-amount">Amount ({{ currency }})</label><input id="pp-amount" name="amount" type="number" step="0.01" min="0.01" required></div>
+        <div class="field"><label class="lbl" for="pp-method">Method</label><select id="pp-method" name="method">{% for m in method_list %}<option>{{ m }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="pp-note">Note</label><input id="pp-note" name="note" maxlength="255" placeholder="Installation fee"></div>
+      </div>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save payment</button></div>
+  </form>
+</dialog>
+{% endif %}
+{% endblock %}

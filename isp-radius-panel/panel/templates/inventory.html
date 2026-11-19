@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, pager %}
+{% block title %}Inventory{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>{{ 'Low stock' if low else 'Inventory' }}</h1><p class="sub">{{ '{:,}'.format(tot.c) }} item{{ '' if tot.c == 1 else 's' }} · stock worth {{ currency }} {{ tot.stock_value|money }}{% if tot.low and not low %} · <a href="{{ url_for('inventory', low=1) }}">{{ tot.low }} low</a>{% endif %}</p></div>
+  {% if can('inventory', 'edit') %}<div class="actions">
+    <button class="btn" data-open="move-dlg" data-new>{{ icon('refresh') }}Move stock</button>
+    <button class="btn primary" data-open="item-dlg" data-new>{{ icon('plus') }}New item</button></div>{% endif %}
+</div>
+<section class="panel">
+  <form class="filters panel-body" method="get" style="padding-bottom:0">
+    {% if low %}<input type="hidden" name="low" value="1">{% endif %}
+    <div class="search">{{ icon('search') }}<input type="search" name="q" value="{{ request.args.get('q', '') }}" placeholder="Name, code or location" aria-label="Search"></div>
+    <select name="category" aria-label="Category"><option value="">All categories</option>{% for c in cats %}<option {{ 'selected' if request.args.get('category') == c }}>{{ c }}</option>{% endfor %}</select>
+    <button class="btn" type="submit">Filter</button>
+  </form>
+  {% if rows %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Item</th><th>Category</th><th class="num">In stock</th><th class="num hide-sm">Minimum</th><th class="num hide-sm">Unit cost</th><th class="hide-sm">Location</th><th></th></tr></thead>
+    <tbody>{% for i in rows %}{% set is_low = i.min_qty > 0 and i.qty <= i.min_qty %}<tr>
+      <td class="who-cell"><b>{{ i.name }}</b>{% if i.sku %}<small class="mono">{{ i.sku }}</small>{% endif %}</td>
+      <td>{{ i.category }}</td>
+      <td class="num"><b class="{{ 'pri-urgent' if is_low }}">{{ '{:,}'.format(i.qty) }}</b> {{ i.unit }}{% if is_low %} <span class="badge warn">Low</span>{% endif %}</td>
+      <td class="num hide-sm">{{ i.min_qty or '—' }}</td><td class="num hide-sm">{{ i.unit_cost|money }}</td><td class="hide-sm">{{ i.location or '—' }}</td>
+      <td class="act"><a class="btn sm icon" href="{{ url_for('inventory_moves', item=i.id) }}" aria-label="History of {{ i.name }}" title="History">{{ icon('file') }}</a>
+        {% if can('inventory', 'edit') %}
+        <button class="btn sm icon" data-open="move-dlg" data-new data-fill='{{ {"item_id": i.id}|tojson }}' aria-label="Move stock of {{ i.name }}" title="Move stock">{{ icon('refresh') }}</button>
+        <button class="btn sm icon" data-open="item-dlg" data-edit='{{ {"id": i.id, "name": i.name, "category": i.category, "sku": i.sku, "unit": i.unit, "min_qty": i.min_qty, "unit_cost": i.unit_cost|string, "location": i.location, "note": i.note}|tojson }}' aria-label="Edit {{ i.name }}">{{ icon('edit') }}</button>
+        {% if me.role == 'admin' %}<form method="post" action="{{ url_for('inventory_delete', iid=i.id) }}" data-confirm="Delete {{ i.name }} and its history?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ i.name }}">{{ icon('trash') }}</button></form>{% endif %}
+        {% endif %}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {{ pager(pg, keep, 'inventory') }}
+  {% else %}<div class="empty"><h3>{{ 'Nothing is running low' if low else 'No items yet' }}</h3><p>{{ 'All stock is above its minimum.' if low else 'Add routers, ONUs, cables and tools to track what you have and where it went.' }}</p></div>{% endif %}
+</section>
+
+{% if can('inventory', 'edit') %}
+<dialog class="modal" id="item-dlg" aria-labelledby="item-title">
+  <form method="post" action="{{ url_for('inventory_save') }}">
+    {{ csrf_input() }}<input type="hidden" name="id">
+    <div class="modal-head"><h2 id="item-title" data-title data-title-new="New item" data-title-edit="Edit item">New item</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body"><div class="grid-2">
+      <div class="field span-2"><label class="lbl" for="it-name">Name</label><input id="it-name" name="name" maxlength="128" required></div>
+      <div class="field"><label class="lbl" for="it-cat">Category</label><input id="it-cat" name="category" list="it-cats" maxlength="64" value="Other"><datalist id="it-cats">{% for c in cats %}<option value="{{ c }}">{% endfor %}</datalist></div>
+      <div class="field"><label class="lbl" for="it-sku">Code / model</label><input id="it-sku" name="sku" maxlength="64"></div>
+      <div class="field"><label class="lbl" for="it-unit">Unit</label><input id="it-unit" name="unit" maxlength="16" value="pcs"></div>
+      <div class="field"><label class="lbl" for="it-cost">Unit cost ({{ currency }})</label><input id="it-cost" name="unit_cost" type="number" min="0" step="0.01" value="0"></div>
+      <div class="field"><label class="lbl" for="it-min">Alert when stock is at or below</label><input id="it-min" name="min_qty" type="number" min="0" value="0"></div>
+      <div class="field" data-new-only><label class="lbl" for="it-qty">Opening quantity</label><input id="it-qty" name="qty" type="number" min="0" value="0"></div>
+      <div class="field"><label class="lbl" for="it-loc">Location</label><input id="it-loc" name="location" maxlength="128" placeholder="Main store"></div>
+      <div class="field"><label class="lbl" for="it-note">Note</label><input id="it-note" name="note" maxlength="255"></div>
+    </div></div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save item</button></div>
+  </form>
+</dialog>
+<dialog class="modal" id="move-dlg" aria-labelledby="move-title">
+  <form method="post" action="{{ url_for('inventory_move') }}">
+    {{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">
+    <div class="modal-head"><h2 id="move-title">Move stock</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body"><div class="grid-2">
+      <div class="field span-2"><label class="lbl" for="mv-item">Item</label><select id="mv-item" name="item_id" required>{% for i in rows %}<option value="{{ i.id }}">{{ i.name }} ({{ i.qty }} {{ i.unit }})</option>{% endfor %}</select><div class="help">Only items on this page are listed. Use the search first to find another item.</div></div>
+      <div class="field"><label class="lbl" for="mv-kind">What happened</label><select id="mv-kind" name="kind">{% for k, t in kinds %}<option value="{{ k }}">{{ t }}</option>{% endfor %}</select></div>
+      <div class="field"><label class="lbl" for="mv-qty">Quantity</label><input id="mv-qty" name="qty" type="number" min="0" value="1" required></div>
+      <div class="field"><label class="lbl" for="mv-user">Customer username</label><input id="mv-user" name="username" spellcheck="false"><div class="help">Needed to assign or take back an item.</div></div>
+      <div class="field"><label class="lbl" for="mv-serial">Serial / MAC</label><input id="mv-serial" name="serial" maxlength="128"></div>
+      <div class="field span-2"><label class="lbl" for="mv-note">Note</label><input id="mv-note" name="note" maxlength="255"></div>
+    </div></div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save</button></div>
+  </form>
+</dialog>
+{% endif %}
+{% endblock %}

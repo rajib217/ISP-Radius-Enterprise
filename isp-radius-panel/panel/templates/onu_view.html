@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}ONU details{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>ONU details</h1><p class="sub"><a href="{{ url_for('onus') }}">ONUs</a> &middot; {{ o.mac or o.serial or o.name or ('#%d' % o.id) }}</p></div>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('onus') }}">{{ icon('chevron') }}Back to ONU List</a>
+    {% if can('network', 'edit') %}
+    {% if o.olt_id %}<form method="post" action="{{ url_for('olt_sync', did=o.olt_id) }}">{{ csrf_input() }}<input type="hidden" name="next" value="{{ request.path }}"><button class="btn primary" type="submit">{{ icon('refresh') }}Refresh Metrics</button></form>{% endif %}
+    <button class="btn violet" data-open="map-dlg" data-fill='{{ {"username": o.username, "action": url_for("onu_map", oid=o.id), "next": request.path}|tojson }}'>{{ icon('link') }}{{ 'Change subscriber' if o.username else 'Map to Subscriber' }}</button>
+    <button class="btn" data-open="onu-dlg" data-edit='{{ {"id": o.id, "olt_id": o.olt_id or "", "name": o.name, "serial": o.serial, "mac": o.mac, "username": o.username, "pon_port": o.pon_port, "rx_dbm": o.rx_dbm|string if o.rx_dbm is not none else "", "status": o.status, "note": o.note}|tojson }}'>{{ icon('edit') }}Edit</button>
+    {% endif %}
+  </div>
+</div>
+<div class="onu-grid">
+  <section class="panel"><div class="panel-head"><h2>ONU Details</h2></div>
+    <dl class="kv wide">
+      <dt>MAC Address</dt><dd>{% if o.mac %}<span class="chip violet mono">{{ o.mac }}</span>{% else %}—{% endif %}</dd>
+      <dt>Serial Number</dt><dd class="mono">{{ o.serial or '—' }}</dd>
+      <dt>Name</dt><dd>{{ o.name or '—' }}</dd>
+      <dt>OLT Device</dt><dd>{% if o.olt_name %}<a href="{{ url_for('onus', olt=o.olt_id) }}">{{ o.olt_name }}</a>{% else %}—{% endif %}</dd>
+      <dt>Slot/Card</dt><dd>{% if o.slot %}<span class="chip blue">Slot {{ o.slot }}</span>{% else %}—{% endif %}</dd>
+      <dt>PON Port : ONT ID</dt><dd>{% if o.ont %}<span class="chip violet">PON {{ o.pon }} : ONT {{ o.ont }}</span>{% else %}{{ o.pon or '—' }}{% endif %}</dd>
+      <dt>Full Interface</dt><dd>{% if full %}<span class="chip violet mono">{{ full }}</span>{% else %}—{% endif %}</dd>
+      <dt>Status</dt><dd><span class="pill {{ 'ok' if o.status == 'online' else ('bad' if o.status == 'los' else 'gray') }}">{{ o.status|capitalize }}</span></dd>
+      <dt>Signal Status</dt><dd>{% if o.sig %}<span class="pill {{ o.sig[2] }}">{{ o.sig[1] }}</span>{% else %}—{% endif %}</dd>
+      <dt>Subscriber</dt><dd>{% if o.username %}{% if o.sid %}<a class="pill ok" href="{{ url_for('subscriber_view', sid=o.sid) }}">{{ o.username }}</a>{% else %}<span class="pill ok">{{ o.username }}</span>{% endif %}{% else %}<span class="pill warn">Unmapped</span>{% endif %}</dd>
+      <dt>Last Seen</dt><dd>{{ (o.last_seen|ago) if o.last_seen else ('Added by hand' if o.source != 'snmp' else '—') }}</dd>
+      {% if o.note %}<dt>Note</dt><dd>{{ o.note }}</dd>{% endif %}
+    </dl>
+  </section>
+  <section class="panel"><div class="panel-head"><h2>Current Metrics</h2></div>
+    <div class="metrics">
+      {% for label, val, cls in [
+        ('RX Power', ('%.2f dBm' % o.rx_dbm|float) if o.rx_dbm is not none else '—', 'green'),
+        ('TX Power', ('%.2f dBm' % o.tx_dbm|float) if o.tx_dbm is not none else '—', 'violet'),
+        ('Temperature', ('%.2f °C' % o.temp_c|float) if o.temp_c is not none else '—', 'red'),
+        ('Voltage', ('%.2f V' % o.volt_v|float) if o.volt_v is not none else '—', 'amber'),
+        ('Current', ('%.2f mA' % o.curr_ma|float) if o.curr_ma is not none else '—', 'blue'),
+        ('Distance', ('%d m' % o.dist_m) if o.dist_m is not none else '—', 'gray')] %}
+      <div class="metric"><span class="mi {{ cls }}"></span><div><small>{{ label }}</small><b>{{ val }}</b></div></div>
+      {% endfor %}
+    </div>
+    {% if o.rx_dbm is none and o.source == 'snmp' %}<p class="muted" style="padding:0 18px 16px">No optical readings yet. Set the RX / TX / temperature OIDs on the OLT (Advanced section) and press Refresh Metrics.</p>{% endif %}
+  </section>
+</div>
+<section class="panel" style="margin-top:20px">
+  <div class="panel-head"><h2>Signal History</h2>
+    <form method="get" class="head-tools"><select name="range" onchange="this.form.submit()" aria-label="Range">{% for v, l in [('1h','Last Hour'),('6h','Last 6 Hours'),('24h','Last 24 Hours'),('7d','Last 7 Days')] %}<option value="{{ v }}" {{ 'selected' if span == v }}>{{ l }}</option>{% endfor %}</select></form></div>
+  <div class="panel-body"><div id="onu-legend" class="onu-legend"></div><div id="onu-chart" class="chart"></div><script type="application/json" id="onu-chart-data">{{ chart|tojson }}</script></div>
+</section>
+{% include "_onu_map.html" %}
+{% include "_onu_edit.html" %}
+{% endblock %}

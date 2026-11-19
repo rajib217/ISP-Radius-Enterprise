@@ -1,0 +1,20 @@
+{% if can('network', 'edit') %}
+<dialog class="modal" id="onu-dlg" aria-labelledby="onu-title">
+  <form method="post" action="{{ url_for('onu_save') }}">
+    {{ csrf_input() }}<input type="hidden" name="id">
+    <div class="modal-head"><h2 id="onu-title" data-title data-title-new="Add ONU" data-title-edit="Edit ONU">Add ONU</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body"><div class="grid-2">
+      <div class="field"><label class="lbl" for="o-name">Name</label><input id="o-name" name="name" maxlength="64"></div>
+      <div class="field"><label class="lbl" for="o-olt">OLT</label><select id="o-olt" name="olt_id"><option value="">None</option>{% for o in olts %}<option value="{{ o.id }}">{{ o.name }}</option>{% endfor %}</select></div>
+      <div class="field"><label class="lbl" for="o-pon">PON port</label><input id="o-pon" name="pon_port" maxlength="32" placeholder="0/1/3"></div>
+      <div class="field"><label class="lbl" for="o-serial">Serial</label><input id="o-serial" name="serial" maxlength="64" spellcheck="false"></div>
+      <div class="field"><label class="lbl" for="o-mac">MAC</label><input id="o-mac" name="mac" maxlength="17" placeholder="AA:BB:CC:DD:EE:FF" spellcheck="false"></div>
+      <div class="field"><label class="lbl" for="o-user">Customer username</label><input id="o-user" name="username" maxlength="64"></div>
+      <div class="field"><label class="lbl" for="o-rx">Rx power (dBm)</label><input id="o-rx" name="rx_dbm" type="number" step="0.01" min="-60" max="10" placeholder="-22.5"></div>
+      <div class="field"><label class="lbl" for="o-status">Status</label><select id="o-status" name="status">{% for v, l in statuses %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
+      <div class="field span-2"><label class="lbl" for="o-note">Note</label><input id="o-note" name="note" maxlength="255"></div>
+    </div></div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save</button></div>
+  </form>
+</dialog>
+{% endif %}

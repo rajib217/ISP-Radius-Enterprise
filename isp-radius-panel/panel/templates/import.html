@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Import subscribers{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Import subscribers</h1><p class="sub">Bring your existing customers in from a CSV file. Moving 20,000 rows takes a few minutes.</p></div>
+  <div class="actions"><a class="btn" href="{{ url_for('import_sample') }}">{{ icon('download') }}Download sample file</a></div>
+</div>
+
+<div class="cols">
+  <section class="panel c-7">
+    <div class="panel-head"><h2>Upload a file</h2></div>
+    <form class="panel-body stack" method="post" enctype="multipart/form-data">
+      {{ csrf_input() }}
+      <div class="field"><label class="lbl" for="file">CSV file (UTF-8)</label><input id="file" type="file" name="file" accept=".csv,text/csv" required style="height:auto;padding:8px"></div>
+      <div class="grid-2">
+        {% if nas_rows %}<div class="field"><label class="lbl" for="imp-nas">NAS</label><select id="imp-nas" name="nas_id"><option value="">Do not set</option>{% for n in nas_rows %}<option value="{{ n.id }}">{{ n.shortname or n.nasname }} ({{ n.nasname }})</option>{% endfor %}</select><div class="help">Saved on every imported customer.</div></div>{% endif %}
+        <div class="field"><label class="lbl" for="imp-sp">Salesperson</label><select id="imp-sp" name="salesperson"><option value="">{{ 'Me (' ~ me.username ~ ')' }}</option>{% for s in sales %}<option value="{{ s.username }}">{{ s.username }}{% if s.full_name %} ({{ s.full_name }}){% endif %} - {{ s.role }}</option>{% endfor %}</select><div class="help">The reseller, sub-reseller or retailer the imported customers belong to. They see them in their own list.</div></div>
+      </div>
+      <div class="field">
+        <span class="lbl">If a username already exists</span>
+        <label class="check"><input type="radio" name="mode" value="skip" checked> Skip it and keep the current data</label>
+        <label class="check" style="margin-top:6px"><input type="radio" name="mode" value="update"> Update it with the values in the file (blank cells are left alone)</label>
+      </div>
+      <div><button class="btn primary" type="submit" data-confirm="Start the import? Leave this page open until it finishes.">{{ icon('upload') }}Import</button></div>
+    </form>
+  </section>
+
+  <section class="panel c-5">
+    <div class="panel-head"><h2>Columns</h2></div>
+    <div class="panel-body stack" style="gap:10px">
+      <p><b>username</b> and <b>password</b> are required for new customers. Everything else is optional:</p>
+      <p><code>plan</code> <code>full_name</code> <code>phone</code> <code>email</code> <code>address</code> <code>area</code> <code>expiry</code> <code>static_ip</code> <code>status</code></p>
+      <p class="muted"><b>plan</b> is the plan's short name, exactly as shown on the Plans page. Create plans first. <b>expiry</b> is YYYY-MM-DD or DD/MM/YYYY. <b>status</b> is active or suspended.</p>
+    </div>
+  </section>
+</div>
+
+{% if report %}
+<section class="panel" style="margin-top:16px">
+  <div class="panel-head"><h2>Result</h2></div>
+  <div class="stat3" style="grid-template-columns:repeat(4,1fr)">
+    <div><b>{{ report.created }}</b><span>Created</span></div>
+    <div><b>{{ report.updated }}</b><span>Updated</span></div>
+    <div><b>{{ report.skipped }}</b><span>Skipped</span></div>
+    <div><b>{{ report.failed }}</b><span>Failed</span></div>
+  </div>
+  {% if report.errors %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Line</th><th>Username</th><th>Problem</th></tr></thead>
+    <tbody>{% for line, user, msg in report.errors %}<tr><td>{{ line }}</td><td class="mono">{{ user }}</td><td>{{ msg }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% if report.failed > report.errors|length %}<p class="muted" style="padding:12px 18px">Showing the first {{ report.errors|length }} of {{ report.failed }} problems.</p>{% endif %}
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

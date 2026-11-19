@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Tax / Extra Fee{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Tax / Extra Fee</h1><p class="sub">Active taxes and fees are added to the suggested amount when you renew a customer.</p></div>
+  {% if can('plans', 'edit') %}<div class="actions"><button class="btn primary" data-open="fee-dlg" data-new>{{ icon('plus') }}Add</button></div>{% endif %}
+</div>
+<section class="panel">
+  {% if rows %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Name</th><th>Kind</th><th>Amount</th><th>Status</th><th class="hide-sm">Note</th><th></th></tr></thead>
+    <tbody>{% for r in rows %}<tr>
+      <td><b>{{ r.name }}</b></td><td>{{ 'Tax' if r.kind == 'tax' else 'Extra fee' }}</td>
+      <td>{{ r.value }}{{ '%' if r.mode == 'percent' else '' }}</td>
+      <td><span class="badge {{ 'ok' if r.active else 'bad' }}">{{ 'Active' if r.active else 'Off' }}</span></td>
+      <td class="hide-sm muted">{{ r.note or '' }}</td>
+      <td class="act">{% if can('plans', 'edit') %}
+        <button class="btn sm icon" data-open="fee-dlg" data-edit='{{ {"id": r.id, "name": r.name, "kind": r.kind, "mode": r.mode, "value": r.value|string, "active": r.active|string, "note": r.note}|tojson }}' aria-label="Edit {{ r.name }}">{{ icon('edit') }}</button>
+        <form method="post" action="{{ url_for('fee_delete', fid=r.id) }}" data-confirm="Delete {{ r.name }}?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ r.name }}">{{ icon('trash') }}</button></form>{% endif %}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="empty"><h3>No taxes or fees</h3><p>Add VAT or a service charge and it is included when renewing.</p></div>{% endif %}
+</section>
+{% if can('plans', 'edit') %}
+<dialog class="modal" id="fee-dlg" aria-labelledby="fee-title">
+  <form method="post" action="{{ url_for('fee_save') }}">
+    {{ csrf_input() }}<input type="hidden" name="id">
+    <div class="modal-head"><h2 id="fee-title" data-title data-title-new="Add tax / fee" data-title-edit="Edit tax / fee">Add tax / fee</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <div class="field"><label class="lbl" for="fe-name">Name</label><input id="fe-name" name="name" maxlength="64" required placeholder="VAT"></div>
+      <div class="field"><label class="lbl" for="fe-kind">Kind</label><select id="fe-kind" name="kind"><option value="tax">Tax</option><option value="fee">Extra fee</option></select></div>
+      <div class="field"><label class="lbl" for="fe-mode">Type</label><select id="fe-mode" name="mode"><option value="percent">Percent of the package price</option><option value="fixed">Fixed amount</option></select></div>
+      <div class="field"><label class="lbl" for="fe-value">Value</label><input id="fe-value" name="value" type="number" min="0" step="0.01" required></div>
+      <div class="field"><label class="lbl" for="fe-active">Status</label><select id="fe-active" name="active"><option value="1">Active</option><option value="0">Off</option></select></div>
+      <div class="field"><label class="lbl" for="fe-note">Note</label><input id="fe-note" name="note" maxlength="255"></div>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save</button></div>
+  </form>
+</dialog>
+{% endif %}
+{% endblock %}

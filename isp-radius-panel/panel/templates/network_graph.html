@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Network graph{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Graph</h1><p class="sub"><a href="{{ url_for('nas_list') }}">Network</a> &middot; traffic and customers per router</p></div></div>
+{% if has_nas %}
+<section class="panel"><div class="panel-head"><h2>Customers online per router</h2></div>
+  <div class="panel-body"><div class="chart" data-kind="bars" data-src="g-online"></div><script type="application/json" id="g-online">{{ online|tojson }}</script></div></section>
+<section class="panel" style="margin-top:16px"><div class="panel-head"><h2>Traffic per router, last 7 days</h2><span class="aside">Each session is counted on the day it started</span></div>
+  <div class="panel-body"><div class="chart" data-kind="bars" data-src="g-traffic"></div><script type="application/json" id="g-traffic">{{ traffic|tojson }}</script></div></section>
+{% else %}<section class="panel"><div class="empty"><h3>No data yet</h3><p>Graphs appear once a router reports its first session.</p></div></section>{% endif %}
+<section class="panel" style="margin-top:16px"><div class="panel-head"><h2>Customers online, last 24 hours</h2></div>
+  <div class="panel-body"><div class="chart" data-kind="line" data-src="g-line"></div><script type="application/json" id="g-line">{{ line|tojson }}</script></div></section>
+{% endblock %}

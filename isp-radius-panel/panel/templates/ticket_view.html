@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Ticket #{{ t.id }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>#{{ t.id }} · {{ t.subject }}</h1>
+    <p class="sub"><span class="badge {{ {'open': 'warn', 'pending': 'info', 'resolved': 'ok', 'closed': 'mute'}.get(t.status, 'mute') }}">{{ t.status|capitalize }}</span>
+      <span class="pri-{{ t.priority }}">{{ t.priority|capitalize }}</span> · opened {{ t.created_at|dt }} by {{ t.created_by or '—' }}</p></div>
+  <div class="actions"><a class="btn" href="{{ url_for('tickets') }}">All tickets</a>
+    {% if me.role == 'admin' %}<form method="post" action="{{ url_for('ticket_delete', tid=t.id) }}" data-confirm="Delete ticket #{{ t.id }} and all replies?">{{ csrf_input() }}<button class="btn danger" type="submit">{{ icon('trash') }}Delete</button></form>{% endif %}</div>
+</div>
+<div class="split">
+  <div class="stack">
+    <section class="panel">
+      <div class="panel-head"><h2>Conversation</h2></div>
+      <div class="panel-body thread">
+        {% for r in replies %}<div class="msg {{ 'internal' if r.internal }}"><div class="meta"><b>{{ r.author }}</b><span>{{ r.created_at|dt }}</span>{% if r.internal %}<span class="badge warn">Internal note</span>{% endif %}</div><p>{{ r.body }}</p></div>
+        {% else %}<div class="empty"><p>No messages yet.</p></div>{% endfor %}
+      </div>
+    </section>
+    {% if can('tickets', 'edit') %}
+    <section class="panel">
+      <div class="panel-head"><h2>Reply or update</h2></div>
+      <form class="panel-body stack" method="post" action="{{ url_for('ticket_reply', tid=t.id) }}">
+        {{ csrf_input() }}
+        <div class="field"><label class="lbl" for="rp-body">Message</label><textarea id="rp-body" name="body" rows="4" maxlength="5000"></textarea></div>
+        <div class="row-gap">
+          <label class="check"><input type="checkbox" name="internal" value="1"> Internal note (staff only)</label>
+          <select name="status" aria-label="New status" style="width:auto"><option value="">Keep status ({{ t.status }})</option>{% for k, n in statuses %}{% if k != t.status %}<option value="{{ k }}">Mark {{ n|lower }}</option>{% endif %}{% endfor %}</select>
+          <button class="btn primary" type="submit">{{ icon('send') }}Save</button>
+        </div>
+      </form>
+    </section>
+    {% endif %}
+  </div>
+  <div class="stack">
+    <section class="panel"><div class="panel-head"><h2>Customer</h2></div><div class="panel-body">
+      {% if t.sid %}<a href="{{ url_for('subscriber_view', sid=t.sid) }}"><b>{{ t.sub_name or t.username }}</b></a><div class="mono muted">{{ t.username }}</div>
+        {% if t.sub_phone %}<div>{{ t.sub_phone }}</div>{% endif %}{% if t.sub_area %}<div class="muted">{{ t.sub_area }}</div>{% endif %}
+      {% else %}<span class="muted">General ticket, no customer.</span>{% endif %}</div></section>
+    {% if can('tickets', 'edit') %}
+    <section class="panel"><div class="panel-head"><h2>Details</h2></div>
+      <form class="panel-body stack" method="post" action="{{ url_for('ticket_update', tid=t.id) }}">
+        {{ csrf_input() }}
+        <div class="field"><label class="lbl" for="tu-cat">Category</label><select id="tu-cat" name="category">{% for k, n in categories %}<option value="{{ k }}" {{ 'selected' if t.category == k }}>{{ n }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="tu-pri">Priority</label><select id="tu-pri" name="priority">{% for k, n in priorities %}<option value="{{ k }}" {{ 'selected' if t.priority == k }}>{{ n }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="tu-dept">Department</label><select id="tu-dept" name="department_id"><option value="">None</option>{% for d in depts %}<option value="{{ d.id }}" {{ 'selected' if t.department_id == d.id }}>{{ d.name }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="tu-who">Assigned to</label><select id="tu-who" name="assigned_to"><option value="">Nobody</option>{% for s in staff %}<option value="{{ s.id }}" {{ 'selected' if t.assigned_to == s.id }}>{{ s.full_name or s.username }}</option>{% endfor %}</select></div>
+        <div><button class="btn" type="submit">Save details</button></div>
+      </form></section>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

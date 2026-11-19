@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Income &amp; expense{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Income &amp; expense</h1><p class="sub">{{ start|d }} to {{ end|d }}</p></div>
+  <form class="actions" method="get">
+    <input type="date" name="from" value="{{ start.isoformat() }}" aria-label="From" style="width:auto"><input type="date" name="to" value="{{ end.isoformat() }}" aria-label="To" style="width:auto">
+    <button class="btn primary" type="submit">Show</button>
+  </form>
+</div>
+{% set net = income.total - spent.total %}
+<section class="kpis" style="margin-top:0">
+  <div class="kpi"><span class="k">Income</span><span class="v">{{ income.total|money }}</span><span class="s">{{ income.c }} payments</span></div>
+  <div class="kpi"><span class="k">Expenses</span><span class="v">{{ spent.total|money }}</span><span class="s">{{ spent.c }} records</span></div>
+  <div class="kpi"><span class="k">Net</span><span class="v" style="color:var(--{{ 'ok' if net >= 0 else 'bad' }})">{{ net|money }}</span><span class="s">{{ currency }}</span></div>
+</section>
+<section class="panel">
+  <div class="panel-head"><h2>Last 12 months</h2></div>
+  <div class="panel-body"><div class="chart" data-kind="bars" data-src="inex"></div><script type="application/json" id="inex">{{ chart|tojson }}</script></div>
+  <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Month</th><th class="num">Income</th><th class="num">Expenses</th><th class="num">Net</th></tr></thead>
+  <tbody>{% for r in table|reverse %}<tr><td>{{ r.label }}</td><td class="num">{{ r.income|money }}</td><td class="num">{{ r.expense|money }}</td><td class="num"><b style="color:var(--{{ 'ok' if r.net >= 0 else 'bad' }})">{{ r.net|money }}</b></td></tr>{% endfor %}</tbody></table></div>
+</section>
+<div class="split-even" style="margin-top:16px">
+  <section class="panel"><div class="panel-head"><h2>Income by method</h2></div>
+    {% if by_method %}<div class="tbl-wrap"><table class="tbl"><tbody>{% for m in by_method %}<tr><td>{{ m.method }}</td><td class="num"><b>{{ m.total|money }}</b></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><p>No income in this period.</p></div>{% endif %}</section>
+  <section class="panel"><div class="panel-head"><h2>Expenses by category</h2></div>
+    {% if by_cat %}<div class="tbl-wrap"><table class="tbl"><tbody>{% for c in by_cat %}<tr><td>{{ c.category }}</td><td class="num"><b>{{ c.total|money }}</b></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><p>No expenses in this period.</p></div>{% endif %}</section>
+</div>
+{% endblock %}

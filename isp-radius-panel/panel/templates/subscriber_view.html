@@ -1,0 +1,310 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, state_badge %}
+{% block title %}{{ sub.username }}{% endblock %}
+{% block content %}
+{% set edit = can('subscribers', 'edit') %}
+{% set online = sessions|length > 0 %}
+{% set net_on = not sub.net_disabled and sub.state not in ('suspended', 'expired') %}
+<div class="page-head"><div><h1>Subscribers</h1><p class="sub"><a href="{{ url_for('dashboard') }}">Home</a> &middot; <a href="{{ url_for('subscribers') }}">All</a> &middot; {{ sub.username }}</p></div></div>
+
+{% if edit %}
+<div class="sv-actions">
+  <a class="pbtn" href="{{ url_for('subscriber_activation', username=sub.username, next=url_for('subscriber_view', sid=sub.id)) }}">{{ icon('refresh') }}Activation</a>
+  <button class="pbtn" data-open="migrate-dlg" data-fill='{{ {"plan_id": sub.plan_id or ""}|tojson }}'>{{ icon('layers') }}Migration</button>
+  <button class="pbtn" data-open="balance-dlg">{{ icon('wallet') }}Add Balance</button>
+  <a class="pbtn" href="{{ url_for('subscriber_edit', sid=sub.id) }}">{{ icon('edit') }}Edit Profile</a>
+  <button class="pbtn" data-open="svc-dlg">{{ icon('sliders') }}Service Settings</button>
+  {% if online %}<form method="post" action="{{ url_for('subscriber_kick', sid=sub.id) }}" data-confirm="Disconnect {{ sub.username }} now? The router will reconnect them automatically.">{{ csrf_input() }}<button class="pbtn red" type="submit">{{ icon('power') }}Disconnect</button></form>{% endif %}
+  <form method="post" action="{{ url_for('subscriber_toggle', sid=sub.id) }}" {% if sub.status == 'active' %}data-confirm="Disable the profile of {{ sub.username }}? They will be disconnected and cannot log in until you enable it."{% endif %}>{{ csrf_input() }}<button class="pbtn red" type="submit">{{ icon('pause' if sub.status == 'active' else 'play') }}{{ 'Profile Disable' if sub.status == 'active' else 'Profile Enable' }}</button></form>
+  <form method="post" action="{{ url_for('subscriber_net', sid=sub.id) }}" {% if not sub.net_disabled %}data-confirm="Disable the internet of {{ sub.username }}? Login is refused until you enable it again."{% endif %}>{{ csrf_input() }}<button class="pbtn red" type="submit">{{ icon('shield') }}{{ 'Enable Net' if sub.net_disabled else 'Disable Net' }}</button></form>
+  <form method="post" action="{{ url_for('subscriber_sync', sid=sub.id) }}">{{ csrf_input() }}<button class="pbtn" type="submit">{{ icon('refresh') }}Sync</button></form>
+  <a class="pbtn" href="{{ url_for('diagnose_page', user=sub.username) }}">{{ icon('search') }}Why Refused?</a>
+  <a class="pbtn" href="#reports" data-tab-link="reports">{{ icon('chart') }}Usage Graph</a>
+  <button class="pbtn" data-open="invoice-dlg">{{ icon('file') }}New Invoice</button>
+  <button class="pbtn" data-open="photo-dlg">{{ icon('upload') }}Photo</button>
+  <button class="pbtn" data-open="pw-dlg">{{ icon('user') }}Password</button>
+  <button class="pbtn" type="button" data-reveal="pw" data-reveal-label>{{ icon('eye') }}Toggle Password</button>
+  {% if can('documents') %}<a class="pbtn" href="#documents" data-tab-link="documents">{{ icon('folder') }}Document</a>{% endif %}
+  <a class="pbtn" href="#attributes" data-tab-link="attributes">{{ icon('grid') }}Attributes</a>
+  {% if can('notes') %}<a class="pbtn" href="{{ url_for('notes', sub=sub.id) }}">{{ icon('note') }}Note</a>{% endif %}
+  <button class="pbtn" data-open="grace-dlg">{{ icon('pin') }}Grace Period</button>
+  <form method="post" action="{{ url_for('subscriber_reset_mac', sid=sub.id) }}" data-confirm="Clear the MAC binding of {{ sub.username }}?">{{ csrf_input() }}<button class="pbtn" type="submit">{{ icon('refresh') }}Reset MAC Address</button></form>
+</div>
+{% endif %}
+
+{% if app_cfg.nas_mismatch_notify == '1' and online and sub.nas_ip and sessions[0].nasipaddress != sub.nas_ip %}<div class="state-banner warn" style="margin-bottom:14px">NAS mismatch: this customer is connected to {{ sessions[0].nasipaddress }}, but is registered on {{ sub.nas_ip }}.{% if app_cfg.nas_auto_update == '1' %} The registered NAS updates at the next 5-minute check.{% endif %}</div>{% endif %}
+<section class="panel sv-head">
+  <div class="sv-top">
+    <div class="avatar-wrap">
+      {% if x.photo %}<img class="pavatar" src="{{ x.photo }}" alt="">{% else %}<span class="pavatar ph">{{ icon('user') }}</span>{% endif %}
+      <i class="dot {{ 'on' if online }}"></i>
+    </div>
+    <div class="sv-id">
+      <h2>{{ sub.full_name or sub.username }}{% if sub.full_name %} <small>({{ sub.username }})</small>{% endif %}</h2>
+      <div class="chips"><span class="chip blue">{{ icon('user') }}Subscriber</span>{% if sub.created_by %}<span class="chip violet">{{ icon('user') }}{{ sub.created_by }}</span>{% endif %}<span class="chip {{ 'green' if online else 'gray' }}">{{ 'Online' if online else 'Offline' }}</span>{{ state_badge(sub.state) }}</div>
+    </div>
+    <details class="dd sv-more"><summary class="pbtn">Actions &#9662;</summary>
+      <div class="dd-menu">
+        {% if edit %}<a href="{{ url_for('subscriber_edit', sid=sub.id) }}">Edit profile</a>{% endif %}
+        {% if can('tickets', 'edit') %}<a href="{{ url_for('ticket_new', sub=sub.id) }}">New ticket</a>{% endif %}
+        {% if can('sms', 'edit') and sub.phone %}<a href="{{ url_for('sms_compose', username=sub.username) }}">Send SMS</a>{% endif %}
+        {% if me.role == 'admin' %}<form method="post" action="{{ url_for('subscriber_delete', sid=sub.id) }}" data-confirm="Permanently delete {{ sub.username }}? Their login stops working. Usage history is kept.">{{ csrf_input() }}<button type="submit" class="danger-link">Delete subscriber</button></form>{% endif %}
+      </div></details>
+  </div>
+  <div class="kpis ksv">
+    <div class="kpi"><div><small>Online Uptime</small><b>{{ x.uptime|dur if x.uptime is defined else '—' }}</b></div><i class="ki violet">{{ icon('activity') }}</i></div>
+    <div class="kpi"><div><small>Total</small><b>{{ ('%.0f' % x.quota_gb|float) if x.quota_gb else '∞' }}</b><em>GB</em></div><i class="ki green">{{ icon('archive') }}</i></div>
+    <div class="kpi"><div><small>Used</small><b>{{ '%.2f' % month_gb }}</b><em>GB this month</em></div><i class="ki red">{{ icon('chart') }}</i></div>
+    <div class="kpi"><div><small>Remaining</small><b>{{ ('%.2f' % ([x.quota_gb|float - month_gb, 0]|max)) if x.quota_gb else '∞' }}</b><em>GB</em></div><i class="ki amber">{{ icon('power') }}</i></div>
+    <div class="kpi"><div><small class="g">Balance</small><b class="g">{{ '%.2f' % sub.balance|float }}</b></div><i class="ki green">{{ icon('wallet') }}</i></div>
+    <div class="kpi"><div><small class="r">Due</small><b class="r">{{ '%.2f' % x.due|float }}</b></div><i class="ki red">{{ icon('card') }}</i></div>
+    <div class="kpi"><div><small>Tickets</small><b>{{ x.open_tickets }}</b></div><i class="ki blue">{{ icon('ticket') }}</i></div>
+  </div>
+  <nav class="sv-tabs" aria-label="Sections">
+    {% for key, label, ic in [('profile','Profile','user'),('reports','Reports','chart'),('ledgers','Ledgers','file'),('invoices','Invoices','file'),('payments','Payments','card'),('online','Online Payments','wallet'),('messages','SMS Deliveries','phone'),('services','Services','sliders'),('fees','Extra Service Fee','dollar'),('attributes','Attributes','grid'),('mac','MAC Address','server'),('documents','Documents','folder'),('logins','Login Log','shield'),('sessions','Session Log','activity'),('coa','CoA Logs','power'),('activity','Activities','chart'),('tickets','Tickets','ticket')] %}
+    {% if key not in ('documents',) or can('documents') %}{% if key != 'tickets' or can('tickets') %}<a href="#{{ key }}" data-tab="{{ key }}">{{ icon(ic) }}{{ label }}</a>{% endif %}{% endif %}
+    {% endfor %}
+  </nav>
+</section>
+
+<div class="sv-pane" id="tab-profile">
+<div class="cards3">
+  <section class="panel kvc"><div class="panel-head"><h2>{{ icon('user') }}Personal Information</h2></div>
+    <div class="kvc-body">
+      <div class="who"><span class="pavatar sm ph">{{ icon('user') }}</span><div><b>{{ sub.full_name or sub.username }}</b><small>{{ sub.username }}</small></div></div>
+      <dl><dt>Phone</dt><dd>{{ sub.phone or '—' }}</dd><dt>Serial</dt><dd>{{ sub.serial or '—' }}</dd><dt>Identity (NID)</dt><dd>{{ sub.identity or '—' }}</dd><dt>Email</dt><dd>{{ sub.email or '—' }}</dd>
+      <dt>Password</dt><dd><span class="secret" id="pw" data-value="{{ password }}" data-shown="0">••••••••</span> <button class="btn sm icon" type="button" data-reveal="pw" aria-label="Show password">{{ icon('eye') }}</button> <button class="btn sm icon" type="button" data-copy="pw" aria-label="Copy password">{{ icon('copy') }}</button></dd></dl>
+    </div></section>
+  <section class="panel kvc"><div class="panel-head"><h2>{{ icon('briefcase') }}Company Information</h2></div>
+    <div class="kvc-body"><dl><dt>ISP</dt><dd>{{ x.isp_name }}</dd><dt>Area</dt><dd>{{ sub.area or '—' }}</dd><dt>Salesperson</dt><dd>{{ sub.created_by or '—' }}</dd><dt>Created At</dt><dd>{{ sub.created_at|dt }}</dd></dl></div></section>
+  <section class="panel kvc"><div class="panel-head"><h2>{{ icon('user') }}Connection Information</h2></div>
+    <div class="kvc-body"><dl>
+      <dt>Profile Status</dt><dd class="{{ 'g' if sub.status == 'active' and sub.state != 'expired' else 'r' }}">{{ 'Disabled' if sub.status != 'active' else ('Expired' if sub.state == 'expired' else 'Active') }}</dd>
+      <dt>Net Status</dt><dd class="{{ 'g' if net_on else 'r' }}">{{ 'Enabled' if net_on else 'Disabled' }}</dd>
+      <dt>Connection Type</dt><dd>Radius PPPoE</dd>
+      <dt>Connection Status</dt><dd class="{{ 'g' if online else 'r' }}">{{ 'Online' if online else 'Offline' }}</dd>
+      <dt>NAS</dt><dd>{{ x.nas_name or '—' }}</dd></dl></div></section>
+  <section class="panel kvc"><div class="panel-head"><h2>{{ icon('package') }}Package Information</h2></div>
+    <div class="kvc-body"><dl>
+      <dt>Package</dt><dd>{% if sub.plan_label %}<a href="{{ url_for('plans') }}">{{ sub.plan_label }}</a> <small class="muted">{{ bw(sub) }}</small>{% else %}—{% endif %}</dd>
+      <dt>Package Duration</dt><dd class="v">{{ ('%d %s%s' % (sub.duration or sub.validity_days, sub.duration_type or 'day', '' if (sub.duration or sub.validity_days) == 1 else 's')) if sub.validity_days else '—' }}</dd>
+      <dt>Price</dt><dd>{{ currency }} {{ sub.price|money if sub.price is not none else '—' }}</dd>
+      <dt>Policy</dt><dd>{{ sub.policy_group or '—' }}</dd>
+      <dt>Connected Policy</dt><dd>{{ x.groups|join(', ') or '—' }}</dd>
+      <dt>Total Policies</dt><dd>{{ x.groups|length }} - {{ 'OK' if x.groups else 'None' }}</dd></dl></div></section>
+  <section class="panel kvc"><div class="panel-head"><h2>{{ icon('sliders') }}Service Settings</h2></div>
+    <div class="kvc-body"><dl>
+      {% for label, on, fk in [('SMS Status', sub.sms_on, 'svc.sms'), ('Email Status', sub.email_on, 'svc.email'), ('Auto Mac Lock', sub.auto_mac, 'svc.maclock'), ('Auto Renew Status', sub.auto_renew, 'svc.skip_renew')] if can_fn(fk) or fk in ('svc.maclock', 'svc.skip_renew') %}
+      <dt>{{ label }}</dt><dd class="{{ 'g' if on else 'r' }}">{{ 'Enabled' if on else 'Disabled' }}</dd>{% endfor %}
+      <dt>Grace Period</dt><dd>{% if sub.grace_until and sub.grace_until >= today %}until {{ sub.grace_until|d }}{% else %}Off{% endif %}</dd>
+      <dt>MAC Binding</dt><dd class="{{ 'v' if sub.mac_bind }}">{{ sub.mac_bind or 'Not bound' }}</dd></dl></div></section>
+  <section class="panel kvc"><div class="panel-head"><h2>{{ icon('pin') }}Service Information</h2></div>
+    <div class="kvc-body"><dl>
+      <dt>Expiration Date</dt><dd>{% if sub.expiry_date %}<span class="pill {{ 'bad' if sub.days_left is not none and sub.days_left < 0 else 'ok' }}">{{ sub.expiry_date|d }}</span>{% if sub.days_left is not none and sub.days_left >= 0 %} <small class="muted">({{ 'today' if sub.days_left == 0 else 'in ' ~ sub.days_left ~ ' days' }})</small>{% endif %}{% else %}Never{% endif %}</dd>
+      <dt>Last Activation Date</dt><dd>{{ x.last_activation.paid_at|dt if x.last_activation else 'N/A' }}</dd>
+      <dt>Fixed IP</dt><dd>{{ sub.static_ip or 'From pool' }}</dd></dl></div></section>
+  <section class="panel kvc"><div class="panel-head"><h2>{{ icon('globe') }}Connection Status</h2></div>
+    <div class="kvc-body"><dl>
+      <dt>Online Uptime</dt><dd class="{{ 'g' if online }}">{{ x.uptime|dur if x.uptime is defined else '—' }}</dd>
+      <dt>Leased IP Address</dt><dd class="v">{{ sessions[0].framedipaddress if online else '—' }}</dd>
+      <dt>Connected Policy</dt><dd class="v">{{ x.groups|join(', ') or '—' }}</dd>
+      <dt>MAC Address</dt><dd><b class="mono">{{ x.mac_now or '—' }}</b>{% if x.mac_vendor %} <span class="chip blue">{{ x.mac_vendor }}</span>{% endif %}</dd>
+      <dt>NAS Name</dt><dd>{{ x.nas_name or '—' }}</dd></dl></div></section>
+  <section class="panel kvc"><div class="panel-head"><h2>{{ icon('chart') }}Session Statistics</h2></div>
+    <div class="kvc-body">{% set l = sessions[0] if online else x.last %}{% if l %}<dl>
+      <dt>Session Started</dt><dd>{{ l.acctstarttime|dt }}</dd>
+      <dt>Session Updated</dt><dd>{{ (l.acctupdatetime or l.acctstarttime)|dt }}</dd>
+      <dt>Session Interval Time</dt><dd>{{ '%.2f' % x.interim_min }} Min</dd>
+      <dt>Upload</dt><dd class="v">{{ l.acctinputoctets|bytes }}</dd>
+      <dt>Download</dt><dd class="v">{{ l.acctoutputoctets|bytes }}</dd></dl>{% else %}<p class="muted">No session yet.</p>{% endif %}</div></section>
+  <section class="panel kvc"><div class="panel-head"><h2>{{ icon('tool') }}Technical Details</h2></div>
+    <div class="kvc-body">{% if x.last %}<dl>
+      <dt>NAS Port</dt><dd>{{ x.last.nasportid or '—' }}</dd>
+      <dt>NAS Port Type</dt><dd>{{ x.last.nasporttype or '—' }}</dd>
+      <dt>Network Profile</dt><dd>{{ x.groups[0] if x.groups else '—' }}</dd>
+      <dt>Framed Protocol</dt><dd>{{ x.last.framedprotocol or '—' }}</dd>
+      <dt>Terminate Cause</dt><dd>{{ x.last.acctterminatecause or '—' }}</dd></dl>{% else %}<p class="muted">No session yet.</p>{% endif %}</div></section>
+  <section class="panel kvc"><div class="panel-head"><h2>{{ icon('filter') }}Discount and Quota Information</h2></div>
+    <div class="kvc-body">{% if x.quota_gb %}<dl><dt>Total quota</dt><dd>{{ '%.0f' % x.quota_gb|float }} GB</dd><dt>Used this month</dt><dd>{{ '%.2f' % month_gb }} GB</dd><dt>Quota status</dt><dd class="{{ 'r' if sub.quota_hit else 'g' }}">{{ 'Reached (' ~ sub.quota_hit ~ ')' if sub.quota_hit else 'Within quota' }}</dd></dl>{% else %}<p class="muted">No data quota on this package.</p>{% endif %}</div></section>
+  <section class="panel kvc"><div class="panel-head"><h2>{{ icon('info') }}Additional Information</h2></div>
+    <div class="kvc-body">{% if sub.notes %}<p style="white-space:pre-wrap;margin:0">{{ sub.notes }}</p>{% else %}<p class="muted">Nothing added.</p>{% endif %}</div></section>
+  <section class="panel kvc"><div class="panel-head"><h2>{{ icon('pin') }}Address Information</h2></div>
+    <div class="kvc-body"><dl><dt>Address</dt><dd>{{ sub.address or '—' }}</dd><dt>Area</dt><dd>{{ sub.area or '—' }}</dd></dl>
+      {% if sub.address %}{% set mapq = (sub.address ~ ' ' ~ (sub.area or ''))|urlencode %}{% if app_cfg.gmap_on == '1' and app_cfg.gmap_key %}<iframe class="gmap" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Map" src="https://www.google.com/maps/embed/v1/place?key={{ app_cfg.gmap_key|urlencode }}&q={{ mapq }}"></iframe>{% endif %}<p style="margin:10px 0 0"><a href="https://www.google.com/maps/search/?api=1&query={{ mapq }}" target="_blank" rel="noopener">Open in Google Maps &rarr;</a></p>{% endif %}</div></section>
+</div>
+{% if online %}
+<section class="panel" style="margin-top:16px"><div class="panel-head"><h2>Live sessions</h2><span class="aside">{{ sessions|length }}</span></div>
+  <div class="tbl-wrap"><table class="tbl"><thead><tr><th>IP address</th><th>MAC / caller</th><th>Router</th><th>Connected</th><th class="num">Down</th><th class="num">Up</th><th></th></tr></thead><tbody>
+  {% for s in sessions %}<tr><td class="mono">{{ s.framedipaddress or '—' }}</td><td class="mono">{{ s.callingstationid or '—' }}</td><td class="mono">{{ s.nasipaddress }}</td><td>{{ s.acctstarttime|ago }}</td><td class="num">{{ s.acctoutputoctets|bytes }}</td><td class="num">{{ s.acctinputoctets|bytes }}</td>
+    <td class="act">{% if edit %}<form method="post" action="{{ url_for('online_disconnect') }}" data-confirm="Disconnect this session?">{{ csrf_input() }}<input type="hidden" name="id" value="{{ s.radacctid }}"><input type="hidden" name="next" value="{{ url_for('subscriber_view', sid=sub.id) }}"><button class="btn sm" type="submit">{{ icon('power') }}Disconnect</button></form>{% endif %}</td></tr>{% endfor %}
+  </tbody></table></div></section>
+{% endif %}
+</div>
+
+<div class="sv-pane" id="tab-reports" hidden>
+  <section class="panel"><div class="panel-head"><h2>Usage, last 30 days</h2></div><div class="panel-body"><div class="chart" data-kind="bars" data-src="usage-data"></div><script type="application/json" id="usage-data">{{ usage|tojson }}</script></div></section>
+  <section class="panel" style="margin-top:16px"><div class="panel-head"><h2>Monthly totals</h2></div>
+  {% if t.months %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Month</th><th class="num">Download</th><th class="num">Upload</th><th class="num">Sessions</th><th class="num">Online time</th></tr></thead><tbody>{% for m in t.months %}<tr><td>{{ m.m }}</td><td class="num">{{ m.down|bytes }}</td><td class="num">{{ m.up|bytes }}</td><td class="num">{{ m.sessions }}</td><td class="num">{{ m.secs|dur }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><p>No usage recorded yet.</p></div>{% endif %}</section>
+</div>
+
+<div class="sv-pane" id="tab-ledgers" hidden><section class="panel"><div class="panel-head"><h2>Ledger</h2><span class="aside">Balance {{ currency }} {{ '%.2f' % sub.balance|float }}</span></div>
+  {% if t.ledger %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Type</th><th>Description</th><th class="num">Amount</th><th>By</th></tr></thead><tbody>{% for e in t.ledger %}<tr><td class="nowrap">{{ e.at|dt }}</td><td>{{ e.kind }}</td><td>{{ e.text }}</td><td class="num {{ 'g' if e.amount >= 0 else 'r' }}">{{ '%+.2f' % e.amount|float }}</td><td class="muted">{{ e.by }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><p>Nothing in the ledger yet.</p></div>{% endif %}</section></div>
+
+<div class="sv-pane" id="tab-invoices" hidden><section class="panel"><div class="panel-head"><h2>Invoices</h2><span class="aside">Due {{ currency }} {{ '%.2f' % x.due|float }}</span></div>
+  {% if t.charges %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Name</th><th class="num">Amount</th><th>Status</th><th>Note</th><th></th></tr></thead><tbody>{% for c in t.charges %}<tr><td class="nowrap">{{ c.created_at|dt }}</td><td>{{ c.name }}</td><td class="num">{{ c.amount|money }}</td><td><span class="pill {{ 'ok' if c.paid else 'warn' }}">{{ 'Paid' if c.paid else 'Unpaid' }}</span></td><td class="muted">{{ c.note }}</td>
+    <td class="act">{% if edit and not c.paid and can('accounting', 'edit') %}<form method="post" action="{{ url_for('charge_paid', cid=c.id) }}">{{ csrf_input() }}<button class="btn sm" type="submit">Mark paid</button></form>{% endif %}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><p>No invoices. Use New Invoice to add an extra charge.</p></div>{% endif %}</section></div>
+
+<div class="sv-pane" id="tab-payments" hidden><section class="panel"><div class="panel-head"><h2>Payments</h2></div>
+  {% if t.payments %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th class="num">Amount</th><th>Method</th><th class="num">Days</th><th>Until</th><th>Received by</th><th>Note</th></tr></thead><tbody>{% for p in t.payments %}<tr><td class="nowrap">{{ p.paid_at|dt }}</td><td class="num">{{ currency }} {{ p.amount|money }}</td><td>{{ p.method }}</td><td class="num">{{ p.days_added or '' }}</td><td>{{ p.period_to|d if p.period_to else '' }}</td><td class="muted">{{ p.received_by }}</td><td class="muted">{{ p.note }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><p>No payments recorded. Use Activation to add one.</p></div>{% endif %}</section></div>
+
+<div class="sv-pane" id="tab-messages" hidden><section class="panel"><div class="panel-head"><h2>SMS and email deliveries</h2></div>
+  {% if t.messages %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Channel</th><th>To</th><th>Message</th><th>Status</th></tr></thead><tbody>{% for m in t.messages %}<tr><td class="nowrap">{{ m.created_at|dt }}</td><td>{{ m.channel|upper }}</td><td class="mono">{{ m.to_addr }}</td><td>{{ (m.subject ~ ' · ' if m.subject) }}{{ m.body|truncate(90) }}</td><td><span class="pill {{ {'sent': 'ok', 'failed': 'bad'}.get(m.status, 'warn') }}">{{ m.status|capitalize }}</span>{% if m.error %} <small class="muted">{{ m.error }}</small>{% endif %}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><p>No messages sent to this customer.</p></div>{% endif %}</section></div>
+
+<div class="sv-pane" id="tab-online" hidden><section class="panel"><div class="panel-head"><h2>Online payments</h2></div>
+  <div class="empty"><h3>No online payments</h3><p>Payments made through a payment gateway (bKash) will be listed here once the gateway is connected. Cash and manual payments are under Payments.</p></div></section></div>
+
+<div class="sv-pane" id="tab-services" hidden><div class="cards3">
+  <section class="panel kvc"><div class="panel-head"><h2>{{ icon('package') }}Package</h2></div>
+    <div class="kvc-body"><dl><dt>Package</dt><dd>{{ sub.plan_label or '—' }}{% if sub.plan_label %} <small class="muted">{{ bw(sub) }}</small>{% endif %}</dd>
+      <dt>Duration</dt><dd>{{ ('%d %s%s' % (sub.duration or sub.validity_days, sub.duration_type or 'day', '' if (sub.duration or sub.validity_days) == 1 else 's')) if sub.validity_days else '—' }}</dd>
+      <dt>Price</dt><dd>{{ currency }} {{ sub.price|money if sub.price is not none else '—' }}</dd><dt>Expiry</dt><dd{% if sub.state == 'expired' %} class="r"{% endif %}>{{ sub.expiry_date|d if sub.expiry_date else '—' }}</dd></dl></div></section>
+  <section class="panel kvc"><div class="panel-head"><h2>{{ icon('sliders') }}Service Settings</h2></div>
+    <div class="kvc-body"><dl>
+      {% for label, on, fk in [('SMS Status', sub.sms_on, 'svc.sms'), ('Email Status', sub.email_on, 'svc.email'), ('Auto Mac Lock', sub.auto_mac, 'svc.maclock'), ('Auto Renew Status', sub.auto_renew, 'svc.skip_renew')] if can_fn(fk) or fk in ('svc.maclock', 'svc.skip_renew') %}<dt>{{ label }}</dt><dd class="{{ 'g' if on else 'r' }}">{{ 'Enabled' if on else 'Disabled' }}</dd>{% endfor %}
+      <dt>Net Status</dt><dd class="{{ 'g' if net_on else 'r' }}">{{ 'Enabled' if net_on else 'Disabled' }}</dd>
+      <dt>Grace Period</dt><dd>{% if sub.grace_until and sub.grace_until >= today %}until {{ sub.grace_until|d }}{% else %}Off{% endif %}</dd></dl>
+      {% if edit %}<p><button class="btn sm" type="button" data-open="svc-dlg">Change service settings</button></p>{% endif %}</div></section>
+  <section class="panel kvc"><div class="panel-head"><h2>{{ icon('server') }}Connection &amp; Infrastructure</h2></div>
+    <div class="kvc-body"><dl>
+      {% for label, val in [('Connection Type', sub.conn_type), ('Total Volume (GB)', sub.vol_total_gb), ('Used Volume (GB)', sub.vol_used_gb), ('Total Session (Min)', sub.sess_total_min), ('Used Session (Min)', sub.sess_used_min), ('Discount', ((sub.discount|money) ~ (' %' if sub.disc_type == 'percent' else ' ' ~ currency)) if sub.discount and sub.discount|float else ''), ('Box/POP Number', sub.box_pop_no), ('Box/POP Address', sub.box_pop_addr), ('MC/Switch/ONU Board', sub.mc_board), ('Electricity Type/Socket', sub.electricity), ('Cable Type', sub.cable_type), ('Uplink Port', sub.uplink_port), ('Fiber Code/ID', sub.fiber_code), ('Fiber Color', sub.fiber_color)] %}<dt>{{ label }}</dt><dd>{{ val if val not in (none, '') else '—' }}</dd>{% endfor %}</dl></div></section>
+  <section class="panel kvc"><div class="panel-head"><h2>{{ icon('shield') }}Policy</h2></div>
+    <div class="kvc-body"><dl><dt>Policy</dt><dd>{{ sub.policy_group or '—' }}</dd><dt>Connected Policy</dt><dd>{{ x.groups|join(', ') or '—' }}</dd><dt>Total Policies</dt><dd>{{ x.groups|length }}</dd></dl></div></section>
+</div></div>
+
+<div class="sv-pane" id="tab-fees" hidden><section class="panel"><div class="panel-head"><h2>Taxes and fees added to this package</h2></div>
+  {% if t.fees %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th>Type</th><th class="num">Value</th><th class="num">Amount on {{ currency }} {{ sub.price|money if sub.price is not none else 0 }}</th></tr></thead><tbody>{% for f in t.fees %}<tr><td>{{ f.name }}</td><td>{{ f.kind|capitalize }}</td><td class="num">{{ f.value|money }}{{ '%' if f.mode == 'percent' }}</td><td class="num">{{ ((sub.price|float * f.value|float / 100) if f.mode == 'percent' else f.value|float)|money }}</td></tr>{% endfor %}</tbody></table></div>
+  <p class="muted" style="padding:0 18px 14px">Renewal total: {{ currency }} {{ renew_amount|money }}. One-off charges are under Invoices.</p>{% else %}<div class="empty"><p>No taxes or fees on this package.</p></div>{% endif %}</section></div>
+
+<div class="sv-pane" id="tab-attributes" hidden><section class="panel"><div class="panel-head"><h2>RADIUS attributes</h2><span class="aside">read only</span></div>
+  {% if t.attrs %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>List</th><th>Attribute</th><th>Op</th><th>Value</th></tr></thead><tbody>{% for a in t.attrs %}<tr><td>{{ a.table }}</td><td class="mono">{{ a.attribute }}</td><td class="mono">{{ a.op }}</td><td class="mono">{{ a.value }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><p>No attributes.</p></div>{% endif %}
+  {% if x.groups %}<p class="muted" style="padding:0 18px 14px">Groups: {{ x.groups|join(', ') }}</p>{% endif %}</section></div>
+
+<div class="sv-pane" id="tab-mac" hidden><section class="panel"><div class="panel-head"><h2>MAC address</h2>{% if edit %}<span class="aside"><button class="btn sm" data-open="mac-dlg" data-fill='{{ {"mac": sub.mac_bind}|tojson }}'>{{ 'Change' if sub.mac_bind else 'Bind' }}</button></span>{% endif %}</div>
+  <div class="panel-body"><p>Bound to: {% if sub.mac_bind %}<b class="mono">{{ sub.mac_bind }}</b>{% else %}<span class="muted">not bound{% if sub.auto_mac %} (Auto Mac Lock will bind the next device){% endif %}</span>{% endif %}</p></div>
+  {% if t.macs %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Seen MAC</th><th class="num">Sessions</th><th>Last seen</th></tr></thead><tbody>{% for m in t.macs %}<tr><td class="mono">{{ m.mac }}</td><td class="num">{{ m.n }}</td><td>{{ m.last|dt }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}</section></div>
+
+{% if can('documents') %}<div class="sv-pane" id="tab-documents" hidden><section class="panel"><div class="panel-head"><h2>Documents</h2><a class="aside" href="{{ url_for('documents', sub=sub.id) }}">{{ 'Manage' if docs else 'Upload' }}</a></div>
+  {% if docs %}<ul class="list">{% for d in docs %}<li><a href="{{ url_for('document_download', did=d.id) }}">{{ icon('paperclip') }} {{ d.title }}</a><span class="grow"></span><span class="muted">{{ d.category }}</span></li>{% endfor %}</ul>{% else %}<div class="empty"><p>No documents for this customer.</p></div>{% endif %}</section></div>{% endif %}
+
+<div class="sv-pane" id="tab-logins" hidden><section class="panel"><div class="panel-head"><h2>Login attempts</h2></div>
+  {% if t.logins %}<ul class="list">{% for a in t.logins %}<li><span class="badge {{ 'ok' if a.reply == 'Access-Accept' else 'bad' }}">{{ 'Accepted' if a.reply == 'Access-Accept' else 'Refused' }}</span><span class="grow"></span><span class="muted">{{ a.authdate|dt }}</span></li>{% endfor %}</ul>{% else %}<div class="empty"><p>No login attempts logged.</p></div>{% endif %}</section></div>
+
+<div class="sv-pane" id="tab-sessions" hidden><section class="panel"><div class="panel-head"><h2>Sessions</h2></div>
+  {% if t.sessions %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Started</th><th>Ended</th><th>Length</th><th>IP</th><th>MAC</th><th class="num">Down</th><th class="num">Up</th><th>Ended by</th></tr></thead><tbody>{% for h in t.sessions %}<tr><td class="nowrap">{{ h.acctstarttime|dt }}</td><td class="nowrap">{{ h.acctstoptime|dt if h.acctstoptime else 'Online' }}</td><td>{{ h.acctsessiontime|dur }}</td><td class="mono">{{ h.framedipaddress or '' }}</td><td class="mono">{{ h.callingstationid or '' }}</td><td class="num">{{ h.acctoutputoctets|bytes }}</td><td class="num">{{ h.acctinputoctets|bytes }}</td><td class="muted">{{ h.acctterminatecause or '' }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><p>No sessions yet.</p></div>{% endif %}</section></div>
+
+<div class="sv-pane" id="tab-coa" hidden><section class="panel"><div class="panel-head"><h2>Disconnect (CoA) requests</h2></div>
+  {% if t.coa %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Router</th><th>Result</th><th>By</th><th>Message</th></tr></thead><tbody>{% for c in t.coa %}<tr><td class="nowrap">{{ c.created_at|dt }}</td><td class="mono">{{ c.nas_ip }}</td><td><span class="pill {{ 'ok' if c.ok else 'bad' }}">{{ 'Accepted' if c.ok else 'Failed' }}</span></td><td class="muted">{{ c.created_by }}</td><td class="muted">{{ c.message }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><p>No disconnect requests logged{% if app_cfg.coa_log != '1' %} (CoA Request Log is off in Settings &rsaquo; Software){% endif %}.</p></div>{% endif %}</section></div>
+
+<div class="sv-pane" id="tab-activity" hidden><section class="panel"><div class="panel-head"><h2>Activities</h2></div>
+  {% if t.activity %}<ul class="list">{% for a in t.activity %}<li style="display:block"><b>{{ a.action|replace('_', ' ')|capitalize }}</b> <span class="muted">· {{ a.admin }}, {{ a.created_at|dt }}</span>{% if a.detail %}<div class="muted">{{ a.detail }}</div>{% endif %}</li>{% endfor %}</ul>{% else %}<div class="empty"><p>No activity recorded.</p></div>{% endif %}</section></div>
+
+{% if can('tickets') %}<div class="sv-pane" id="tab-tickets" hidden><section class="panel"><div class="panel-head"><h2>Tickets</h2><a class="aside" href="{{ url_for('tickets', q=sub.username) }}">All tickets</a></div>
+  {% if t.tickets %}<ul class="list">{% for k in t.tickets %}<li><a href="{{ url_for('ticket_view', tid=k.id) }}">#{{ k.id }} {{ k.subject }}</a><span class="grow"></span><span class="badge {{ {'open': 'warn', 'pending': 'info', 'resolved': 'ok', 'closed': 'mute'}.get(k.status, 'mute') }}">{{ k.status|capitalize }}</span></li>{% endfor %}</ul>{% else %}<div class="empty"><p>No tickets for this customer.</p></div>{% endif %}</section></div>{% endif %}
+
+<dialog class="modal" id="renew-dlg" aria-labelledby="renew-title">
+  <form method="post" action="{{ url_for('subscriber_renew', sid=sub.id) }}">
+    {{ csrf_input() }}
+    <div class="modal-head"><h2 id="renew-title">Renew {{ sub.username }}</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body">
+      <p class="muted">The package length is added to the current expiry, or to today if it has already passed (months and years are real calendar months and years). Change the days to add a custom period. The account is activated. The amount includes active taxes and extra fees.</p>
+      <div class="grid-2">
+        <div class="field"><label class="lbl" for="r-days">Days to add</label><input id="r-days" name="days" type="number" min="1" max="3650" value="{{ sub.validity_days or 30 }}" required></div>
+        <div class="field"><label class="lbl" for="r-amount">Amount received ({{ currency }})</label><input id="r-amount" name="amount" type="number" min="0" step="0.01" value="{{ renew_amount }}" required></div>
+        <div class="field"><label class="lbl" for="r-method">Paid by</label>
+          <select id="r-method" name="method"><option value="cash">Cash</option><option value="bkash">bKash</option><option value="nagad">Nagad</option><option value="rocket">Rocket</option><option value="bank">Bank</option><option value="other">Other</option></select></div>
+        <div class="field"><label class="lbl" for="r-note">Note</label><input id="r-note" name="note" maxlength="255"></div>
+      </div>
+      {% if charge %}<p class="help" style="margin-top:10px">This takes <b>{{ currency }} {{ '%.2f' % charge.cost }}</b> (the package price) from {{ 'your balance' if charge.mine else (charge.who ~ "'s balance") }}, which is {{ currency }} {{ '%.2f' % charge.balance }}.{% if charge.low %} <b>{{ 'Your' if charge.mine else 'That' }} balance is too low. Add balance first.</b>{% endif %}</p>{% endif %}
+      {% if sub.balance|float > 0 %}<label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" name="from_balance" value="1"> Take the amount from the balance ({{ currency }} {{ '%.2f' % sub.balance|float }})</label>{% endif %}
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Renew and record payment</button></div>
+  </form>
+</dialog>
+{% if can('subscribers', 'edit') %}
+<dialog class="modal" id="grace-dlg" aria-labelledby="gr-title">
+  <form method="post" action="{{ url_for('subscriber_grace', sid=sub.id) }}">
+    {{ csrf_input() }}
+    <div class="modal-head"><h2 id="gr-title">Grace period</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <div class="field"><label class="lbl" for="gr-days">Extra days from today</label><input id="gr-days" name="days" type="number" min="0" max="90" value="{{ app_cfg.grace_days if app_cfg.grace_on == '1' else 3 }}" required><div class="help">The customer can keep logging in after the expiry date until then. Enter 0 to remove it.</div></div>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save</button></div>
+  </form>
+</dialog>
+<dialog class="modal" id="mac-dlg" aria-labelledby="mac-title">
+  <form method="post" action="{{ url_for('subscriber_mac', sid=sub.id) }}">
+    {{ csrf_input() }}
+    <div class="modal-head"><h2 id="mac-title">MAC binding</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <div class="field"><label class="lbl" for="mac-v">MAC address</label><input id="mac-v" name="mac" placeholder="AA:BB:CC:DD:EE:FF" maxlength="17"><div class="help">Login is refused from any other device. Leave empty to remove the binding. {% if sessions and sessions[0].callingstationid %}Current session: <span class="mono">{{ sessions[0].callingstationid }}</span>{% endif %}</div></div>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save</button></div>
+  </form>
+</dialog>
+{% endif %}
+
+
+
+
+{% if edit %}
+<dialog class="modal" id="migrate-dlg" aria-labelledby="mg-title"><form method="post" action="{{ url_for('subscriber_migrate', sid=sub.id) }}">{{ csrf_input() }}
+  <div class="modal-head"><h2 id="mg-title">Migrate to another package</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+  <div class="modal-body"><div class="field"><label class="lbl" for="mg-plan">New package</label><select id="mg-plan" name="plan_id">{% for p in plans %}<option value="{{ p.id }}" {{ 'selected' if p.id == sub.plan_id }}>{{ p.label }} ({{ currency }} {{ p.price|money }})</option>{% endfor %}</select><div class="help">The expiry date stays the same. The new speed applies at the customer's next login.</div></div></div>
+  <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Migrate</button></div></form></dialog>
+<dialog class="modal" id="balance-dlg" aria-labelledby="bl-title"><form method="post" action="{{ url_for('subscriber_balance', sid=sub.id) }}">{{ csrf_input() }}
+  <div class="modal-head"><h2 id="bl-title">Add balance</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+  <div class="modal-body stack"><p class="muted">Current balance: {{ currency }} {{ '%.2f' % sub.balance|float }}</p>
+    <div class="field"><label class="lbl" for="bl-amt">Amount ({{ currency }})</label><input id="bl-amt" name="amount" type="number" step="0.01" required><div class="help">Use a minus sign to take money off.{% if me.role in ('reseller', 'subreseller', 'retailer') %} The amount is taken from your own balance ({{ currency }} {{ '%.2f' % me.balance|float }}); taking money off returns it to you.{% endif %}</div></div>
+    <div class="field"><label class="lbl" for="bl-note">Note</label><input id="bl-note" name="note" maxlength="255"></div></div>
+  <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save</button></div></form></dialog>
+<dialog class="modal" id="svc-dlg" aria-labelledby="sv-title"><form method="post" action="{{ url_for('subscriber_settings', sid=sub.id) }}">{{ csrf_input() }}
+  <div class="modal-head"><h2 id="sv-title">Service settings</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+  <div class="modal-body stack">
+    <label class="mod-row"><span>SMS messages<br><small class="muted">Automatic SMS to this customer</small></span><span class="switch"><input type="checkbox" name="sms_on" {{ 'checked' if sub.sms_on }}{{ ' disabled' if not can_fn('svc.sms') }}><i></i></span></label>
+    <label class="mod-row"><span>Email messages<br><small class="muted">Automatic email to this customer</small></span><span class="switch"><input type="checkbox" name="email_on" {{ 'checked' if sub.email_on }}{{ ' disabled' if not can_fn('svc.email') }}><i></i></span></label>
+    <label class="mod-row"><span>Auto MAC lock<br><small class="muted">Lock to the first device that connects (checked every 5 minutes)</small></span><span class="switch"><input type="checkbox" name="auto_mac" {{ 'checked' if sub.auto_mac }}{{ ' disabled' if not can_fn('svc.maclock') }}><i></i></span></label>
+    <label class="mod-row"><span>Auto renew<br><small class="muted">Renew from the balance when the package expires</small></span><span class="switch"><input type="checkbox" name="auto_renew" {{ 'checked' if sub.auto_renew }}{{ ' disabled' if not can_fn('svc.skip_renew') }}><i></i></span></label></div>
+  <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save</button></div></form></dialog>
+<dialog class="modal" id="pw-dlg" aria-labelledby="pw-title"><form method="post" action="{{ url_for('subscriber_password', sid=sub.id) }}">{{ csrf_input() }}
+  <div class="modal-head"><h2 id="pw-title">Change password</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+  <div class="modal-body"><div class="field"><label class="lbl" for="pw-new">New password</label><input id="pw-new" name="password" maxlength="64" autocomplete="off" spellcheck="false" required><div class="help">4 to 64 characters, no spaces. The customer's router must use the new one.</div></div></div>
+  <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Change</button></div></form></dialog>
+<dialog class="modal" id="invoice-dlg" aria-labelledby="iv-title"><form method="post" action="{{ url_for('subscriber_invoice', sid=sub.id) }}">{{ csrf_input() }}
+  <div class="modal-head"><h2 id="iv-title">New invoice</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+  <div class="modal-body stack"><div class="field"><label class="lbl" for="iv-name">Name</label><input id="iv-name" name="name" maxlength="64" placeholder="Router, installation..." required></div>
+    <div class="field"><label class="lbl" for="iv-amt">Amount ({{ currency }})</label><input id="iv-amt" name="amount" type="number" min="0.01" step="0.01" required></div>
+    <div class="field"><label class="lbl" for="iv-note">Note</label><input id="iv-note" name="note" maxlength="255"></div></div>
+  <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Add invoice</button></div></form></dialog>
+<dialog class="modal" id="photo-dlg" aria-labelledby="ph-title"><form method="post" action="{{ url_for('subscriber_photo_save', sid=sub.id) }}" enctype="multipart/form-data">{{ csrf_input() }}
+  <div class="modal-head"><h2 id="ph-title">Photo</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+  <div class="modal-body"><div class="field"><label class="lbl" for="ph-file">PNG or JPG, up to 2 MB</label><input id="ph-file" type="file" name="file" accept="image/png,image/jpeg"></div></div>
+  <div class="modal-foot">{% if x.photo %}<button class="btn danger" type="submit" name="remove" value="1">Remove photo</button>{% endif %}<span style="flex:1"></span><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Upload</button></div></form></dialog>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var tabs = document.querySelectorAll("[data-tab]"), panes = document.querySelectorAll(".sv-pane");
+  function show(key) {
+    if (!document.getElementById("tab-" + key)) key = "profile";
+    panes.forEach(function (p) { p.hidden = p.id !== "tab-" + key; });
+    tabs.forEach(function (t) { t.classList.toggle("on", t.dataset.tab === key); });
+    if (key === "reports") window.dispatchEvent(new Event("resize"));
+  }
+  tabs.forEach(function (t) { t.addEventListener("click", function (e) { e.preventDefault(); history.replaceState(null, "", "#" + t.dataset.tab); show(t.dataset.tab); }); });
+  document.querySelectorAll("[data-tab-link]").forEach(function (a) { a.addEventListener("click", function (e) { e.preventDefault(); history.replaceState(null, "", "#" + a.dataset.tabLink); show(a.dataset.tabLink); window.scrollTo({ top: document.querySelector(".sv-tabs").offsetTop - 12, behavior: "smooth" }); }); });
+  show((location.hash || "#profile").slice(1));
+})();
+{% if open_renew %}document.addEventListener("DOMContentLoaded",function(){var b=document.querySelector('[data-open="renew-dlg"]');if(b)b.click();});{% endif %}
+</script>
+{% endblock %}

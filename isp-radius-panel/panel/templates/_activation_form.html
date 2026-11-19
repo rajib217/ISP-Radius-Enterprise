@@ -1,0 +1,62 @@
+<form class="actform{{ ' act-in-modal' if act_modal }}" id="act-form" method="post" action="{{ url_for('subscriber_activate') }}" autocomplete="off"
+      data-lookup="{{ url_for('subscriber_lookup') }}" data-charge="{{ url_for('subscriber_charge_info') }}" data-currency="{{ currency }}">
+  {{ csrf_input() }}{% if back %}<input type="hidden" name="next" value="{{ back }}">{% elif act_modal %}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">{% endif %}<input type="hidden" name="print" value="1" id="act-print" disabled>
+  {% if act_modal %}<div class="modal-head"><h2 id="act-title">Activation</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+  <div class="modal-body act-body">{% endif %}
+
+  <section class="actcard">
+    <header class="acthead"><div><h2>Activation</h2><p>Subscriber Activation Details</p></div><span class="acttile">{{ icon('user') }}</span></header>
+
+    <div class="actbox acttoggles">
+      {% if can_fn('sub.custom_expiry') %}<div class="field"><label class="lbl" for="act-custom">Custom Expiry</label><span class="switch"><input id="act-custom" type="checkbox" name="custom"><i></i></span></div>{% endif %}
+      <div class="field"><label class="lbl" for="act-paytog">Payment</label><span class="switch"><input id="act-paytog" type="checkbox" name="payment" checked><i></i></span></div>
+    </div>
+
+    <div class="actbox grid2">
+      <div class="field"><label class="lbl" for="act-user">Subscriber <b class="req">*</b></label>
+        <div class="combo">
+          <input id="act-user" name="username" required placeholder="Search Username Here..." value="{{ pre.username if pre }}" autocapitalize="off" spellcheck="false"
+                 role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="act-list">
+          <ul id="act-list" class="combo-list" role="listbox" hidden></ul>
+        </div></div>
+      <div class="field"><label class="lbl" for="act-plan">Packages <b class="req">*</b></label>
+        <select id="act-plan" name="plan_id">
+          <option value="">Select A Package</option>
+          {% for p in (act_plans|default(plans)) %}<option value="{{ p.id }}" data-name="{{ p.label or p.name }}" data-days="{{ p.validity_days }}" data-price="{{ p.price }}" data-dtype="{{ p.duration_type or '' }}" data-dur="{{ p.duration or '' }}" {{ 'selected' if pre and pre.plan_id == p.id }}>{{ p.label or p.name }}</option>{% endfor %}
+        </select>
+        <div class="help" id="act-charge" hidden></div></div>
+    </div>
+
+    <div class="actbox" id="act-exp-box" hidden>
+      <div class="field"><label class="lbl" for="act-exp">Expiry date <b class="req">*</b></label><input id="act-exp" name="expiry" type="date" disabled>
+        <div class="help">The customer is active until this day. It must be after today, or after the current expiry if that is later.</div></div>
+    </div>
+  </section>
+
+  <section class="actcard" id="act-pay">
+    <header class="acthead"><div><h2>Payment</h2><p>Payment Details</p></div><span class="acttile">{{ icon('card') }}</span></header>
+    <div class="actbox actpay">
+      <div class="field"><label class="lbl" for="act-method">Payment Method <b class="req">*</b></label>
+        <select id="act-method" name="method"><option>cash</option><option>bKash</option><option>Nagad</option><option>bank</option><option>other</option></select></div>
+      <div class="field"><label class="lbl" for="act-amt">Amount received <b class="req">*</b></label><input id="act-amt" name="amount" type="number" min="0" step="0.01" value="0" required></div>
+      <div class="field"><label class="lbl" for="act-note">Payment Note</label><textarea id="act-note" name="note" rows="1" maxlength="255" placeholder="Enter Note"></textarea></div>
+    </div>
+  </section>
+
+  <div class="actinfo" id="act-info" hidden>
+    <section class="actcard">
+      <header class="acthead"><div><h2>Profile</h2><p>Subscriber Information</p></div><span class="acttile" id="inf-avatar">?</span></header>
+      <div class="actrow"><span class="actico">{{ icon('user') }}</span><div><small>Username</small><b id="inf-user">&mdash;</b></div><span class="actside" id="inf-id"></span></div>
+      <div class="actrow"><span class="actico ok">{{ icon('shield') }}</span><div><small>Account Status</small><b id="inf-state">&mdash;</b></div><span class="actside" id="inf-exp">Account Status</span></div>
+    </section>
+    <section class="actcard">
+      <header class="acthead"><div><h2 id="pk-name">Package</h2><p>Package Details</p></div><span class="acttile">{{ icon('package') }}</span></header>
+      <div class="actrow"><span class="actico">{{ icon('refresh') }}</span><div><small>Package Duration</small><b id="pk-dur">&mdash;</b></div><span class="actpill">Duration</span></div>
+      <div class="actrow"><span class="actico ok">{{ icon('check') }}</span><div><small>Package Time</small><b id="pk-time">&mdash;</b></div><span class="actpill ok">Time</span></div>
+    </section>
+  </div>
+
+  {% if act_modal %}</div>
+  <div class="modal-foot"><button class="btn primary" type="submit">Activate</button><button class="btn primary" type="submit" name="print" value="1">Activate &amp; Print</button></div>
+  {% else %}<div class="actfoot"><a class="btn" href="{{ back or url_for('subscribers') }}">{{ 'Back to profile' if back else 'Back to subscribers' }}</a><button class="btn primary" type="submit">{{ icon('bolt') }}Activate</button><button class="btn primary" type="submit" name="print" value="1">{{ icon('printer') }}Activate &amp; Print</button></div>{% endif %}
+</form>

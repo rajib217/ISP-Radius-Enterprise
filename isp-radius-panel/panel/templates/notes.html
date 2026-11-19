@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Notes{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Notes</h1><p class="sub">Reminders for yourself or the team. Shared notes are visible to everyone with Notes access.</p></div>
+  {% if can('notes', 'edit') %}<div class="actions"><button class="btn primary" data-open="note-dlg" data-new>{{ icon('plus') }}New note</button></div>{% endif %}
+</div>
+<form class="filters" method="get">
+  <div class="search">{{ icon('search') }}<input type="search" name="q" value="{{ request.args.get('q', '') }}" placeholder="Search notes" aria-label="Search"></div>
+  <label class="check"><input type="checkbox" name="mine" value="1" {{ 'checked' if request.args.get('mine') == '1' }} onchange="this.form.submit()" style="width:auto"> Only mine</label>
+  <button class="btn" type="submit">Search</button>
+</form>
+{% if rows %}
+<div class="notes-grid">
+{% for n in rows %}
+  <article class="note {{ n.color }}">
+    {% if n.title %}<h3>{% if n.pinned %}{{ icon('star') }} {% endif %}{{ n.title }}</h3>{% endif %}
+    <p>{{ n.body }}</p>
+    <div class="foot">
+      <span>{{ n.author }} · {{ n.updated_at|ago }}</span>
+      {% if n.shared %}<span class="badge info">Shared</span>{% endif %}
+      {% if n.sub_username %}<a class="mono" href="{{ url_for('subscribers', q=n.sub_username) }}">{{ n.sub_username }}</a>{% endif %}
+    </div>
+    {% if n.mine and can('notes', 'edit') %}
+    <div class="row-gap">
+      <button class="btn sm" data-open="note-dlg" data-edit='{{ {"id": n.id, "title": n.title, "body": n.body, "color": n.color, "shared": 1 if n.shared else 0, "username": n.sub_username or ""}|tojson }}'>{{ icon('edit') }}Edit</button>
+      <form method="post" action="{{ url_for('note_pin', nid=n.id) }}">{{ csrf_input() }}<button class="btn sm" type="submit">{{ 'Unpin' if n.pinned else 'Pin' }}</button></form>
+      <form method="post" action="{{ url_for('note_delete', nid=n.id) }}" data-confirm="Delete this note?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete note">{{ icon('trash') }}</button></form>
+    </div>
+    {% endif %}
+  </article>
+{% endfor %}
+</div>
+{% else %}<section class="panel"><div class="empty"><h3>No notes yet</h3><p>Jot down things to follow up, like "call back Rahim about the cable shift".</p></div></section>{% endif %}
+
+{% if can('notes', 'edit') %}
+<dialog class="modal" id="note-dlg" aria-labelledby="note-title">
+  <form method="post" action="{{ url_for('note_save') }}">
+    {{ csrf_input() }}<input type="hidden" name="id">
+    <div class="modal-head"><h2 id="note-title" data-title data-title-new="New note" data-title-edit="Edit note">New note</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <div class="field"><label class="lbl" for="nt-title">Title</label><input id="nt-title" name="title" maxlength="120"></div>
+      <div class="field"><label class="lbl" for="nt-body">Note</label><textarea id="nt-body" name="body" rows="5" maxlength="5000"></textarea></div>
+      <div class="grid-2">
+        <div class="field"><label class="lbl" for="nt-color">Colour</label><select id="nt-color" name="color">{% for c in colors %}<option value="{{ c }}">{{ c|capitalize }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="nt-user">About customer (optional)</label><input id="nt-user" name="username" spellcheck="false" placeholder="username"></div>
+      </div>
+      <label class="check"><input type="checkbox" name="shared" value="1" style="width:auto"> Share with the team</label>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save note</button></div>
+  </form>
+</dialog>
+{% endif %}
+{% endblock %}

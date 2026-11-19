@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}OLTs{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>OLTs</h1><p class="sub">Add an OLT with its SNMP settings and the panel reads every ONU from it. <a href="{{ url_for('devices') }}">Other devices</a></p></div>
+  {% if can('network', 'edit') %}<div class="actions">
+    {% if rows %}<form method="post" action="{{ url_for('olt_sync_all') }}">{{ csrf_input() }}<button class="btn" type="submit">{{ icon('refresh') }}Sync all</button></form>{% endif %}
+    {% if can_fn('olt.add') %}<a class="btn primary" href="{{ url_for('olt_new') }}">{{ icon('plus') }}Add OLT</a>{% endif %}</div>{% endif %}
+</div>
+{% if rows %}
+<section class="kpis" style="margin-top:0">
+  <div class="kpi"><span class="k">OLTs</span><span class="v">{{ rows|length }}</span></div>
+  <div class="kpi"><span class="k">ONUs</span><span class="v">{{ '{:,}'.format(sums.total) }}</span></div>
+  <div class="kpi"><span class="k">Online</span><span class="v" style="color:var(--ok)">{{ '{:,}'.format(sums.online) }}</span></div>
+  <div class="kpi"><span class="k">Offline</span><span class="v">{{ '{:,}'.format(sums.offline) }}</span></div>
+  <div class="kpi"><span class="k">LOS (no light)</span><span class="v" style="color:var(--{{ 'bad' if sums.los else 'ink' }})">{{ '{:,}'.format(sums.los) }}</span></div>
+</section>
+{% endif %}
+<section class="panel">
+  {% if rows %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>OLT</th><th>Vendor / PON</th><th>IP</th><th>Router</th><th class="num">ONUs</th><th>SNMP</th><th></th></tr></thead>
+    <tbody>{% for r in rows %}<tr>
+      <td class="who-cell"><b>{{ r.name }}</b>{% if r.location %}<small>{{ r.location }}</small>{% endif %}</td>
+      <td>{{ vendors.get(r.vendor, '—') if r.vendor else '—' }}{% if r.model %} {{ r.model }}{% endif %}<small class="muted" style="display:block">{{ r.pon_type or '' }}</small></td>
+      <td class="mono">{{ r.ip }}</td>
+      <td>{{ r.router or '—' }}</td>
+      <td class="num"><a href="{{ url_for('onus', olt=r.id) }}"><b>{{ r.online }}</b> / {{ r.total }}</a>{% if r.los %}<small style="display:block;color:var(--bad)">{{ r.los }} LOS</small>{% endif %}</td>
+      <td>{% if not r.has_snmp %}<span class="pill gray">Not set up</span>
+        {% elif r.last_poll %}<span class="pill {{ 'ok' if r.last_ok else 'bad' }}" title="{{ r.last_msg }}">{{ 'Synced' if r.last_ok else 'Failed' }}</span><small class="muted" style="display:block" title="{{ r.last_msg }}">{{ r.last_poll|ago }}{% if not r.auto_poll %} · manual{% endif %}</small>
+        {% else %}<span class="pill gray">Not synced</span>{% endif %}</td>
+      <td class="act"><details class="dd"><summary class="btn sm">Actions &#9662;</summary><div class="dd-menu">
+        <a href="{{ url_for('onus', olt=r.id) }}">View ONUs</a>
+        {% if can('network', 'edit') %}
+        <form method="post" action="{{ url_for('olt_sync', did=r.id) }}">{{ csrf_input() }}<button type="submit">Sync ONUs now</button></form>
+        <form method="post" action="{{ url_for('olt_test', did=r.id) }}">{{ csrf_input() }}<button type="submit">Test SNMP</button></form>
+        <a href="{{ url_for('olt_walk', did=r.id) }}">SNMP walk</a>
+        <a href="{{ url_for('olt_edit', did=r.id) }}">Edit</a>
+        <form method="post" action="{{ url_for('device_ping', did=r.id) }}">{{ csrf_input() }}<button type="submit">Ping</button></form>
+        <form method="post" action="{{ url_for('olt_delete', did=r.id) }}" data-confirm="Delete {{ r.name }} and the ONUs read from it?">{{ csrf_input() }}<button type="submit" class="danger-t">Delete</button></form>
+        {% endif %}</div></details></td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="empty"><h3>No OLTs yet</h3><p>Add your OLT with its IP and SNMP community. The panel then lists every ONU and whether it is online.</p>{% if can('network', 'edit') %}<a class="btn primary" href="{{ url_for('olt_new') }}">{{ icon('plus') }}Add OLT</a>{% endif %}</div>{% endif %}
+</section>
+{% endblock %}

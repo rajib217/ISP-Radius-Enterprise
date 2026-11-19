@@ -1,0 +1,11 @@
+{% extends "base.html" if me else "bare.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<section class="panel" style="max-width:560px;margin:8vh auto 0">
+  <div class="empty">
+    <h3>{{ title }}</h3>
+    <p>{{ text }}</p>
+    <a class="btn" href="{{ url_for('dashboard') }}">Back to the dashboard</a>
+  </div>
+</section>
+{% endblock %}

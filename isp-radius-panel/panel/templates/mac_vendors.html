@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}MAC Vendor{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>MAC Vendor</h1><p class="sub">Find out who made a customer's router or ONU from its MAC address. {{ '{:,}'.format(total) }} vendor prefixes loaded.</p></div></div>
+<div class="split-even">
+  <section class="panel"><div class="panel-head"><h2>Look up a MAC</h2></div><div class="panel-body stack">
+    <form method="get" action="{{ url_for('mac_vendors') }}" class="row-gap"><input name="mac" value="{{ found.mac if found else '' }}" placeholder="AA:BB:CC:DD:EE:FF" spellcheck="false" class="w-220"><button class="btn primary" type="submit">Look up</button></form>
+    {% if found %}<p>{% if not found.prefix %}That is not a valid MAC address.{% elif found.vendor %}<b>{{ found.vendor }}</b> <span class="muted">(prefix {{ found.prefix }})</span>{% else %}No vendor known for prefix <span class="mono">{{ found.prefix }}</span>.{% if not total %} Import a vendor list first.{% endif %}{% endif %}</p>{% endif %}
+  </div></section>
+  <section class="panel"><div class="panel-head"><h2>Online devices by vendor</h2></div>
+    {% if by_vendor %}<div class="tbl-wrap"><table class="tbl"><tbody>{% for v, c in by_vendor[:15] %}<tr><td>{{ v }}</td><td class="num"><b>{{ '{:,}'.format(c) }}</b></td></tr>{% endfor %}</tbody></table></div>
+    {% else %}<div class="empty"><p>No customer is online with a MAC address.</p></div>{% endif %}</section>
+</div>
+{% if can('network', 'edit') %}
+<section class="panel" style="margin-top:16px"><div class="panel-head"><h2>Vendor list</h2>
+  {% if total %}<form method="post" action="{{ url_for('mac_vendor_clear') }}" data-confirm="Remove all vendor prefixes?">{{ csrf_input() }}<button class="btn sm danger" type="submit">Clear list</button></form>{% endif %}</div>
+  <form method="post" action="{{ url_for('mac_vendor_import') }}" enctype="multipart/form-data" class="panel-body stack">
+    {{ csrf_input() }}
+    <p>Upload the IEEE <code>oui.csv</code> file (from standards-oui.ieee.org), or paste lines like <code>AA:BB:CC,Vendor name</code>. Existing prefixes are replaced.</p>
+    <input type="file" name="file" accept=".csv,.txt">
+    <textarea name="text" rows="4" placeholder="4C:5E:0C,Routerboard.com" spellcheck="false" class="mono"></textarea>
+    <div><button class="btn primary" type="submit">{{ icon('upload') }}Import</button></div>
+  </form></section>
+{% endif %}
+{% endblock %}

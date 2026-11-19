@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, pager %}
+{% block title %}Documents{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Documents</h1><p class="sub">Agreements, ID copies, invoices and photos, kept safely on the server.</p></div>
+  {% if can('documents', 'edit') %}<div class="actions"><button class="btn primary" data-open="doc-dlg" data-new>{{ icon('upload') }}Upload document</button></div>{% endif %}
+</div>
+<section class="panel">
+  <form class="filters panel-body" method="get" style="padding-bottom:0">
+    <div class="search">{{ icon('search') }}<input type="search" name="q" value="{{ request.args.get('q', '') }}" placeholder="Title, file name or username" aria-label="Search"></div>
+    <select name="category" aria-label="Category"><option value="">All categories</option>{% for c in categories %}<option {{ 'selected' if request.args.get('category') == c }}>{{ c }}</option>{% endfor %}</select>
+    <button class="btn" type="submit">Filter</button>
+  </form>
+  {% if rows %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Document</th><th>Category</th><th>Customer</th><th class="num hide-sm">Size</th><th class="hide-sm">Uploaded</th><th></th></tr></thead>
+    <tbody>{% for d in rows %}<tr>
+      <td class="who-cell"><b>{{ d.title }}</b><small>{{ d.filename }}</small></td><td>{{ d.category }}</td>
+      <td>{% if d.sid %}<a class="mono" href="{{ url_for('subscriber_view', sid=d.sid) }}">{{ d.sub_username }}</a>{% else %}—{% endif %}</td>
+      <td class="num hide-sm">{{ d.size|bytes }}</td><td class="hide-sm nowrap">{{ d.created_at|dt }}<small class="muted" style="display:block">{{ d.uploaded_by }}</small></td>
+      <td class="act">
+        {% if d.inline %}<a class="btn sm icon" href="{{ url_for('document_download', did=d.id, inline=1) }}" target="_blank" rel="noopener" aria-label="View {{ d.title }}" title="View">{{ icon('eye') }}</a>{% endif %}
+        <a class="btn sm icon" href="{{ url_for('document_download', did=d.id) }}" aria-label="Download {{ d.title }}" title="Download">{{ icon('download') }}</a>
+        {% if can('documents', 'edit') and (me.role in ('admin', 'manager') or d.uploaded_by == me.username) %}<form method="post" action="{{ url_for('document_delete', did=d.id) }}" data-confirm="Delete {{ d.title }}?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ d.title }}">{{ icon('trash') }}</button></form>{% endif %}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {{ pager(pg, keep, 'documents') }}
+  {% else %}<div class="empty"><h3>No documents yet</h3><p>Upload a customer's NID copy or signed agreement to keep it with their record.</p></div>{% endif %}
+</section>
+{% if can('documents', 'edit') %}
+<dialog class="modal" id="doc-dlg" aria-labelledby="doc-title">
+  <form method="post" action="{{ url_for('document_upload') }}" enctype="multipart/form-data">
+    {{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">
+    <div class="modal-head"><h2 id="doc-title">Upload document</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <div class="field"><label class="lbl" for="dc-file">File</label><input id="dc-file" name="file" type="file" required><div class="help">Allowed: {{ allowed }}. Up to 20 MB.</div></div>
+      <div class="field"><label class="lbl" for="dc-title">Title</label><input id="dc-title" name="title" maxlength="200" placeholder="Same as the file name if empty"></div>
+      <div class="grid-2">
+        <div class="field"><label class="lbl" for="dc-cat">Category</label><select id="dc-cat" name="category">{% for c in categories %}<option>{{ c }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="dc-user">Customer username</label><input id="dc-user" name="username" spellcheck="false" placeholder="Optional"></div>
+      </div>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Upload</button></div>
+  </form>
+</dialog>
+{% endif %}
+{% endblock %}

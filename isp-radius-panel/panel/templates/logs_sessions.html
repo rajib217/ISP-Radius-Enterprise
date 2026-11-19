@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, simple_pager %}
+{% block title %}Sessions{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Logs</h1><p class="sub">Every PPPoE session RADIUS has recorded, newest first.</p></div></div>
+<section class="panel">
+  {% include "_logs_tabs.html" %}
+  <form class="filters" method="get">
+    <div class="search">{{ icon('search') }}<input type="search" name="q" value="{{ request.args.get('q', '') }}" placeholder="Username starts with…" aria-label="Search"></div>
+    <select name="state" aria-label="State"><option value="">All sessions</option><option value="online" {{ 'selected' if request.args.get('state') == 'online' }}>Online now</option><option value="closed" {{ 'selected' if request.args.get('state') == 'closed' }}>Ended</option></select>
+    <input type="date" name="from" value="{{ request.args.get('from', '') }}" aria-label="From"><input type="date" name="to" value="{{ request.args.get('to', '') }}" aria-label="To">
+    <button class="btn" type="submit">Search</button>
+  </form>
+  {% if rows %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Username</th><th>Started</th><th>Ended</th><th class="num">Duration</th><th class="num">Down</th><th class="num">Up</th><th class="hide-sm">IP</th><th class="hide-sm">MAC</th><th class="hide-sm">Reason</th></tr></thead>
+    <tbody>{% for r in rows %}<tr>
+      <td class="mono">{{ r.username }}</td><td class="nowrap">{{ r.acctstarttime|dt }}</td>
+      <td class="nowrap">{% if r.acctstoptime %}{{ r.acctstoptime|dt }}{% else %}<span class="badge ok">Online</span>{% endif %}</td>
+      <td class="num">{{ r.acctsessiontime|dur }}</td><td class="num">{{ r.acctoutputoctets|bytes }}</td><td class="num">{{ r.acctinputoctets|bytes }}</td>
+      <td class="hide-sm mono">{{ r.framedipaddress or '—' }}</td><td class="hide-sm mono">{{ r.callingstationid or '—' }}</td><td class="hide-sm muted">{{ r.acctterminatecause or '' }}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {{ simple_pager(page, has_next, keep, 'logs_sessions') }}
+  {% else %}<div class="empty"><h3>No sessions found</h3><p>Sessions appear when customers connect through your routers.</p></div>{% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Assign Packages{% endblock %}
+{% block content %}
+{% set showrp = u.role == 'reseller' %}
+<div class="page-head"><div><h1>Packages</h1><p class="sub"><a href="{{ url_for('dashboard') }}">Home</a> &middot; <a href="{{ back_url or url_for('admin_view', aid=u.id) }}">{{ u.username }}</a> &middot; Assign Packages</p></div>
+</div>
+<div class="ap-headrow"><div><h2 class="ap-title">{{ u.full_name or u.username }} ({{ label }}) &middot; Assign Packages</h2>
+<p class="muted">Pick a package to set what {{ u.username }} pays for it (at least the minimum){% if showrp %} and the profit they add on top{% else %} and the profit they add{% endif %}. Leave the price empty to not assign it. If no package is priced, {{ u.username }} can use every package.</p></div>
+<p class="ap-counts"><span><b id="apPriced">0</b> of {{ plans|length }} priced</span><span><b id="apUnset">0</b> not set</span><span><b id="apAttn">0</b> need attention</span></p></div>
+
+<form method="post" class="panel ap" id="apForm">
+  {{ csrf_input() }}
+  <div class="ap-grid">
+    <aside class="ap-side">
+      <input type="search" id="apSearch" placeholder="Search packages" aria-label="Search packages">
+      <select id="apFilter" aria-label="Filter"><option value="">All packages</option><option value="ready">Ready</option><option value="free">Free</option><option value="unset">Not set</option><option value="attn">Needs attention</option></select>
+      <ul class="ap-list" id="apList">
+        {% for p in plans %}<li><button type="button" class="ap-item" data-id="{{ p.id }}" data-name="{{ p.title|lower }}"><span class="ap-n">{{ p.title }}</span><span class="ap-st" data-st></span><span class="ap-p muted" data-pp>{{ '%.2f'|format(p.price|float) }}</span><span class="ap-who muted">subscriber pays</span></button></li>{% endfor %}
+      </ul>
+    </aside>
+    <div class="ap-main">
+      {% for p in plans %}
+      <section class="ap-edit hide" data-edit="{{ p.id }}" data-min="{{ '' if p.min is none else p.min }}" data-list="{{ '%.2f'|format(p.price|float) }}">
+        <div class="ap-top"><div><small class="muted">Package #{{ loop.index }}</small><h3>{{ p.title }}</h3></div><span class="ap-state" data-state></span></div>
+        <div class="grid-3">
+          <div class="field"><label class="lbl" for="pr{{ p.id }}">Price</label><input id="pr{{ p.id }}" name="price_{{ p.id }}" type="number" step="0.01" min="0" value="{{ p.v_price }}" data-f="price" class="num-in">{% if p.min is not none %}<div class="help ap-min">{{ icon('lock') }}Minimum {{ '%.2f'|format(p.min) }}</div>{% else %}<div class="help">List price {{ '%.2f'|format(p.price|float) }}</div>{% endif %}</div>
+          <div class="field"><label class="lbl" for="sp{{ p.id }}">{{ 'Subscriber profit' }}</label><input id="sp{{ p.id }}" name="sp_{{ p.id }}" type="number" step="0.01" min="0" value="{{ p.v_sp }}" data-f="sp" class="num-in"></div>
+          {% if showrp %}<div class="field"><label class="lbl" for="rp{{ p.id }}">Sub-reseller profit</label><input id="rp{{ p.id }}" name="rp_{{ p.id }}" type="number" step="0.01" min="0" value="{{ p.v_rp }}" data-f="rp" class="num-in"></div>{% else %}<input type="hidden" name="rp_{{ p.id }}" value="0" data-f="rp">{% endif %}
+        </div>
+        <div class="grid-2 ap-sum">
+          <div class="ap-card"><small class="muted">Subscriber pays</small><div><span>Price</span><b data-o="price">0.00</b></div><div><span>+ Subscriber profit</span><b data-o="sp">0.00</b></div><div class="ap-tot"><span>= Subscriber pays</span><b data-o="t1">0.00</b></div></div>
+          {% if showrp %}<div class="ap-card"><small class="muted">Sub-reseller pays</small><div><span>Price</span><b data-o="price">0.00</b></div><div><span>+ Sub-reseller profit</span><b data-o="rp">0.00</b></div><div class="ap-tot"><span>= Sub-reseller pays</span><b data-o="t2">0.00</b></div></div>{% endif %}
+        </div>
+      </section>{% endfor %}
+      {% if not plans %}<div class="empty"><h3>No packages yet</h3><p>Create packages first under Package &gt; Packages.</p></div>{% endif %}
+    </div>
+  </div>
+  <div class="ap-foot"><div><span id="apChanges">No changes yet.</span><small class="muted" id="apShown"></small></div>
+    <div class="row-gap"><button type="button" class="btn" id="apReset">Reset</button><button class="btn primary" type="submit">Submit</button></div></div>
+</form>
+{% endblock %}
+{% block scripts %}<script>
+(function(){
+function q(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s));}
+var edits=q(".ap-edit"),items=q(".ap-item"),cur=null,init={};
+function num(v){var n=parseFloat(v);return isNaN(n)?0:n;}
+function fmt(n){return n.toFixed(2);}
+function state(e){var p=e.querySelector('[data-f=price]').value.trim();if(p==="")return"unset";var v=parseFloat(p),m=e.dataset.min===""?null:parseFloat(e.dataset.min);if(isNaN(v)||v<0||(m!==null&&v<m))return"attn";return v===0?"free":"ready";}
+edits.forEach(function(e){init[e.dataset.edit]=q("input[data-f]",e).map(function(i){return i.value;}).join("|");});
+function calc(e){var pr=num(e.querySelector('[data-f=price]').value),sp=num(e.querySelector('[data-f=sp]').value),rpf=e.querySelector('[data-f=rp]'),rp=rpf?num(rpf.value):0;
+ q("[data-o=price]",e).forEach(function(n){n.textContent=fmt(pr);});q("[data-o=sp]",e).forEach(function(n){n.textContent=fmt(sp);});q("[data-o=rp]",e).forEach(function(n){n.textContent=fmt(rp);});
+ q("[data-o=t1]",e).forEach(function(n){n.textContent=fmt(pr+sp);});q("[data-o=t2]",e).forEach(function(n){n.textContent=fmt(pr+rp);});}
+var label={ready:"Ready",free:"Free",unset:"Not set",attn:"Needs attention"};
+function refresh(){var c={ready:0,free:0,unset:0,attn:0},ch=0,t=(document.getElementById("apSearch").value||"").toLowerCase(),f=document.getElementById("apFilter").value,shown=0;
+ edits.forEach(function(e){var s=state(e),it=items.filter(function(i){return i.dataset.id===e.dataset.edit;})[0];c[s]++;calc(e);
+  e.querySelector("[data-state]").textContent=label[s];e.querySelector("[data-state]").className="ap-state "+s;
+  it.querySelector("[data-st]").textContent=s==="attn"?"Attention":label[s];it.querySelector("[data-st]").className="ap-st "+s;
+  var pr=e.querySelector('[data-f=price]').value;it.querySelector("[data-pp]").textContent=pr!==""?fmt(num(pr)):e.dataset.list;
+  var cj=q("input[data-f]",e).map(function(i){return i.value;}).join("|");if(cj!==init[e.dataset.edit])ch++;
+  var vis=(!t||it.dataset.name.indexOf(t)>=0)&&(!f||s===f);it.parentNode.style.display=vis?"":"none";if(vis)shown++;});
+ document.getElementById("apPriced").textContent=c.ready+c.free+c.attn;document.getElementById("apUnset").textContent=c.unset;document.getElementById("apAttn").textContent=c.attn;
+ document.getElementById("apChanges").textContent=ch?ch+" package"+(ch===1?"":"s")+" changed.":"No changes yet.";
+ document.getElementById("apShown").textContent="Showing "+(shown?1:0)+"\u2013"+shown+" of "+edits.length+" packages \u00b7 50 per page";}
+function pick(id){cur=id;edits.forEach(function(e){e.classList.toggle("hide",e.dataset.edit!==id);});items.forEach(function(i){i.classList.toggle("on",i.dataset.id===id);});}
+items.forEach(function(i){i.addEventListener("click",function(){pick(i.dataset.id);});});
+document.getElementById("apForm").addEventListener("input",refresh);
+document.getElementById("apSearch").addEventListener("input",refresh);document.getElementById("apFilter").addEventListener("change",refresh);
+document.getElementById("apReset").addEventListener("click",function(){edits.forEach(function(e){var v=init[e.dataset.edit].split("|");q("input[data-f]",e).forEach(function(i,k){i.value=v[k];});});refresh();});
+document.getElementById("apForm").addEventListener("submit",function(ev){if(edits.some(function(e){return state(e)==="attn";})){ev.preventDefault();var bad=edits.filter(function(e){return state(e)==="attn";})[0];pick(bad.dataset.edit);alert("Fix the packages marked Needs attention first (the price cannot be below the minimum).");}});
+if(items.length)pick(items[0].dataset.id);refresh();
+})();
+</script>{% endblock %}

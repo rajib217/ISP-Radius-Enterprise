@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% set is_sms = kind == 'sms' %}
+{% block title %}{{ 'SMS' if is_sms else 'Email' }} templates{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>{{ 'SMS' if is_sms else 'Email' }} templates</h1><p class="sub">Ready-made messages. <b>welcome</b>, <b>payment</b> and <b>expiry</b> are also used for automatic messages.</p></div>
+  {% if can(kind, 'edit') %}<div class="actions"><button class="btn primary" data-open="tpl-dlg" data-new>{{ icon('plus') }}New template</button></div>{% endif %}
+</div>
+<p class="muted">Variables you can use: {% for v in variables %}<span class="mono">{{ '{' + v + '}' }}</span>{{ ', ' if not loop.last }}{% endfor %}</p>
+<div class="stack">
+{% for t in rows %}
+<section class="panel">
+  <div class="panel-head"><h2>{{ t.name }}</h2>{% if t.system %}<span class="badge info">Automatic</span>{% endif %}{% if t.system and not t.custom %}<span class="badge mute">Built-in text</span>{% endif %}
+    <span class="aside"></span>
+    <a class="btn sm" href="{{ url_for('sms_compose' if is_sms else 'email_compose') }}">Use</a>
+    {% if can(kind, 'edit') %}
+    <button class="btn sm icon" data-open="tpl-dlg" data-edit='{{ {"name": t.name, "subject": t.subject, "body": t.body}|tojson }}' aria-label="Edit {{ t.name }}">{{ icon('edit') }}</button>
+    {% if t.id %}<form method="post" action="{{ url_for('template_delete', tid=t.id, kind=kind) }}" data-confirm="{{ 'Go back to the built-in text for ' + t.name + '?' if t.system else 'Delete template ' + t.name + '?' }}">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ t.name }}">{{ icon('trash') }}</button></form>{% endif %}{% endif %}</div>
+  <div class="panel-body">{% if not is_sms and t.subject %}<div><b>{{ t.subject }}</b></div>{% endif %}<div class="pre" style="margin-top:6px">{{ t.body }}</div></div>
+</section>
+{% endfor %}
+</div>
+{% if can(kind, 'edit') %}
+<dialog class="modal" id="tpl-dlg" aria-labelledby="tpl-title">
+  <form method="post" action="{{ url_for('template_save', kind=kind) }}">
+    {{ csrf_input() }}
+    <div class="modal-head"><h2 id="tpl-title" data-title data-title-new="New template" data-title-edit="Edit template">New template</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <div class="field"><label class="lbl" for="tp-name">Name</label><input id="tp-name" name="name" data-lock-on-edit maxlength="64" pattern="[A-Za-z0-9_ \-]{2,64}" required><div class="help">Use welcome, payment or expiry to change the automatic messages.</div></div>
+      {% if not is_sms %}<div class="field"><label class="lbl" for="tp-subject">Subject</label><input id="tp-subject" name="subject" maxlength="200"></div>{% endif %}
+      <div class="field"><label class="lbl" for="tp-body">Message</label><textarea id="tp-body" name="body" rows="{{ 5 if is_sms else 9 }}" maxlength="5000" required></textarea></div>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save template</button></div>
+  </form>
+</dialog>
+{% endif %}
+{% endblock %}

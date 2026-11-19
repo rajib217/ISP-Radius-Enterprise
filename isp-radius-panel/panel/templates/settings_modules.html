@@ -1,0 +1,21 @@
+{% extends "settings_base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Software modules{% endblock %}
+{% block ssub %}Switch parts of the panel on or off for everyone.{% endblock %}
+{% block sbody %}
+<form method="post" class="panel set-card">
+  {{ csrf_input() }}
+  <div class="panel-head"><h2>Software Modules Settings</h2></div>
+  <div class="set-form">
+    {% for key, label, avail in items %}
+    <div class="field">
+      <label class="lbl" for="m-{{ key }}">{{ label }}</label>
+      <span class="switch"><input id="m-{{ key }}" type="checkbox" name="on" value="{{ key }}" {{ 'checked' if avail and key not in off }} {{ '' if avail else 'disabled' }}><i></i></span>
+      {% if not avail %}<small class="muted">Not available in this version yet.</small>{% endif %}
+    </div>
+    {% endfor %}
+    <p class="help" style="grid-column:1/-1;margin:0">A module that is off disappears from the menu and its pages are closed to every user, administrators included. Your data is kept.</p>
+  </div>
+  <div class="set-foot"><button class="btn primary" type="submit">Submit</button></div>
+</form>
+{% endblock %}

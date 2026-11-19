@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Allocation{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Allocation</h1><p class="sub">Choose which packages each staff member, reseller or retailer may sell. Someone with nothing chosen can use every package.</p></div></div>
+<section class="panel">
+  {% if users %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>User</th><th>Role</th><th>Allowed packages</th><th></th></tr></thead>
+    <tbody>{% for u in users %}<tr>
+      <td><b>{{ u.username }}</b><div class="muted">{{ u.full_name or '' }}</div></td>
+      <td>{{ roles.get(u.role, u.role) }}</td>
+      <td>{% if u.plan_names %}{% for p in u.plan_names %}<span class="badge">{{ p }}</span> {% endfor %}{% else %}<span class="muted">All packages</span>{% endif %}</td>
+      <td class="act"><button class="btn sm" data-open="alloc-dlg" data-edit='{{ {"user_id": u.id, "plans": u.plan_ids, "who": u.username}|tojson }}'>{{ icon('edit') }}Allocate</button></td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="empty"><h3>No other users yet</h3><p>Add staff or resellers on the Users page first.</p></div>{% endif %}
+</section>
+<dialog class="modal" id="alloc-dlg" aria-labelledby="alloc-title">
+  <form method="post" action="{{ url_for('allocation_save') }}">
+    {{ csrf_input() }}<input type="hidden" name="user_id">
+    <div class="modal-head"><h2 id="alloc-title">Allocate packages</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <div class="field"><label class="lbl" for="al-plans">Packages (hold Ctrl or Cmd to pick several)</label>
+        <select id="al-plans" name="plans" multiple size="10">{% for p in plans %}<option value="{{ p.id }}">{{ p.label }} - {{ p.price }}</option>{% endfor %}</select>
+        <div class="help">Leave everything unselected to allow all packages.</div></div>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save</button></div>
+  </form>
+</dialog>
+{% endblock %}

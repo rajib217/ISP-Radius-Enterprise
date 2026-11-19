@@ -1,0 +1,617 @@
+-- ISP RADIUS Panel: extra tables and indexes.
+-- Run AFTER the stock FreeRADIUS schema (radacct, radcheck, nas ...) exists.
+-- Safe to run more than once.
+
+CREATE TABLE IF NOT EXISTS panel_admins (
+  id            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  username      VARCHAR(64)  NOT NULL UNIQUE,
+  full_name     VARCHAR(128) NOT NULL DEFAULT '',
+  password_hash VARCHAR(255) NOT NULL,
+  role          ENUM('admin','support') NOT NULL DEFAULT 'support',
+  is_active     TINYINT(1)   NOT NULL DEFAULT 1,
+  last_login    DATETIME NULL,
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- A plan is also the RADIUS group (plans.name = radusergroup.groupname)
+CREATE TABLE IF NOT EXISTS plans (
+  id               INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  name             VARCHAR(64)  NOT NULL UNIQUE,
+  label            VARCHAR(128) NOT NULL DEFAULT '',
+  download_mbps    INT UNSIGNED NOT NULL DEFAULT 10,
+  upload_mbps      INT UNSIGNED NOT NULL DEFAULT 10,
+  rate_custom      VARCHAR(255) NULL,
+  price            DECIMAL(10,2) NOT NULL DEFAULT 0,
+  validity_days    INT UNSIGNED NOT NULL DEFAULT 30,
+  pool_name        VARCHAR(64)  NULL,
+  simultaneous_use TINYINT UNSIGNED NOT NULL DEFAULT 1,
+  created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS subscribers (
+  id          INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  username    VARCHAR(64)  NOT NULL UNIQUE,
+  full_name   VARCHAR(128) NOT NULL DEFAULT '',
+  phone       VARCHAR(32)  NOT NULL DEFAULT '',
+  email       VARCHAR(128) NOT NULL DEFAULT '',
+  address     VARCHAR(255) NOT NULL DEFAULT '',
+  area        VARCHAR(64)  NOT NULL DEFAULT '',
+  plan_id     INT UNSIGNED NULL,
+  status      ENUM('active','suspended') NOT NULL DEFAULT 'active',
+  expiry_date DATE NULL,
+  static_ip   VARCHAR(45)  NULL,
+  notes       TEXT NULL,
+  created_by  VARCHAR(64)  NOT NULL DEFAULT '',
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_plan (plan_id),
+  KEY idx_status_exp (status, expiry_date),
+  KEY idx_area (area),
+  KEY idx_phone (phone),
+  KEY idx_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS payments (
+  id            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  subscriber_id INT UNSIGNED NULL,
+  username      VARCHAR(64) NOT NULL,
+  amount        DECIMAL(10,2) NOT NULL DEFAULT 0,
+  days_added    INT UNSIGNED NOT NULL DEFAULT 0,
+  method        VARCHAR(32) NOT NULL DEFAULT 'cash',
+  note          VARCHAR(255) NOT NULL DEFAULT '',
+  period_to     DATE NULL,
+  received_by   VARCHAR(64) NOT NULL DEFAULT '',
+  paid_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_sub (subscriber_id),
+  KEY idx_user (username),
+  KEY idx_paid (paid_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS audit_log (
+  id         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  admin      VARCHAR(64)  NOT NULL DEFAULT '',
+  action     VARCHAR(64)  NOT NULL,
+  target     VARCHAR(128) NOT NULL DEFAULT '',
+  detail     VARCHAR(500) NOT NULL DEFAULT '',
+  ip         VARCHAR(45)  NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_created (created_at),
+  KEY idx_ip_action (ip, action, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS stats_snapshots (
+  ts     DATETIME NOT NULL PRIMARY KEY,
+  online INT UNSIGNED NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS server_stats (
+  ts            DATETIME NOT NULL PRIMARY KEY,
+  cpu_pct       DECIMAL(5,2) NOT NULL DEFAULT 0,
+  load1         DECIMAL(6,2) NOT NULL DEFAULT 0,
+  mem_used_mb   INT UNSIGNED NOT NULL DEFAULT 0,
+  mem_total_mb  INT UNSIGNED NOT NULL DEFAULT 0,
+  disk_used_gb  DECIMAL(10,2) NOT NULL DEFAULT 0,
+  disk_total_gb DECIMAL(10,2) NOT NULL DEFAULT 0,
+  db_mb         INT UNSIGNED NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS settings (
+  skey   VARCHAR(64) NOT NULL PRIMARY KEY,
+  svalue TEXT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT IGNORE INTO settings (skey, svalue) VALUES
+  ('isp_name', 'My ISP'),
+  ('currency', 'BDT'),
+  ('interim_interval', '600'),
+  ('stale_minutes', '45'),
+  ('authlog_days', '30'),
+  ('archive_months', '12'),
+  ('coa_port', '3799');
+
+-- Indexes that matter at 20,000+ clients (MariaDB syntax)
+ALTER TABLE radacct     ADD INDEX IF NOT EXISTS idx_user_stop (username, acctstoptime);
+ALTER TABLE radacct     ADD INDEX IF NOT EXISTS idx_stop_nas (acctstoptime, nasipaddress);
+ALTER TABLE radpostauth ADD INDEX IF NOT EXISTS idx_authdate (authdate);
+
+-- Cold storage for old accounting rows (same structure as radacct)
+CREATE TABLE IF NOT EXISTS radacct_archive LIKE radacct;
+
+
+-- ====================================================================
+--  Version 2: users and roles, accounting, inventory, network, tickets,
+--  email / SMS, notes, documents
+-- ====================================================================
+-- VARCHAR (not ENUM) so that custom roles can be stored
+ALTER TABLE panel_admins MODIFY role VARCHAR(32) NOT NULL DEFAULT 'support';
+
+-- Roles the administrator creates (office-staff type); permissions live in role_perms / role_funcs under the same key
+CREATE TABLE IF NOT EXISTS custom_roles (
+  role_key   VARCHAR(32) NOT NULL PRIMARY KEY,
+  name       VARCHAR(64) NOT NULL,
+  created_by VARCHAR(64) NOT NULL DEFAULT '',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS phone         VARCHAR(32)  NOT NULL DEFAULT '';
+ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS email         VARCHAR(128) NOT NULL DEFAULT '';
+ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS department_id INT UNSIGNED NULL;
+ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS zone_id       INT UNSIGNED NULL;
+ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS parent_id     INT UNSIGNED NULL;
+
+-- Changes to the built-in permissions of a role (module x none/view/edit)
+CREATE TABLE IF NOT EXISTS role_funcs (
+  role    VARCHAR(32) NOT NULL,
+  fkey    VARCHAR(48) NOT NULL,
+  allowed TINYINT(1)  NOT NULL DEFAULT 0,
+  PRIMARY KEY (role, fkey)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS role_perms (
+  role   VARCHAR(32) NOT NULL,
+  module VARCHAR(32) NOT NULL,
+  level  ENUM('none','view','edit') NOT NULL DEFAULT 'none',
+  PRIMARY KEY (role, module)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- A staff member with rows here may only use these plans (no rows = all plans)
+CREATE TABLE IF NOT EXISTS user_plans (
+  user_id INT UNSIGNED NOT NULL,
+  plan_id INT UNSIGNED NOT NULL,
+  PRIMARY KEY (user_id, plan_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS departments (
+  id          INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  name        VARCHAR(64)  NOT NULL UNIQUE,
+  description VARCHAR(255) NOT NULL DEFAULT ''
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS zones (
+  id          INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  name        VARCHAR(64)  NOT NULL UNIQUE,
+  description VARCHAR(255) NOT NULL DEFAULT ''
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS areas (
+  id      INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  name    VARCHAR(64)  NOT NULL UNIQUE,
+  note    VARCHAR(255) NOT NULL DEFAULT '',
+  zone_id INT UNSIGNED NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- areas already typed into customer records become area entries
+INSERT IGNORE INTO areas (name) SELECT DISTINCT area FROM subscribers WHERE area <> '';
+
+CREATE TABLE IF NOT EXISTS expenses (
+  id         INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  spent_on   DATE NOT NULL,
+  category   VARCHAR(64)  NOT NULL DEFAULT 'Other',
+  amount     DECIMAL(12,2) NOT NULL DEFAULT 0,
+  paid_to    VARCHAR(128) NOT NULL DEFAULT '',
+  method     VARCHAR(32)  NOT NULL DEFAULT 'cash',
+  note       VARCHAR(255) NOT NULL DEFAULT '',
+  created_by VARCHAR(64)  NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_spent (spent_on)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS inventory_items (
+  id        INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  name      VARCHAR(128) NOT NULL,
+  category  VARCHAR(64)  NOT NULL DEFAULT 'Other',
+  sku       VARCHAR(64)  NOT NULL DEFAULT '',
+  unit      VARCHAR(16)  NOT NULL DEFAULT 'pcs',
+  qty       INT NOT NULL DEFAULT 0,
+  min_qty   INT NOT NULL DEFAULT 0,
+  unit_cost DECIMAL(12,2) NOT NULL DEFAULT 0,
+  location  VARCHAR(128) NOT NULL DEFAULT '',
+  note      VARCHAR(255) NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_cat (category)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS inventory_moves (
+  id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  item_id       INT UNSIGNED NOT NULL,
+  kind          ENUM('in','out','assign','return','adjust') NOT NULL,
+  qty           INT NOT NULL,
+  subscriber_id INT UNSIGNED NULL,
+  username      VARCHAR(64)  NOT NULL DEFAULT '',
+  serial        VARCHAR(128) NOT NULL DEFAULT '',
+  note          VARCHAR(255) NOT NULL DEFAULT '',
+  by_user       VARCHAR(64)  NOT NULL DEFAULT '',
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_item (item_id, created_at),
+  KEY idx_sub (subscriber_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS net_devices (
+  id           INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  name         VARCHAR(128) NOT NULL,
+  kind         VARCHAR(32)  NOT NULL DEFAULT 'olt',
+  ip           VARCHAR(45)  NOT NULL DEFAULT '',
+  location     VARCHAR(128) NOT NULL DEFAULT '',
+  zone_id      INT UNSIGNED NULL,
+  notes        VARCHAR(255) NOT NULL DEFAULT '',
+  last_status  VARCHAR(8)   NOT NULL DEFAULT '',
+  last_checked DATETIME NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS ip_pools (
+  id      INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  name    VARCHAR(64)  NOT NULL UNIQUE,
+  ranges  TEXT NOT NULL,
+  gateway VARCHAR(45)  NOT NULL DEFAULT '',
+  nas_id  INT NULL,
+  note    VARCHAR(255) NOT NULL DEFAULT ''
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS tickets (
+  id            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  subscriber_id INT UNSIGNED NULL,
+  username      VARCHAR(64)  NOT NULL DEFAULT '',
+  subject       VARCHAR(200) NOT NULL,
+  category      VARCHAR(32)  NOT NULL DEFAULT 'other',
+  priority      VARCHAR(16)  NOT NULL DEFAULT 'normal',
+  status        VARCHAR(16)  NOT NULL DEFAULT 'open',
+  department_id INT UNSIGNED NULL,
+  assigned_to   INT UNSIGNED NULL,
+  created_by    VARCHAR(64)  NOT NULL DEFAULT '',
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  closed_at     DATETIME NULL,
+  KEY idx_status (status, updated_at),
+  KEY idx_sub (subscriber_id),
+  KEY idx_assigned (assigned_to)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS ticket_replies (
+  id         INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  ticket_id  INT UNSIGNED NOT NULL,
+  author     VARCHAR(64) NOT NULL DEFAULT '',
+  body       TEXT NOT NULL,
+  internal   TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_ticket (ticket_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Waiting / sent / failed SMS and emails. The isp-panel-sender service delivers them.
+CREATE TABLE IF NOT EXISTS outbox (
+  id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  channel       ENUM('sms','email') NOT NULL,
+  to_addr       VARCHAR(160) NOT NULL,
+  subject       VARCHAR(200) NOT NULL DEFAULT '',
+  body          TEXT NOT NULL,
+  subscriber_id INT UNSIGNED NULL,
+  dedupe        VARCHAR(100) NULL,
+  batch         VARCHAR(16) NULL,
+  status        ENUM('pending','sent','failed') NOT NULL DEFAULT 'pending',
+  tries         TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  error         VARCHAR(255) NOT NULL DEFAULT '',
+  created_by    VARCHAR(64) NOT NULL DEFAULT '',
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  sent_at       DATETIME NULL,
+  UNIQUE KEY uq_dedupe (dedupe),
+  KEY idx_queue (channel, status, id),
+  KEY idx_batch (batch),
+  KEY idx_sub (subscriber_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS message_templates (
+  id      INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  kind    ENUM('sms','email') NOT NULL,
+  name    VARCHAR(64) NOT NULL,
+  subject VARCHAR(200) NOT NULL DEFAULT '',
+  body    TEXT NOT NULL,
+  UNIQUE KEY uq_kind_name (kind, name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS notes (
+  id            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  user_id       INT UNSIGNED NOT NULL,
+  author        VARCHAR(64) NOT NULL DEFAULT '',
+  title         VARCHAR(120) NOT NULL DEFAULT '',
+  body          TEXT NOT NULL,
+  color         VARCHAR(16) NOT NULL DEFAULT 'yellow',
+  shared        TINYINT(1) NOT NULL DEFAULT 0,
+  pinned        TINYINT(1) NOT NULL DEFAULT 0,
+  subscriber_id INT UNSIGNED NULL,
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_user (user_id),
+  KEY idx_sub (subscriber_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS documents (
+  id            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  title         VARCHAR(200) NOT NULL,
+  category      VARCHAR(64)  NOT NULL DEFAULT 'Other',
+  subscriber_id INT UNSIGNED NULL,
+  filename      VARCHAR(255) NOT NULL,
+  stored        VARCHAR(80)  NOT NULL,
+  size          BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  uploaded_by   VARCHAR(64)  NOT NULL DEFAULT '',
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_sub (subscriber_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS fees (
+  id     INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  name   VARCHAR(64) NOT NULL,
+  kind   ENUM('tax','fee') NOT NULL DEFAULT 'fee',
+  mode   ENUM('percent','fixed') NOT NULL DEFAULT 'fixed',
+  value  DECIMAL(10,2) NOT NULL DEFAULT 0,
+  active TINYINT(1) NOT NULL DEFAULT 1,
+  note   VARCHAR(255) NOT NULL DEFAULT ''
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS mac_bind    VARCHAR(17) NOT NULL DEFAULT '';
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS grace_until DATE NULL;
+
+CREATE TABLE IF NOT EXISTS sub_charges (
+  id            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  subscriber_id INT UNSIGNED NOT NULL,
+  name          VARCHAR(64) NOT NULL,
+  amount        DECIMAL(10,2) NOT NULL DEFAULT 0,
+  paid          TINYINT(1) NOT NULL DEFAULT 0,
+  note          VARCHAR(255) NOT NULL DEFAULT '',
+  created_by    VARCHAR(64) NOT NULL DEFAULT '',
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  paid_at       DATETIME NULL,
+  KEY idx_sub (subscriber_id, paid)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS description VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS invoice_desc VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS billing_type VARCHAR(10) NOT NULL DEFAULT 'prepaid';
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS service_type VARCHAR(16) NOT NULL DEFAULT 'Internet';
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS duration INT UNSIGNED NOT NULL DEFAULT 30;
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS duration_type VARCHAR(8) NOT NULL DEFAULT 'day';
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS auto_renew TINYINT(1) NOT NULL DEFAULT 0;
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS require_balance TINYINT(1) NOT NULL DEFAULT 0;
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS auto_invoice TINYINT(1) NOT NULL DEFAULT 0;
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS invoice_day TINYINT UNSIGNED NULL;
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS fixed_expire_day TINYINT UNSIGNED NULL;
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS fixed_expire_acct TINYINT(1) NOT NULL DEFAULT 0;
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS fixed_expire_acct_mode VARCHAR(8) NOT NULL DEFAULT 'daily';
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS fixed_expire_time VARCHAR(5) NULL;
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS bandwidth_value DECIMAL(12,2) NULL;
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS bandwidth_type  VARCHAR(8) NOT NULL DEFAULT '';
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS speed_from_policy TINYINT(1) NOT NULL DEFAULT 0;
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS policy_group VARCHAR(64) NOT NULL DEFAULT '';
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS expired_policy VARCHAR(64) NOT NULL DEFAULT '';
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS disabled_policy VARCHAR(64) NOT NULL DEFAULT '';
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS quota_total_gb DECIMAL(10,2) NULL;
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS quota_total_action VARCHAR(12) NOT NULL DEFAULT 'disconnect';
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS quota_total_policy VARCHAR(64) NOT NULL DEFAULT '';
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS quota_daily_gb DECIMAL(10,2) NULL;
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS quota_daily_action VARCHAR(12) NOT NULL DEFAULT 'disconnect';
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS quota_daily_policy VARCHAR(64) NOT NULL DEFAULT '';
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS quota_weekly_gb DECIMAL(10,2) NULL;
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS quota_weekly_action VARCHAR(12) NOT NULL DEFAULT 'disconnect';
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS quota_weekly_policy VARCHAR(64) NOT NULL DEFAULT '';
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS quota_weekly_reset TINYINT UNSIGNED NOT NULL DEFAULT 0;
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS quota_session_min INT UNSIGNED NULL;
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS quota_session_action VARCHAR(12) NOT NULL DEFAULT 'disconnect';
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS quota_session_policy VARCHAR(64) NOT NULL DEFAULT '';
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS quota_hit VARCHAR(8) NOT NULL DEFAULT '';
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS balance      DECIMAL(10,2) NOT NULL DEFAULT 0;
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS net_disabled TINYINT(1) NOT NULL DEFAULT 0;
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS sms_on       TINYINT(1) NOT NULL DEFAULT 1;
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS email_on     TINYINT(1) NOT NULL DEFAULT 1;
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS auto_mac     TINYINT(1) NOT NULL DEFAULT 0;
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS auto_renew   TINYINT(1) NOT NULL DEFAULT 0;
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS photo        VARCHAR(8) NOT NULL DEFAULT '';
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS identity     VARCHAR(32) NOT NULL DEFAULT '';
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS serial       VARCHAR(32) NOT NULL DEFAULT '';
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS nas_ip       VARCHAR(45) NOT NULL DEFAULT '';
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS conn_type     VARCHAR(16) NOT NULL DEFAULT '';
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS vol_total_gb  DECIMAL(10,2) NULL;
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS vol_used_gb   DECIMAL(10,2) NULL;
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS sess_total_min INT UNSIGNED NULL;
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS sess_used_min  INT UNSIGNED NULL;
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS disc_type     VARCHAR(8) NOT NULL DEFAULT '';
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS discount      DECIMAL(10,2) NOT NULL DEFAULT 0;
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS box_pop_no    VARCHAR(64)  NOT NULL DEFAULT '';
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS box_pop_addr  VARCHAR(128) NOT NULL DEFAULT '';
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS mc_board      VARCHAR(64)  NOT NULL DEFAULT '';
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS electricity   VARCHAR(64)  NOT NULL DEFAULT '';
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS cable_type    VARCHAR(64)  NOT NULL DEFAULT '';
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS uplink_port   VARCHAR(64)  NOT NULL DEFAULT '';
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS fiber_code    VARCHAR(64)  NOT NULL DEFAULT '';
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS fiber_color   VARCHAR(64)  NOT NULL DEFAULT '';
+CREATE TABLE IF NOT EXISTS coa_log (
+  id         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  username   VARCHAR(64) NOT NULL,
+  nas_ip     VARCHAR(45) NOT NULL DEFAULT '',
+  ok         TINYINT(1) NOT NULL DEFAULT 0,
+  message    VARCHAR(255) NOT NULL DEFAULT '',
+  created_by VARCHAR(64) NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_user (username, id),
+  KEY idx_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS sub_ledger (
+  id            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  subscriber_id INT UNSIGNED NOT NULL,
+  amount        DECIMAL(10,2) NOT NULL,
+  balance_after DECIMAL(10,2) NOT NULL DEFAULT 0,
+  note          VARCHAR(255) NOT NULL DEFAULT '',
+  created_by    VARCHAR(64) NOT NULL DEFAULT '',
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_sub (subscriber_id, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS plan_fees (
+  plan_id INT UNSIGNED NOT NULL,
+  fee_id  INT UNSIGNED NOT NULL,
+  PRIMARY KEY (plan_id, fee_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+ALTER TABLE nas ADD COLUMN IF NOT EXISTS group_id     INT UNSIGNED NULL;
+ALTER TABLE nas ADD COLUMN IF NOT EXISTS coa_enabled  TINYINT(1) NOT NULL DEFAULT 1;
+ALTER TABLE nas ADD COLUMN IF NOT EXISTS last_status  VARCHAR(8) NOT NULL DEFAULT '';
+ALTER TABLE nas ADD COLUMN IF NOT EXISTS last_checked DATETIME NULL;
+ALTER TABLE net_devices ADD COLUMN IF NOT EXISTS nas_id INT UNSIGNED NULL;
+ALTER TABLE net_devices ADD COLUMN IF NOT EXISTS created_by VARCHAR(64) NOT NULL DEFAULT '';
+
+CREATE TABLE IF NOT EXISTS nas_groups (
+  id   INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(64) NOT NULL UNIQUE,
+  note VARCHAR(255) NOT NULL DEFAULT ''
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS mac_vendors (
+  prefix CHAR(6) NOT NULL PRIMARY KEY,
+  vendor VARCHAR(128) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS onus (
+  id       INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  olt_id   INT UNSIGNED NULL,
+  name     VARCHAR(64) NOT NULL DEFAULT '',
+  serial   VARCHAR(64) NOT NULL DEFAULT '',
+  mac      VARCHAR(17) NOT NULL DEFAULT '',
+  username VARCHAR(64) NOT NULL DEFAULT '',
+  pon_port VARCHAR(32) NOT NULL DEFAULT '',
+  rx_dbm   DECIMAL(5,2) NULL,
+  status   VARCHAR(12) NOT NULL DEFAULT 'online',
+  note     VARCHAR(255) NOT NULL DEFAULT '',
+  KEY idx_olt (olt_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS olt_snmp (
+  device_id   INT UNSIGNED NOT NULL PRIMARY KEY,
+  vendor      VARCHAR(16) NOT NULL DEFAULT 'other',
+  model       VARCHAR(64) NOT NULL DEFAULT '',
+  pon_type    VARCHAR(10) NOT NULL DEFAULT 'EPON',
+  version     VARCHAR(4)  NOT NULL DEFAULT 'v2c',
+  community   VARCHAR(64) NOT NULL DEFAULT 'public',
+  port        INT UNSIGNED NOT NULL DEFAULT 161,
+  timeout     TINYINT UNSIGNED NOT NULL DEFAULT 5,
+  retries     TINYINT UNSIGNED NOT NULL DEFAULT 3,
+  auto_poll   TINYINT(1) NOT NULL DEFAULT 1,
+  if_regex    VARCHAR(128) NOT NULL DEFAULT '',
+  oid_status  VARCHAR(128) NOT NULL DEFAULT '',
+  oid_name    VARCHAR(128) NOT NULL DEFAULT '',
+  oid_serial  VARCHAR(128) NOT NULL DEFAULT '',
+  oid_rx      VARCHAR(128) NOT NULL DEFAULT '',
+  oid_mac     VARCHAR(128) NOT NULL DEFAULT '',
+  status_map  VARCHAR(128) NOT NULL DEFAULT '',
+  rx_div      INT UNSIGNED NOT NULL DEFAULT 1,
+  last_poll   DATETIME NULL,
+  last_ok     TINYINT(1) NOT NULL DEFAULT 0,
+  last_msg    VARCHAR(255) NOT NULL DEFAULT ''
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+ALTER TABLE onus ADD COLUMN IF NOT EXISTS onu_key   VARCHAR(64) NOT NULL DEFAULT '';
+ALTER TABLE onus ADD COLUMN IF NOT EXISTS last_seen DATETIME NULL;
+ALTER TABLE onus ADD COLUMN IF NOT EXISTS source    VARCHAR(8) NOT NULL DEFAULT 'manual';
+ALTER TABLE onus ADD COLUMN IF NOT EXISTS tx_dbm    DECIMAL(5,2) NULL;
+ALTER TABLE onus ADD COLUMN IF NOT EXISTS temp_c    DECIMAL(4,1) NULL;
+ALTER TABLE onus ADD COLUMN IF NOT EXISTS volt_v    DECIMAL(6,2) NULL;
+ALTER TABLE onus ADD COLUMN IF NOT EXISTS curr_ma   DECIMAL(7,2) NULL;
+ALTER TABLE onus ADD COLUMN IF NOT EXISTS dist_m    INT NULL;
+ALTER TABLE olt_snmp ADD COLUMN IF NOT EXISTS oid_volt VARCHAR(128) NOT NULL DEFAULT '';
+ALTER TABLE olt_snmp ADD COLUMN IF NOT EXISTS oid_curr VARCHAR(128) NOT NULL DEFAULT '';
+ALTER TABLE olt_snmp ADD COLUMN IF NOT EXISTS oid_dist VARCHAR(128) NOT NULL DEFAULT '';
+ALTER TABLE olt_snmp ADD COLUMN IF NOT EXISTS volt_div INT UNSIGNED NOT NULL DEFAULT 1;
+ALTER TABLE olt_snmp ADD COLUMN IF NOT EXISTS curr_div INT UNSIGNED NOT NULL DEFAULT 1;
+CREATE TABLE IF NOT EXISTS onu_metrics (
+  onu_id  INT UNSIGNED NOT NULL,
+  ts      DATETIME NOT NULL,
+  rx_dbm  DECIMAL(5,2) NULL,
+  tx_dbm  DECIMAL(5,2) NULL,
+  temp_c  DECIMAL(4,1) NULL,
+  KEY idx_onu_ts (onu_id, ts),
+  KEY idx_ts (ts)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+ALTER TABLE olt_snmp ADD COLUMN IF NOT EXISTS oid_tx   VARCHAR(128) NOT NULL DEFAULT '';
+ALTER TABLE olt_snmp ADD COLUMN IF NOT EXISTS oid_temp VARCHAR(128) NOT NULL DEFAULT '';
+ALTER TABLE olt_snmp ADD COLUMN IF NOT EXISTS temp_div INT UNSIGNED NOT NULL DEFAULT 1;
+
+CREATE TABLE IF NOT EXISTS notices (
+  id         INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  title      VARCHAR(160) NOT NULL DEFAULT '',
+  body       TEXT NOT NULL,
+  kind       VARCHAR(8) NOT NULL DEFAULT 'info',
+  active     TINYINT(1) NOT NULL DEFAULT 1,
+  starts     DATE NULL,
+  ends       DATE NULL,
+  created_by VARCHAR(64) NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Partner / staff wallet balance and who created each user
+ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS balance    DECIMAL(12,2) NOT NULL DEFAULT 0;
+ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS created_by VARCHAR(64) NOT NULL DEFAULT '';
+CREATE TABLE IF NOT EXISTS user_ledger (
+  id            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  user_id       INT UNSIGNED NOT NULL,
+  amount        DECIMAL(12,2) NOT NULL,
+  balance_after DECIMAL(12,2) NOT NULL DEFAULT 0,
+  method        VARCHAR(32) NOT NULL DEFAULT '',
+  note          VARCHAR(255) NOT NULL DEFAULT '',
+  created_by    VARCHAR(64) NOT NULL DEFAULT '',
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_user (user_id, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+ALTER TABLE user_ledger ADD COLUMN IF NOT EXISTS method VARCHAR(32) NOT NULL DEFAULT '';
+
+-- Extra user details
+ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS sms_on    TINYINT(1)   NOT NULL DEFAULT 1;
+ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS email_on  TINYINT(1)   NOT NULL DEFAULT 1;
+ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS identity  VARCHAR(64)  NOT NULL DEFAULT '';
+ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS country   VARCHAR(64)  NOT NULL DEFAULT '';
+ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS province  VARCHAR(64)  NOT NULL DEFAULT '';
+ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS city      VARCHAR(64)  NOT NULL DEFAULT '';
+ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS address   VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS photo     VARCHAR(8)   NOT NULL DEFAULT '';
+ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS inv_name    VARCHAR(100) NOT NULL DEFAULT '';
+ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS inv_address VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS inv_phone   VARCHAR(40)  NOT NULL DEFAULT '';
+ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS inv_footer  VARCHAR(255) NOT NULL DEFAULT '';
+
+-- Per-user package pricing (what the partner pays, and the profit added on top)
+ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS max_children INT NULL;
+ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS price             DECIMAL(10,2) NULL;
+ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS sub_profit        DECIMAL(10,2) NOT NULL DEFAULT 0;
+ALTER TABLE user_plans ADD COLUMN IF NOT EXISTS subreseller_profit DECIMAL(10,2) NOT NULL DEFAULT 0;
+
+-- Profit report: who paid the package price for a payment, and how much (NULL = not a seller sale)
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS payer_id INT UNSIGNED NULL;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS cost DECIMAL(10,2) NULL;
+
+-- Online balance top-ups (bKash)
+CREATE TABLE IF NOT EXISTS topups (
+  id          INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  user_id     INT UNSIGNED NOT NULL,
+  amount      DECIMAL(12,2) NOT NULL,
+  fee         DECIMAL(12,2) NOT NULL DEFAULT 0,
+  method      VARCHAR(16)  NOT NULL DEFAULT 'bkash',
+  note        VARCHAR(255) NOT NULL DEFAULT '',
+  token       VARCHAR(40)  NOT NULL,
+  payment_id  VARCHAR(64)  NOT NULL DEFAULT '',
+  trx_id      VARCHAR(64)  NOT NULL DEFAULT '',
+  status      ENUM('pending','completed','failed','cancelled') NOT NULL DEFAULT 'pending',
+  message     VARCHAR(255) NOT NULL DEFAULT '',
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_user (user_id, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+-- Customer portal: bKash payments started by customers themselves
+CREATE TABLE IF NOT EXISTS portal_payments (
+  id            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  subscriber_id INT UNSIGNED NOT NULL,
+  amount        DECIMAL(12,2) NOT NULL,
+  fee           DECIMAL(12,2) NOT NULL DEFAULT 0,
+  days          INT UNSIGNED NOT NULL DEFAULT 30,
+  token         VARCHAR(40)  NOT NULL,
+  payment_id    VARCHAR(64)  NOT NULL DEFAULT '',
+  trx_id        VARCHAR(64)  NOT NULL DEFAULT '',
+  status        ENUM('pending','completed','failed','cancelled') NOT NULL DEFAULT 'pending',
+  message       VARCHAR(255) NOT NULL DEFAULT '',
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_sub (subscriber_id, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

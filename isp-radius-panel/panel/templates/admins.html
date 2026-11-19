@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}{{ gtitle }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>{{ gtitle }}</h1><p class="sub"><a href="{{ url_for('dashboard') }}">Home</a> &middot; All {{ gtitle }}</p></div>
+</div>
+<div class="toolbtns">
+  <button class="btn primary" data-open="admin-dlg" data-new data-fill='{{ {"role": default_role}|tojson }}'>{{ icon('plus') }}Add {{ gtitle|lower if group else 'user' }}</button>
+  <button class="btn primary" type="button" data-open="role-dlg">{{ icon('edit') }}Change Role</button>
+  <button class="btn primary" type="button" id="uFilterBtn">{{ icon('search') }}Filter</button>
+  <button class="btn primary" type="button" id="uCompactBtn" aria-pressed="false">{{ icon('layers') }}Compact View</button>
+</div>
+<section class="panel xpanel" id="uPanel">
+  <div class="panel-head"><h2>{{ icon('users') }}{{ gtitle }}</h2></div>
+  <form method="get" class="listbar hide" id="uFilter">
+    {% if group %}<input type="hidden" name="group" value="{{ group }}">{% endif %}
+    <div class="row-gap"><label class="muted" for="f-role">Role</label><select id="f-role" name="role" class="w-auto"><option value="">All roles</option>{% for k, label in roles %}<option value="{{ k }}" {{ 'selected' if flt_role == k }}>{{ label }}</option>{% endfor %}</select>
+      <label class="muted" for="f-status">Status</label><select id="f-status" name="status" class="w-auto"><option value="">Any</option><option value="active" {{ 'selected' if flt_status == 'active' }}>Active</option><option value="disabled" {{ 'selected' if flt_status == 'disabled' }}>Disabled</option></select>
+      <button class="btn primary sm" type="submit">Apply</button> <a class="btn sm" href="{{ url_for('admins', group=group or None) }}">Clear</a></div>
+  </form>
+  <div class="listbar">
+    <div class="row-gap">
+      <select id="uPer" class="w-auto" aria-label="Rows per page"><option>25</option><option selected>50</option><option>100</option><option value="0">All</option></select>
+      <div class="seg" role="group" aria-label="Export">
+        <button type="button" data-xt="print">Print</button><button type="button" data-xt="copy">Copy</button><button type="button" data-xt="pdf">PDF</button><button type="button" data-xt="excel">Excel</button><button type="button" data-xt="csv">CSV</button>
+        <span class="viewmenu"><button type="button" id="uViewBtn" aria-haspopup="true">View &#9662;</button>
+          <div class="viewpop hide" id="uViewPop">{% for key, name in (('balance','Balance'),('packages','Packages'),('subs','Subscribers'),('resellers','Resellers'),('role','Role & Permission'),('admin','Admin'),('reseller','Reseller'),('subreseller','Subreseller'),('status','Status'),('login','Last sign-in')) %}<label><input type="checkbox" data-ucol="{{ key }}" {{ 'checked' if key not in ('status','login') }}> {{ name }}</label>{% endfor %}</div></span>
+      </div>
+    </div>
+    <div class="row-gap"><label class="muted" for="uq">Search:</label><input id="uq" type="search" placeholder="Type & Search" class="w-220" data-filter="#uTbl"></div>
+  </div>
+  <div class="listbar"><span class="muted" id="uInfo"></span><span class="grow"></span><div class="pager" id="uPager"></div></div>
+  <div class="tbl-wrap"><table class="tbl xtable" id="uTbl">
+    <thead><tr><th>ID</th><th class="no-x">Actions</th><th>Profile</th><th>Profile Type</th><th data-uc="balance">Balance</th><th data-uc="packages">Packages</th><th data-uc="subs">Subscribers</th><th data-uc="resellers">Resellers</th><th data-uc="role">Role &amp; Permission</th><th data-uc="admin">Admin</th><th data-uc="reseller">Reseller</th><th data-uc="subreseller">Subreseller</th><th data-uc="status">Status</th><th data-uc="login">Last sign-in</th></tr></thead>
+    <tbody>
+    {% for a in rows %}
+      <tr>
+        <td>{{ a.id }}</td>
+        <td class="act no-x">
+          <button type="button" class="wallet-ic" data-open="bal-dlg" data-fill='{{ {"user_id": a.id, "user_label": a.username}|tojson }}' title="Add balance" aria-label="Add balance to {{ a.username }}">{{ icon('wallet') }}</button>
+          <details class="dd"><summary class="btn sm">Actions &#9662;</summary><div class="dd-menu">
+            <a href="{{ url_for('admin_view', aid=a.id) }}">View profile</a>
+            <button type="button" data-open="admin-dlg" data-edit='{{ {"id": a.id, "username": a.username, "full_name": a.full_name, "role": a.role, "phone": a.phone, "email": a.email, "is_active": 1 if a.is_active else 0, "sms_on": 1 if a.sms_on else 0, "email_on": 1 if a.email_on else 0, "identity": a.identity, "country": a.country, "province": a.province, "city": a.city, "address": a.address, "department_id": a.department_id or "", "zone_id": a.zone_id or "", "parent_id": a.parent_id or "", "max_children": a.max_children if a.max_children is not none else "", "plans": a.plan_ids}|tojson }}'>Edit</button>
+            {% if a.role != 'admin' %}<a href="{{ url_for('role_permissions', role=a.role) }}">Set permission</a>{% endif %}
+            <a href="{{ url_for('subscribers', seller=a.username) }}">View subscribers</a>
+            {% if a.id != me.id %}
+            <form method="post" action="{{ url_for('admin_toggle', aid=a.id) }}">{{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}"><button type="submit">{{ 'Disable' if a.is_active else 'Enable' }}</button></form>
+            <form method="post" action="{{ url_for('admin_delete', aid=a.id) }}" data-confirm="Delete {{ a.username }}?">{{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}"><button type="submit" class="danger-text">Delete</button></form>
+            {% endif %}
+          </div></details></td>
+        <td><a class="lwho" href="{{ url_for('admin_view', aid=a.id) }}"><span class="lav">{{ icon('user') }}</span><span><b>{{ a.full_name or a.username }}</b><small>{{ a.username }}</small></span></a></td>
+        <td><span class="pill pt-{{ a.ptype|lower }}">{{ a.ptype }}</span></td>
+        <td data-uc="balance"><span class="pill ok">{{ '{:,.2f}'.format(a.balance|float) }}</span></td>
+        <td data-uc="packages">{{ a.plan_ids|length if a.plan_ids and a.role != 'admin' else total_plans }}</td>
+        <td data-uc="subs">{{ '{:,}'.format(a.subs) }}</td>
+        <td data-uc="resellers">{{ a.kids }}</td>
+        <td data-uc="role"><span class="pill mute">{{ a.role_full }}</span></td>
+        <td data-uc="admin">{% if a.up_admin %}<span class="pill ok">{{ a.up_admin }}</span>{% endif %}</td>
+        <td data-uc="reseller">{% if a.up_reseller %}<span class="pill ok">{{ a.up_reseller }}</span>{% endif %}</td>
+        <td data-uc="subreseller">{% if a.up_sub %}<span class="pill ok">{{ a.up_sub }}</span>{% endif %}</td>
+        <td data-uc="status"><span class="badge {{ 'ok' if a.is_active else 'bad' }}">{{ 'Active' if a.is_active else 'Disabled' }}</span></td>
+        <td data-uc="login">{{ a.last_login|ago if a.last_login else 'Never' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+
+<dialog class="modal" id="role-dlg" aria-labelledby="role-title">
+  <form method="post" action="{{ url_for('admin_role') }}">
+    {{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">
+    <div class="modal-head"><h2 id="role-title">Change role</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body"><div class="grid-2">
+      <div class="field"><label class="lbl" for="cr-user">User</label><select id="cr-user" name="user_id" required>{% for u in all_users|sort(attribute='username') %}<option value="{{ u.id }}">{{ u.username }}</option>{% endfor %}</select></div>
+      <div class="field"><label class="lbl" for="cr-role">New role</label><select id="cr-role" name="role">{% for k, label in role_opts %}<option value="{{ k }}">{{ label }}</option>{% endfor %}</select></div>
+    </div></div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Change role</button></div>
+  </form>
+</dialog>
+
+{% include "_admin_dialog.html" %}
+{% set bal_user = none %}{% include "_balance_dialog.html" %}
+{% endblock %}
+{% block scripts %}<script>
+(function(){function q(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s));}
+function st(k,v){try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v);}catch(e){}}
+var tbl=document.getElementById("uTbl");if(!tbl)return;
+var rows=q("tbody tr",tbl),per=document.getElementById("uPer"),info=document.getElementById("uInfo"),pager=document.getElementById("uPager"),page=1,off=["status","login"];
+try{var sv=st("users.cols");if(sv)off=JSON.parse(sv);}catch(e){}
+function cols(){q("[data-uc]",tbl).forEach(function(c){c.classList.toggle("hide",off.indexOf(c.dataset.uc)>=0);});q("[data-ucol]").forEach(function(i){i.checked=off.indexOf(i.dataset.ucol)<0;});}
+function draw(){var t=(document.getElementById("uq").value||"").toLowerCase(),n=parseInt(per.value,10),m=rows.filter(function(r){return !t||r.textContent.toLowerCase().indexOf(t)>=0;});
+var pages=n?Math.max(1,Math.ceil(m.length/n)):1;if(page>pages)page=pages;var from=n?(page-1)*n:0,to=n?from+n:m.length;
+rows.forEach(function(r){r.style.display="none";});m.slice(from,to).forEach(function(r){r.style.display="";});
+info.textContent="Showing "+(m.length?from+1:0)+" to "+Math.min(to,m.length)+" of "+m.length+" records";
+pager.innerHTML="";if(pages>1){for(var i=1;i<=pages;i++){var b=document.createElement("button");b.type="button";b.className="btn sm"+(i===page?" primary":"");b.textContent=i;(function(i){b.onclick=function(){page=i;draw();};})(i);pager.appendChild(b);}}}
+document.getElementById("uq").addEventListener("input",function(){page=1;draw();});per.addEventListener("change",function(){page=1;draw();});
+document.getElementById("uFilterBtn").onclick=function(){document.getElementById("uFilter").classList.toggle("hide");};
+var cb=document.getElementById("uCompactBtn");cb.onclick=function(){var on=!tbl.classList.contains("compact");tbl.classList.toggle("compact",on);cb.setAttribute("aria-pressed",on);st("users.compact",on?"1":"0");};if(st("users.compact")==="1")cb.onclick();
+var vb=document.getElementById("uViewBtn"),vp=document.getElementById("uViewPop");vb.onclick=function(e){e.stopPropagation();vp.classList.toggle("hide");};document.addEventListener("click",function(e){if(!vp.contains(e.target))vp.classList.add("hide");});
+q("[data-ucol]").forEach(function(i){i.addEventListener("change",function(){off=off.filter(function(k){return k!==i.dataset.ucol});if(!i.checked)off.push(i.dataset.ucol);st("users.cols",JSON.stringify(off));cols();});});
+cols();draw();})();
+</script>{% endblock %}

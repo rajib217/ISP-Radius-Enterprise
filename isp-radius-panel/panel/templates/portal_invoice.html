@@ -1,0 +1,28 @@
+{% extends "bare.html" %}
+{% block title %}Invoice #{{ p.id }}{% endblock %}
+{% block content %}
+<style>
+  body { background: #fff; color: #111; }
+  .rc { max-width: 420px; margin: 24px auto; padding: 24px; border: 1px solid #ccc; border-radius: 8px; font-family: var(--font); }
+  .rc h1 { font-size: 20px; margin: 0; } .rc .muted { color: #666; font-size: 13px; }
+  .rc table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+  .rc td { padding: 6px 0; border-bottom: 1px dashed #ccc; vertical-align: top; }
+  .rc td:last-child { text-align: right; } .rc .total td { font-size: 18px; font-weight: 700; border-bottom: 0; }
+  .rc-actions { max-width: 420px; margin: 16px auto 0; display: flex; gap: 8px; }
+  @media print { .rc-actions { display: none; } .rc { border: 0; margin: 0 auto; } }
+</style>
+<div class="rc-actions"><button class="btn primary" onclick="window.print()">Print</button><a class="btn" href="{{ url_for('portal') }}">Back</a></div>
+<div class="rc">
+  <h1>{{ inv.inv_name or isp }}</h1>{% if inv.inv_address %}<div class="muted">{{ inv.inv_address }}</div>{% endif %}{% if inv.inv_phone %}<div class="muted">{{ inv.inv_phone }}</div>{% endif %}<div class="muted">Invoice #{{ p.id }}</div>
+  <table>
+    <tr><td>Date</td><td>{{ p.paid_at|dt }}</td></tr>
+    <tr><td>Customer</td><td>{{ sub.full_name or sub.username }}<br><span class="muted">{{ sub.username }}</span></td></tr>
+    {% if p.plan_label %}<tr><td>Package</td><td>{{ p.plan_label }}</td></tr>{% endif %}
+    {% if p.days_added %}<tr><td>Period</td><td>{{ p.days_added }} days{% if p.period_to %}, until {{ p.period_to|d }}{% endif %}</td></tr>{% endif %}
+    <tr><td>Method</td><td>{{ p.method }}</td></tr>
+    {% if p.note %}<tr><td>Note</td><td>{{ p.note }}</td></tr>{% endif %}
+    <tr class="total"><td>Amount paid</td><td>{{ cur }} {{ p.amount|money }}</td></tr>
+  </table>
+  <div class="muted">{{ inv.inv_footer or 'Thank you for your payment.' }}</div>
+</div>
+{% endblock %}

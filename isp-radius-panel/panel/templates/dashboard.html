@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Dashboard</h1><p class="sub">{{ today.strftime('%A, %d %B %Y') }}</p></div>
+</div>
+
+{% for n in notices or [] %}
+<div class="notice {{ n.kind }}" role="status">{{ icon('alert') }}<div><strong>{{ n.title }}</strong>{% if n.body %}<p>{{ n.body }}</p>{% endif %}</div></div>
+{% endfor %}
+
+<div class="quick" aria-label="Quick actions">
+  {% if can('subscribers', 'edit') %}<a class="btn primary" href="{{ url_for('subscriber_new') }}">{{ icon('plus') }}Subscriber</a>{% endif %}
+  {% if can('accounting', 'edit') %}<a class="btn primary" href="{{ url_for('receive') }}">{{ icon('check') }}Activation</a>{% endif %}
+  {% if can('subscribers', 'edit') %}<a class="btn primary" href="{{ url_for('import_csv') }}">{{ icon('upload') }}Import</a>{% endif %}
+  {% if can('subscribers') %}<a class="btn primary" href="{{ url_for('subscribers_export') }}">{{ icon('download') }}Export</a>{% endif %}
+  {% if can('accounting', 'edit') %}<a class="btn primary" href="{{ url_for('payments') }}">{{ icon('file') }}New Invoice</a>{% endif %}
+  {% if can('tickets', 'edit') %}<a class="btn primary" href="{{ url_for('ticket_new') }}">{{ icon('ticket') }}Add Ticket</a>{% endif %}
+{% if me.role in ('reseller', 'subreseller', 'retailer') %}<a class="btn primary" href="{{ url_for('add_balance') }}">{{ icon('wallet') }}Add Balance</a><span class="balchip" title="Your balance">{{ icon('wallet') }}{{ currency }} {{ '{:,.2f}'.format(me.balance|float) }}</span>{% endif %}
+</div>
+
+{% set todo = attention|selectattr('c')|list %}
+{% if todo %}
+<section class="panel" style="margin-bottom:16px"><div class="attn" role="list" aria-label="Needs attention">
+  <span class="muted" style="align-self:center">Needs attention</span>
+  {% for a in todo %}<a role="listitem" href="{{ url_for(a.endpoint, **a.args) }}">{{ icon('alert') }}{{ a.label }}: {{ a.c }}</a>{% endfor %}
+</div></section>
+{% endif %}
+
+{% if tabs %}
+<section class="panel" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Reports &amp; Statistics</h2></div>
+  <div class="panel-body">
+    <div class="tabs">{% for k, label in tabs %}<a class="{{ 'on' if k == tab }}" href="{{ url_for('dashboard', tab=k) }}">{{ label }}</a>{% endfor %}</div>
+    {% if td.cards %}
+    <div class="split-stats {{ 'with-pie' if td.pie }}">
+      <div class="statgrid">
+        {% for c in td.cards %}
+        {% set money = td.money or 'Expected' in c[0] %}
+        <a class="stat {{ c[4] }}" {% if c[5] %}href="{{ url_for('subscribers', **c[5]) }}"{% endif %}>
+          <span class="st-k">{{ c[0] }}</span>
+          <span class="st-v">{% if td.bytes %}{{ c[1]|bytes }}{% elif money %}{{ c[1]|money }}{% else %}{{ '{:,}'.format(c[1]|int) }}{% endif %}</span>
+          {% if c[3] %}<span class="st-s">{{ c[3] }}</span>{% endif %}
+          <span class="st-s">{{ c[2] }}</span>
+        </a>{% endfor %}
+      </div>
+      {% if td.pie %}<div><h3 class="mini">Subscriber pie chart</h3><div class="chart" data-kind="donut" data-src="pie"></div><script type="application/json" id="pie">{{ td.pie|tojson }}</script></div>{% endif %}
+    </div>
+    {% endif %}
+    {% for title, cid, ch in td.charts or [] %}
+    <h3 class="mini">{{ title }}</h3><div class="chart" data-kind="bars" data-src="{{ cid }}"></div><script type="application/json" id="{{ cid }}">{{ ch|tojson }}</script>
+    {% endfor %}
+    {% if td.by_method %}<h3 class="mini">This month by payment method</h3>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Method</th><th class="num">Payments</th><th class="num">Amount</th></tr></thead><tbody>{% for r in td.by_method %}<tr><td>{{ r.method }}</td><td class="num">{{ r.c }}</td><td class="num"><b>{{ r.total|money }}</b></td></tr>{% endfor %}</tbody></table></div>{% endif %}
+    {% if td.staff %}<h3 class="mini">Staff and sellers, this month</h3>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>User</th><th>Role</th><th class="num">Customers added</th><th class="num">Payments</th><th class="num">Collected</th></tr></thead><tbody>{% for r in td.staff %}<tr><td class="who-cell"><b>{{ r.full_name or r.username }}</b><small class="mono">{{ r.username }}</small></td><td>{{ r.role|capitalize }}</td><td class="num">{{ r.subs }}</td><td class="num">{{ r.payments }}</td><td class="num"><b>{{ r.amount|money }}</b></td></tr>{% endfor %}</tbody></table></div>{% endif %}
+    {% if td.top %}<h3 class="mini">Top 10 users today</h3>
+      <div class="tbl-wrap"><table class="tbl"><tbody>{% for r in td.top %}<tr><td class="mono">{{ r.username }}</td><td class="num"><b>{{ r.total|bytes }}</b></td></tr>{% endfor %}</tbody></table></div>{% endif %}
+    {% if td.link %}<p style="margin:12px 0 0"><a href="{{ url_for(td.link[1]) }}">{{ td.link[0] }}</a></p>{% endif %}
+  </div>
+</section>
+{% endif %}
+
+{% if not seller %}
+
+<section class="kpis" aria-label="Subscriber summary">
+  <a class="kpi" href="{{ url_for('subscribers') }}"><span class="k">Subscribers</span><span class="v">{{ '{:,}'.format(stats.total) }}</span><span class="s">in the system</span></a>
+  <a class="kpi" href="{{ url_for('subscribers', status='active') }}"><span class="k">Active</span><span class="v">{{ '{:,}'.format(stats.active) }}</span><span class="s">can connect</span></a>
+  <a class="kpi" href="{{ url_for('subscribers', status='expiring') }}"><span class="k">Expiring in 7 days</span><span class="v">{{ '{:,}'.format(stats.expiring) }}</span><span class="s">ask for renewal</span></a>
+  <a class="kpi" href="{{ url_for('subscribers', status='expired') }}"><span class="k">Expired</span><span class="v">{{ '{:,}'.format(stats.expired) }}</span><span class="s">blocked at login</span></a>
+  <a class="kpi" href="{{ url_for('subscribers', status='suspended') }}"><span class="k">Suspended</span><span class="v">{{ '{:,}'.format(stats.suspended) }}</span><span class="s">blocked by you</span></a>
+  <a class="kpi" href="{{ url_for('reports') }}"><span class="k">Collected this month</span><span class="v">{{ revenue.s|money }}</span><span class="s">{{ currency }} · {{ revenue.c }} payment{{ '' if revenue.c == 1 else 's' }}</span></a>
+</section>
+
+<div class="cols">
+  <section class="panel c-5">
+    <div class="panel-head"><h2>Customers by plan</h2><a class="aside" href="{{ url_for('plans') }}">Manage plans</a></div>
+    <div class="panel-body">
+      <div class="chart" data-kind="donut" data-src="plan-mix"></div>
+      <script type="application/json" id="plan-mix">{{ plan_mix|tojson }}</script>
+    </div>
+  </section>
+
+  <section class="panel c-7">
+    <div class="panel-head"><h2>Online by router</h2><span class="aside">{{ by_nas|length }} router{{ '' if by_nas|length == 1 else 's' }} reporting</span></div>
+    {% if by_nas %}
+    <ul class="list bars">
+      {% for n in by_nas %}
+      <li>
+        <span class="grow"><b>{{ n.name }}</b>{% if n.name != n.ip %}<small class="mono">{{ n.ip }}</small>{% endif %}</span>
+        <span class="meter" role="presentation"><i style="width: {{ (100 * n.c / online)|round|int if online else 0 }}%"></i></span>
+        <span class="nowrap"><b>{{ '{:,}'.format(n.c) }}</b> <span class="muted">online</span></span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty"><h3>No router has reported a session yet</h3><p>Add your MikroTik under Routers, then turn on RADIUS accounting on it.</p><a class="btn" href="{{ url_for('nas_list') }}">Add a router</a></div>
+    {% endif %}
+  </section>
+
+  <section class="panel c-6">
+    <div class="panel-head"><h2>Expiring soon</h2><a class="aside" href="{{ url_for('subscribers', status='expiring') }}">View all</a></div>
+    {% if expiring %}
+    <ul class="list">
+      {% for s in expiring %}
+      <li>
+        <span class="grow"><a href="{{ url_for('subscriber_view', sid=s.id) }}"><b>{{ s.username }}</b></a><small>{{ s.full_name or '—' }}</small></span>
+        {% set left = (s.expiry_date - today).days %}
+        <span class="badge {{ 'bad' if left <= 1 else 'warn' }}">{{ 'Today' if left == 0 else ('Tomorrow' if left == 1 else 'In ' ~ left ~ ' days') }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<div class="empty"><h3>Nobody expires this week</h3><p>Customers with an expiry date in the next 7 days appear here.</p></div>{% endif %}
+  </section>
+
+  <section class="panel c-6">
+    <div class="panel-head"><h2>Latest refused logins</h2><a class="aside" href="{{ url_for('logs', result='reject') }}">Open log</a></div>
+    {% if rejects %}
+    <ul class="list">
+      {% for r in rejects %}
+      <li><span class="grow"><b class="mono">{{ r.username or '(empty)' }}</b></span><span class="muted">{{ r.authdate|ago }}</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}<div class="empty"><h3>No refused logins</h3><p>Wrong passwords and blocked accounts will show here.</p></div>{% endif %}
+  </section>
+
+  {% if server %}
+  <section class="panel c-12">
+    <div class="panel-head"><h2>This server</h2>{% if server.uptime %}<span class="aside">Up {{ server.uptime|dur }}</span>{% endif %}</div>
+    <ul class="list bars">
+      {% if server.load %}{% set pct = (100 * server.load[0] / server.cpus)|round|int %}
+      <li><span class="grow"><b>CPU load</b><small>{{ '%.2f'|format(server.load[0]) }} on {{ server.cpus }} core{{ '' if server.cpus == 1 else 's' }}</small></span><span class="meter {{ 'bad' if pct > 90 else ('warn' if pct > 70) }}"><i style="width: {{ [pct, 100]|min }}%"></i></span><b>{{ pct }}%</b></li>{% endif %}
+      {% if server.mem_total %}{% set pct = (100 * server.mem_used / server.mem_total)|round|int %}
+      <li><span class="grow"><b>Memory</b><small>{{ server.mem_used|bytes }} of {{ server.mem_total|bytes }}</small></span><span class="meter {{ 'bad' if pct > 92 else ('warn' if pct > 80) }}"><i style="width: {{ pct }}%"></i></span><b>{{ pct }}%</b></li>{% endif %}
+      {% if server.disk_total %}{% set pct = (100 * server.disk_used / server.disk_total)|round|int %}
+      <li><span class="grow"><b>Disk</b><small>{{ server.disk_used|bytes }} of {{ server.disk_total|bytes }}</small></span><span class="meter {{ 'bad' if pct > 90 else ('warn' if pct > 75) }}"><i style="width: {{ pct }}%"></i></span><b>{{ pct }}%</b></li>{% endif %}
+    </ul>
+  </section>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

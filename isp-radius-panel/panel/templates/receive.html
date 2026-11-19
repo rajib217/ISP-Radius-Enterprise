@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Receive payment{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Receive payment</h1><p class="sub">Find the customer, then renew their package and print a receipt.</p></div></div>
+<section class="panel">
+  <form class="filters panel-body" method="get" style="padding-bottom:0">
+    <div class="search" style="flex:1;max-width:520px">{{ icon('search') }}<input type="search" name="q" value="{{ text }}" placeholder="Username, name or phone" aria-label="Find a customer" autofocus></div>
+    <button class="btn primary" type="submit">Find</button>
+  </form>
+  {% if text %}
+    {% if rows %}
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>Customer</th><th>Package</th><th>Valid until</th><th class="num">Price</th><th></th></tr></thead>
+      <tbody>{% for r in rows %}<tr>
+        <td class="who-cell"><b class="mono">{{ r.username }}</b><small>{{ r.full_name or '—' }}{% if r.phone %} · {{ r.phone }}{% endif %}{% if r.area %} · {{ r.area }}{% endif %}</small></td>
+        <td>{{ r.plan_label or '—' }}</td>
+        <td>{% if r.status == 'suspended' %}<span class="badge bad">Suspended</span>{% elif r.expired %}<span class="badge warn">Expired {{ r.expiry_date|d }}</span>{% else %}{{ r.expiry_date|d if r.expiry_date else 'No expiry' }}{% endif %}</td>
+        <td class="num">{{ r.price|money }}</td>
+        <td class="act"><a class="btn sm primary" href="{{ url_for('subscriber_view', sid=r.id, renew=1) }}">{{ icon('card') }}Receive</a></td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}<div class="empty"><h3>Nobody found</h3><p>Try part of the username, name or phone number.</p></div>{% endif %}
+  {% else %}<div class="empty"><h3>Start typing a customer</h3><p>Search by username, name or phone number.</p></div>{% endif %}
+</section>
+{% endblock %}
