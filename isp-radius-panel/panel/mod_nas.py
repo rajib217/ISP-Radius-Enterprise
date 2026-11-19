@@ -40,7 +40,7 @@ def nas_list():
     cond = (" WHERE " + " AND ".join(where)) if where else ""
     total = q("SELECT COUNT(*) AS c FROM nas n" + cond, params, one=True)["c"]
     pg = pager(total)
-    rows = q("SELECT n.id, n.nasname, n.shortname, n.type, n.description, n.group_id, n.coa_enabled, n.last_status, "
+    rows = q("SELECT n.id, n.nasname, n.shortname, n.type, n.description, n.group_id, n.coa_enabled, n.last_status, n.snmp_community, "
              "n.last_checked, g.name AS group_name, "
              "(SELECT COUNT(*) FROM radacct ra WHERE ra.nasipaddress = n.nasname AND ra.acctstoptime IS NULL) "
              "AS online FROM nas n LEFT JOIN nas_groups g ON g.id = n.group_id" + cond +
@@ -66,6 +66,10 @@ def nas_save():
     ntype = f.get("type") if f.get("type") in dict(NAS_TYPES) else "other"
     group = int(f["group_id"]) if f.get("group_id", "").isdigit() else None
     coa = 1 if f.get("coa_enabled") == "1" else 0
+    community = f.get("snmp_community", "").strip()
+    if community and not re.match(r"^[!-~]{1,64}$", community):
+        flash("The SNMP community may only contain printable characters without spaces (max 64).", "error")
+        return redirect(url_for("nas_list"))
     if not NAS_NAME_RE.match(name) or not (1 <= len(short) <= 32) or not re.match(r"^[\x21-\x7e]{6,60}$", secret):
         flash("Router IP, a short name (max 32) and a secret of 6-60 characters without spaces are required.", "error")
         return redirect(url_for("nas_list"))
@@ -73,11 +77,11 @@ def nas_save():
         flash("A router with address %s already exists." % name, "error")
         return redirect(url_for("nas_list"))
     if nid:
-        x("UPDATE nas SET nasname=%s, shortname=%s, type=%s, secret=%s, description=%s, group_id=%s, coa_enabled=%s "
-          "WHERE id=%s", (name, short, ntype, secret, desc, group, coa, nid))
+        x("UPDATE nas SET nasname=%s, shortname=%s, type=%s, secret=%s, description=%s, group_id=%s, coa_enabled=%s, "
+          "snmp_community=%s WHERE id=%s", (name, short, ntype, secret, desc, group, coa, community, nid))
     else:
-        insert("INSERT INTO nas (nasname, shortname, type, secret, description, group_id, coa_enabled) "
-               "VALUES (%s,%s,%s,%s,%s,%s,%s)", (name, short, ntype, secret, desc, group, coa))
+        insert("INSERT INTO nas (nasname, shortname, type, secret, description, group_id, coa_enabled, snmp_community) "
+               "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)", (name, short, ntype, secret, desc, group, coa, community))
     audit("nas_saved", name)
     commit()
     ok, msg = reload_radius()

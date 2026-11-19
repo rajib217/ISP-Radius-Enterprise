@@ -41,6 +41,8 @@ DEFAULT_SETTINGS = {
     "gdrive_on": "0", "gdrive_client_id": "", "gdrive_client_secret": "", "gdrive_refresh_token": "",
     "gdrive_folder_id": "", "gdrive_keep": "14", "gdrive_device": "",
     "modules_off": "notices",           # comma list of modules switched off for everyone
+    # NOC service (noc.py): router health every 30 s, Telegram on router down / high CPU, auto-disconnect of expired
+    "noc_snmp_community": "", "noc_cpu_alert": "85", "al_noc": "1", "auto_kick_expired": "1",
     # email
     "smtp_host": "", "smtp_port": "587", "smtp_security": "starttls", "smtp_user": "", "smtp_pass": "",
     "smtp_from": "", "smtp_from_name": "", "email_rate": "120",

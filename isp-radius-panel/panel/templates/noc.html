@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Logs & System Health{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Logs &amp; System Health</h1><p class="sub">Live RADIUS logins, staff actions and router health. Updates every 3 seconds.</p></div>
+  <span class="grow"></span>
+  <span class="svc-pill" id="noc-svc" role="status"><span class="dot"></span><span class="txt">Checking the NOC service…</span></span>
+  <button class="btn" type="button" id="noc-pause" aria-pressed="false">{{ icon('pause') }}<span>Pause</span></button>
+  {% if me.role == 'admin' %}<button class="btn" type="button" data-open="noc-set">{{ icon('sliders') }}Settings</button>{% endif %}
+</div>
+
+<div id="noc" data-api="{{ url_for('api_noc') }}" data-nas-url="{{ url_for('nas_list') }}">
+  <section class="kpi-grid" aria-label="Last hour">
+    <div class="kcard"><span class="kcard-top"><span class="kcard-k">Online now</span><span class="live-dot" aria-hidden="true"></span></span><span class="kcard-v" data-sum="online">—</span><span class="kcard-s">open PPPoE sessions</span></div>
+    <div class="kcard"><span class="kcard-top"><span class="kcard-k">Accepted, last hour</span></span><span class="kcard-v" data-sum="accept">—</span><span class="kcard-s">Access-Accept</span></div>
+    <div class="kcard"><span class="kcard-top"><span class="kcard-k">Refused, last hour</span></span><span class="kcard-v bad-text" data-sum="reject">—</span><span class="kcard-s" id="noc-top-reason">Access-Reject</span></div>
+    <div class="kcard"><span class="kcard-top"><span class="kcard-k">Routers</span></span><span class="kcard-v" data-sum="routers">—</span><span class="kcard-s" data-sum="routers-sub">waiting for the first round</span></div>
+  </section>
+
+  <section class="panel" style="margin-bottom:16px">
+    <div class="panel-head"><h2>Router health</h2><span class="aside">CPU and RAM need SNMP (Settings, or per router on the Routers page). PPPoE count comes from RADIUS accounting.</span></div>
+    <div class="panel-body"><div class="rgrid" id="noc-routers"><div class="empty"><h3>Waiting for data</h3><p>Router figures appear after the NOC service's first round.</p></div></div></div>
+  </section>
+
+  <div class="cols">
+    <section class="panel c-7">
+      <div class="panel-head"><h2>RADIUS logins</h2>
+        <div class="seg-tabs" role="tablist" aria-label="Which logins">
+          <button type="button" role="tab" aria-selected="true" data-auth-filter="all">All</button>
+          <button type="button" role="tab" aria-selected="false" data-auth-filter="reject">Refused</button>
+        </div>
+        <input type="search" id="noc-q" placeholder="Filter by username or MAC" class="w-220" aria-label="Filter logins">
+      </div>
+      <div class="tbl-wrap"><table class="tbl live-log" id="noc-auth">
+        <thead><tr><th>Time</th><th>Username</th><th>Result</th><th>Reason</th><th>Router</th><th>MAC</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <div class="empty" id="noc-auth-empty"><p>No logins recorded yet.</p></div>
+    </section>
+
+    <section class="panel c-5">
+      <div class="panel-head"><h2>Staff actions</h2><a class="aside" href="{{ url_for('logs', tab='activity') }}">Full log</a></div>
+      <div class="tbl-wrap"><table class="tbl live-log" id="noc-audit">
+        <thead><tr><th>Time</th><th>Staff</th><th>Action</th><th>Target</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <div class="empty" id="noc-audit-empty"><p>No staff actions yet.</p></div>
+    </section>
+  </div>
+</div>
+
+{% if me.role == 'admin' %}
+<dialog class="modal drawer" id="noc-set" aria-labelledby="noc-set-title">
+  <form method="post" action="{{ url_for('noc_settings') }}">
+    {{ csrf_input() }}
+    <div class="modal-head"><h2 id="noc-set-title">NOC settings</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <div class="field"><label class="lbl" for="ns-c">Default SNMP community</label>
+        <input id="ns-c" name="noc_snmp_community" class="mono" maxlength="64" value="{{ s.noc_snmp_community }}" autocomplete="off" spellcheck="false">
+        <div class="help">Read-only community used for routers that have none of their own. On MikroTik: <code>/snmp set enabled=yes</code> and <code>/snmp community set [find default=yes] addresses=&lt;this server&gt;</code>. Empty = ping only.</div></div>
+      <div class="field"><label class="lbl" for="ns-cpu">CPU alert above (%)</label>
+        <input id="ns-cpu" name="noc_cpu_alert" type="number" min="10" max="100" value="{{ cpu_limit }}" class="mono"></div>
+      <label class="check"><input type="checkbox" name="al_noc" value="1" {{ 'checked' if s.al_noc == '1' }}> Telegram: router offline (90 s) and high CPU (1 min)</label>
+      <label class="check"><input type="checkbox" name="auto_kick_expired" value="1" {{ 'checked' if s.auto_kick_expired == '1' }}> Disconnect customers when their package runs out while online</label>
+      <p class="help">With this on, "Expired Online" customers are disconnected within about 30 seconds. Customers on a package with an expired policy reconnect into that policy. Telegram must be set up under Settings &gt; Alerts.</p>
+    </div>
+    <div class="modal-foot"><span class="grow"></span><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save</button></div>
+  </form>
+</dialog>
+{% endif %}
+{% endblock %}
+{% block scripts %}<script src="{{ asset('js/noc.js') }}"></script>{% endblock %}

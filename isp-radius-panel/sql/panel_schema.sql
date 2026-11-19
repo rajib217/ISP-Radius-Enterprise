@@ -635,3 +635,41 @@ CREATE TABLE IF NOT EXISTS traffic_last (
   up_bps    BIGINT UNSIGNED NOT NULL DEFAULT 0,
   KEY idx_user (username)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- NOC (Logs & System Health page). Filled by the isp-panel-noc service every 30 seconds.
+-- Why a login was refused, the router it came from and the device MAC (FreeRADIUS post-auth query, see install.sh).
+ALTER TABLE radpostauth ADD COLUMN IF NOT EXISTS reason VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE radpostauth ADD COLUMN IF NOT EXISTS nas_ip VARCHAR(45)  NOT NULL DEFAULT '';
+ALTER TABLE radpostauth ADD COLUMN IF NOT EXISTS mac    VARCHAR(64)  NOT NULL DEFAULT '';
+-- SNMP read-only community per router (empty = use Settings default; both empty = ping only)
+ALTER TABLE nas ADD COLUMN IF NOT EXISTS snmp_community VARCHAR(64) NOT NULL DEFAULT '';
+ALTER TABLE nas ADD COLUMN IF NOT EXISTS snmp_port      SMALLINT UNSIGNED NOT NULL DEFAULT 161;
+
+CREATE TABLE IF NOT EXISTS nas_health (
+  nas_id        INT UNSIGNED NOT NULL PRIMARY KEY,
+  checked_at    DATETIME NULL,
+  reachable     TINYINT(1) NOT NULL DEFAULT 0,
+  rtt_ms        DECIMAL(8,1) NULL,
+  snmp_ok       TINYINT(1) NOT NULL DEFAULT 0,
+  cpu_pct       DECIMAL(5,1) NULL,
+  ram_pct       DECIMAL(5,1) NULL,
+  uptime_s      BIGINT UNSIGNED NULL,
+  board         VARCHAR(160) NOT NULL DEFAULT '',
+  pppoe         INT UNSIGNED NOT NULL DEFAULT 0,
+  error         VARCHAR(255) NOT NULL DEFAULT '',
+  fails         INT UNSIGNED NOT NULL DEFAULT 0,
+  hot           INT UNSIGNED NOT NULL DEFAULT 0,
+  down_alerted  TINYINT(1) NOT NULL DEFAULT 0,
+  cpu_alerted   TINYINT(1) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Disconnect requests the panel asks for (for example after renewing an expired customer, so the
+-- customer reconnects with the full package). The isp-panel-noc service sends them within 30 seconds.
+CREATE TABLE IF NOT EXISTS coa_queue (
+  id         INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  username   VARCHAR(64) NOT NULL,
+  reason     VARCHAR(32) NOT NULL DEFAULT '',
+  created_by VARCHAR(64) NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_user (username)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

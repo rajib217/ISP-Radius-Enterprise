@@ -53,6 +53,16 @@ def _ping(ip):
         return False
 
 
+def noc_alive(cur):
+    """True when the isp-panel-noc service finished a round in the last 2 minutes."""
+    cur.execute("SELECT svalue FROM settings WHERE skey = 'noc_heartbeat'")
+    row = cur.fetchone()
+    try:
+        return bool(row) and (datetime.now() - datetime.strptime(row["svalue"], "%Y-%m-%d %H:%M:%S")).total_seconds() < 120
+    except (ValueError, TypeError):
+        return False
+
+
 def _num(s, key, default):
     try:
         return float(s.get(key) or default)
@@ -74,7 +84,8 @@ def run(conn, cur, s):
     msgs = []
 
     # ---- routers that stop answering ping (two checks in a row = about 10 minutes, so one lost packet is ignored)
-    if s.get("al_nas") == "1":
+    #      Skipped while the NOC service (noc.py) is running: it checks every 30 seconds and sends these alerts itself.
+    if s.get("al_nas") == "1" and not noc_alive(cur):
         cur.execute("SELECT id, shortname, nasname FROM nas ORDER BY id LIMIT 300")
         nas = cur.fetchall()
         with ThreadPoolExecutor(max_workers=16) as pool:

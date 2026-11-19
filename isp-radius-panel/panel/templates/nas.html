@@ -47,7 +47,7 @@
       <td class="act no-x"><details class="dd"><summary class="btn sm">Actions &#9662;</summary><div class="dd-menu">
         <a href="{{ url_for('online', nas=r.nasname) }}">Online users</a>
         {% if can('network', 'edit') %}
-        <button type="button" data-open="nas-dlg" data-edit='{{ {"id": r.id, "nasname": r.nasname, "shortname": r.shortname, "type": r.type if r.type in ("mikrotik","cisco","juniper","huawei") else "other", "secret": r.secret, "description": r.description, "group_id": r.group_id or "", "coa_enabled": "1" if r.coa_enabled else ""}|tojson }}'>Edit</button>
+        <button type="button" data-open="nas-dlg" data-edit='{{ {"id": r.id, "nasname": r.nasname, "shortname": r.shortname, "type": r.type if r.type in ("mikrotik","cisco","juniper","huawei") else "other", "secret": r.secret, "description": r.description, "group_id": r.group_id or "", "coa_enabled": "1" if r.coa_enabled else "", "snmp_community": r.snmp_community or ""}|tojson }}'>Edit</button>
         <form method="post" action="{{ url_for('nas_ping', nid=r.id) }}">{{ csrf_input() }}<button type="submit">Check connection</button></form>
         <button type="button" data-open="setup-dlg" data-fill='{{ {"script": "/radius add service=ppp address=" ~ server ~ " secret=" ~ r.secret ~ " timeout=3s\n/radius incoming set accept=yes port=3799\n/ppp aaa set use-radius=yes accounting=yes interim-update=5m"}|tojson }}'>MikroTik setup</button>
         <form method="post" action="{{ url_for('nas_delete', nid=r.id) }}" data-confirm="Remove router {{ r.shortname }}? It will no longer be able to authenticate customers.">{{ csrf_input() }}<button type="submit" class="danger-t">Delete</button></form>
@@ -75,6 +75,7 @@
         <div class="help">6–60 characters, no spaces. Enter the same secret on the router.</div></div>
       <div class="field span-2"><label class="lbl" for="n-desc">Description</label><input id="n-desc" name="description" maxlength="200" placeholder="Optional"></div>
       <label class="check span-2"><input type="checkbox" name="coa_enabled" value="1" checked> CoA: let the panel disconnect customers on this router (port 3799)</label>
+      <div class="field span-2"><label class="lbl" for="n-snmp">SNMP community (read-only)</label><input id="n-snmp" name="snmp_community" class="mono" maxlength="64" spellcheck="false" autocomplete="off" placeholder="Empty = the default on Logs &amp; System Health"><div class="help">For CPU, RAM and uptime on Logs &amp; System Health. MikroTik: <code>/snmp set enabled=yes</code></div></div>
     </div>
     <p class="muted">Saving reloads the RADIUS server (about a second). Customers that are already connected stay online.</p></div>
     <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save</button></div>

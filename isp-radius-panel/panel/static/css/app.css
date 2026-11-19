@@ -1442,3 +1442,48 @@ dialog.modal.drawer .modal-body { align-content: start; }
   /* toolbars wrap instead of pushing the page sideways */
   .seg, .listbar, .listbar .row-gap { flex-wrap: wrap; max-width: 100%; }
 }
+
+/* =====================================================================
+   v3: Logs & System Health (NOC) page
+   ===================================================================== */
+.svc-pill { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 99px; font-size: var(--text-sm); font-weight: 500; background: var(--neutral-soft); color: var(--neutral-text); }
+.svc-pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--neutral); }
+.svc-pill.ok { background: var(--online-soft); color: var(--online-text); } .svc-pill.ok .dot { background: var(--online); }
+.svc-pill.bad { background: var(--offline-soft); color: var(--offline-text); } .svc-pill.bad .dot { background: var(--offline); }
+.bad-text { color: var(--offline-text); }
+
+.rgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.rgrid > .empty { grid-column: 1 / -1; }
+.rcard { border: 1px solid var(--border); border-radius: var(--r-md); padding: 14px 16px; display: grid; gap: 10px; background: var(--surface); }
+.rcard.down { border-color: color-mix(in srgb, var(--offline) 50%, var(--border)); background: color-mix(in srgb, var(--offline-soft) 55%, var(--surface)); }
+.rcard.flaky { border-color: color-mix(in srgb, var(--expiring) 50%, var(--border)); }
+.rhead { display: flex; align-items: center; gap: 10px; }
+.rname { flex: 1; min-width: 0; }
+.rname b, .rname small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rname small { color: var(--text-muted); font-size: 12px; }
+.rdot { width: 10px; height: 10px; border-radius: 50%; background: var(--neutral); flex: none; position: relative; }
+.rdot.up { background: var(--online); }
+.rdot.up::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--online); animation: live-pulse 2.4s ease-out infinite; }
+.rdot.down { background: var(--offline); } .rdot.flaky { background: var(--expiring); }
+.rmeter { display: grid; grid-template-columns: 36px 1fr 44px; align-items: center; gap: 8px; font-size: var(--text-sm); }
+.rmeter .k { color: var(--text-muted); font-size: 12px; font-weight: 500; }
+.rmeter b { text-align: right; font-family: var(--font-mono); font-weight: 500; }
+.rmeter .meter { height: 6px; border-radius: 99px; overflow: hidden; display: block; }
+.rmeter .meter i { display: block; height: 100%; border-radius: 99px; background: var(--online); transition: width .4s; }
+.rmeter .meter.warn i { background: var(--expiring); } .rmeter .meter.bad i { background: var(--offline); }
+.rfacts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0; padding-top: 10px; border-top: 1px solid var(--border); }
+.rfacts dt { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+.rfacts dd { margin: 2px 0 0; font-family: var(--font-mono); font-size: var(--text-sm); }
+.rboard { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rerr { font-size: 12px; color: var(--offline-text); }
+
+.live-log td { padding-top: 8px; padding-bottom: 8px; }
+.live-log tr.fresh { animation: row-in 1.4s ease-out; }
+@keyframes row-in { from { background: var(--accent-soft); } }
+.reason { font-weight: 500; }
+.reason.bad { color: var(--offline-text); } .reason.warn { color: var(--expiring-text); }
+#noc .panel-head .w-220 { width: 220px; }
+#noc .panel-head .seg-tabs { margin-left: auto; }
+@media (max-width: 767px) { #noc .panel-head .w-220 { width: 100%; } .rgrid { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .rdot.up::after, .live-log tr.fresh { animation: none; } }
+.live-log .reason { white-space: nowrap; }

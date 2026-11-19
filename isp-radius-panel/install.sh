@@ -133,7 +133,7 @@ mariadb "$DB_NAME" < "$SRC_DIR/sql/panel_schema.sql"
 # compare text across different collations, so make the panel tables match radcheck.
 RC_COLL=$(mariadb -N -e "SELECT TABLE_COLLATION FROM information_schema.tables WHERE table_schema='$DB_NAME' AND table_name='radcheck'")
 if [[ "$RC_COLL" =~ ^[a-z0-9_]+$ ]]; then
-  for t in panel_admins plans subscribers payments audit_log stats_snapshots settings role_perms user_plans departments zones areas expenses inventory_items inventory_moves net_devices ip_pools tickets ticket_replies outbox message_templates notes documents fees sub_charges plan_fees nas_groups mac_vendors onus olt_snmp onu_metrics sub_ledger coa_log notices user_ledger topups role_funcs traffic_snapshots traffic_last; do
+  for t in panel_admins plans subscribers payments audit_log stats_snapshots settings role_perms user_plans departments zones areas expenses inventory_items inventory_moves net_devices ip_pools tickets ticket_replies outbox message_templates notes documents fees sub_charges plan_fees nas_groups mac_vendors onus olt_snmp onu_metrics sub_ledger coa_log notices user_ledger topups role_funcs traffic_snapshots traffic_last nas_health; do
     CUR_COLL=$(mariadb -N -e "SELECT TABLE_COLLATION FROM information_schema.tables WHERE table_schema='$DB_NAME' AND table_name='$t'")
     if [[ "$CUR_COLL" != "$RC_COLL" ]]; then
       mariadb "$DB_NAME" -e "ALTER TABLE \`$t\` CONVERT TO CHARACTER SET utf8mb4 COLLATE $RC_COLL"
@@ -215,6 +215,59 @@ if not os.path.lexists(link): os.symlink("../mods-available/sql", link)
 # 2. do not store attempted passwords in radpostauth
 p = fr + "/mods-config/sql/main/mysql/queries.conf"; backup(p); s = rd(p)
 s = re.sub(r"'%\{%\{User-Password\}:-[^']*'", "''", s)
+
+# 2b. the post-auth log also keeps why a login was refused, the router and the device MAC
+#     (columns reason / nas_ip / mac, added by panel_schema.sql; shown on Logs & System Health).
+def block_span(text, header):
+    """(start, end) of the body of `header { ... }`, skipping braces inside quoted strings."""
+    m = re.search(r"^[ \t]*" + header + r"[ \t]*\{[ \t]*$", text, re.M)
+    if not m:
+        return None
+    i, depth, quote = m.end(), 1, False
+    while i < len(text):
+        ch = text[i]
+        if quote:
+            if ch == "\\":
+                i += 1
+            elif ch == '"':
+                quote = False
+        elif ch == '"':
+            quote = True
+        elif ch == "#":
+            nl = text.find("\n", i)
+            i = len(text) if nl < 0 else nl
+            continue
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return m.end(), i
+        i += 1
+    return None
+
+POSTAUTH_QUERY = r'''	query =	"\
+		INSERT INTO ${..postauth_table} \
+			(username, pass, reply, authdate, reason, nas_ip, mac) \
+		VALUES ( \
+			'%{SQL-User-Name}', \
+			'', \
+			'%{reply:Packet-Type}', \
+			'%S', \
+			'%{%{Module-Failure-Message}:-%{reply:Reply-Message}}', \
+			'%{NAS-IP-Address}', \
+			'%{Calling-Station-Id}')"'''
+span = block_span(s, "post-auth")
+if span and "(username, pass, reply, authdate, reason, nas_ip, mac)" not in s[span[0]:span[1]]:
+    body = s[span[0]:span[1]]
+    q = re.search(r'^[ \t]*query[ \t]*=[ \t]*"(?:[^"\\]|\\.)*"', body, re.M | re.S)
+    if q:
+        body = body[:q.start()] + POSTAUTH_QUERY + body[q.end():]
+        s = s[:span[0]] + body + s[span[1]:]
+    else:
+        print("WARNING: post-auth query not found; refused logins will be logged without a reason.")
+elif not span:
+    print("WARNING: post-auth section not found; refused logins will be logged without a reason.")
 wr(p, s)
 
 # 3. default site: use SQL everywhere, drop flat-file accounting
@@ -333,6 +386,29 @@ ProtectHome=yes
 WantedBy=multi-user.target
 EOF
 
+# NOC: router health every 30 s, Telegram alerts, RADIUS disconnects. Independent of FreeRADIUS and of the web
+# panel: restarting either one (or this) never drops a customer's PPPoE session.
+cat > /etc/systemd/system/isp-panel-noc.service <<'EOF'
+[Unit]
+Description=ISP RADIUS Panel NOC (router health, alerts, disconnects)
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+User=isp-panel
+Group=isp-panel
+WorkingDirectory=__APP__
+EnvironmentFile=/etc/isp-panel/panel.env
+ExecStart=/usr/bin/python3 __APP__/noc.py
+Restart=always
+RestartSec=5
+PrivateTmp=yes
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 cat > /etc/systemd/system/isp-panel-maint.service <<'EOF'
 [Unit]
 Description=ISP RADIUS Panel maintenance (stale sessions, snapshots, cleanup)
@@ -406,7 +482,7 @@ RESULT=$(cd "$APP_DIR" && set -a && . "$ENV_FILE" && set +a && python3 manage.py
 [[ "$RESULT" == "created" ]] && ADMIN_PASS_SHOWN="$ADMIN_PASS"
 
 systemctl daemon-reload
-systemctl enable --now isp-panel.service isp-panel-sender.service isp-panel-maint.timer isp-panel-backup.timer
+systemctl enable --now isp-panel.service isp-panel-sender.service isp-panel-noc.service isp-panel-maint.timer isp-panel-backup.timer
 
 # ------------------------------------------------------------------ nginx
 c_ok "Configuring nginx"
@@ -452,7 +528,7 @@ rm -f /etc/nginx/sites-enabled/default
 nginx -t
 systemctl enable nginx
 systemctl restart nginx
-systemctl restart isp-panel.service isp-panel-sender.service
+systemctl restart isp-panel.service isp-panel-sender.service isp-panel-noc.service
 
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
   c_ok "Opening firewall ports (RADIUS 1812/1813 udp, web 80/443 tcp)"

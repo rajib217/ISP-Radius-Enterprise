@@ -102,6 +102,7 @@ STRUCTURE = [
         _i("Sent log", "messages", args={"channel": "sms"}),
     ]),
     _g("logs", "Logs", "file", module="logs", items=[
+        _i("Logs & System Health", "noc", ["noc", "noc_settings"]),
         _i("Login attempts", "logs", none_of=["tab"]),
         _i("Panel activity", "logs", args={"tab": "activity"}),
         _i("Sessions", "logs_sessions"),
