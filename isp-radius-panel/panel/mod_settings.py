@@ -1,4 +1,5 @@
 """Settings pages for email, the SMS gateway and automatic messages (General settings stay in app.py)."""
+import json
 import os
 import re
 import zoneinfo
@@ -7,7 +8,7 @@ from flask import abort, flash, redirect, render_template, request, send_file, u
 
 import db
 import sendlib
-from core import EMAIL_RE, admin_required, audit, cfg, commit, get_db, route
+from core import EMAIL_RE, admin_required, audit, cfg, commit, get_db, q, route
 import core
 import msglib
 
@@ -564,7 +565,11 @@ def settings_gateway(slug):
         for key, limit in (("bkash_key", 200), ("bkash_secret", 200), ("bkash_user", 64), ("bkash_pass", 200),
                            ("bkash_merchant", 200), ("bkash_topics", 1000), ("bkash_callback_base", 200)):
             new[key] = f.get(key, "").strip()[:limit]
-        base = new["bkash_callback_base"].rstrip("/")
+        # Secret and Password are never sent back to the browser, so an empty box means "keep the saved one"
+        for key in ("bkash_secret", "bkash_pass"):
+            if not new[key]:
+                new[key] = cfg().get(key, "")
+        base =new["bkash_callback_base"].rstrip("/")
         if base and not (base.startswith("https://") or base.startswith("http://")):
             flash("Callback address must start with https:// (or http://). Nothing was saved.", "error")
             return redirect(url_for("settings_gateway", slug=slug))
@@ -577,4 +582,21 @@ def settings_gateway(slug):
         commit()
         flash("bKash settings saved.", "success")
         return redirect(url_for("settings_gateway", slug=slug))
-    return render_template("settings_gateway.html", gw=gw, s=cfg(), refs=BKASH_REFS, tab="gw-" + slug)
+    logs, stuck = [], []
+    try:                       # tables appear when install.sh is re-run
+        logs = q("SELECT created_at, flow, ref_id, payment_id, step, http_status, ms, ok, error, response FROM gateway_logs "
+                 "ORDER BY id DESC LIMIT 30")
+        stuck = q("SELECT 'portal' AS flow, p.id, s.username AS who, p.amount + p.fee AS total, p.payment_id, p.message, p.created_at "
+                  "FROM portal_payments p LEFT JOIN subscribers s ON s.id = p.subscriber_id WHERE p.status = 'pending' "
+                  "UNION ALL SELECT 'topup', t.id, a.username, t.amount + t.fee, t.payment_id, t.message, t.created_at "
+                  "FROM topups t LEFT JOIN panel_admins a ON a.id = t.user_id WHERE t.status = 'pending' "
+                  "ORDER BY created_at DESC LIMIT 30")
+    except Exception:
+        get_db().rollback()
+    for r in logs:
+        try:
+            ans = json.loads(r["response"] or "{}")
+        except ValueError:
+            ans = {}
+        r["said"] = str(ans.get("statusMessage") or ans.get("errorMessage") or ans.get("transactionStatus") or r["error"] or "")[:120]
+    return render_template("settings_gateway.html", gw=gw, s=cfg(), refs=BKASH_REFS, tab="gw-" + slug, logs=logs, stuck=stuck)

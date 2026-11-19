@@ -1,0 +1,45 @@
+# ---- secrets and server state: never committed, so a deploy can never overwrite them
+.env
+.env.*
+!.env.example
+*.env
+panel.env
+install.conf
+deploy.conf
+instance/
+
+# ---- Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# ---- database data, dumps and backups
+backups/
+*.sql.gz
+*.dump
+mysql-data/
+mariadb-data/
+db-data/
+harness-data/
+
+# ---- TLS certificates and Caddy / Let's Encrypt state
+caddy_data/
+caddy_config/
+.caddy/
+letsencrypt/
+*.pem
+*.key
+*.crt
+
+# ---- editors and OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# ---- local build leftovers
+isp-radius-panel-*.zip

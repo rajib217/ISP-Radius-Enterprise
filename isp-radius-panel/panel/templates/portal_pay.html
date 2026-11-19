@@ -1,0 +1,37 @@
+{% extends "portal_base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Pay with bKash{% endblock %}
+{% block top %}<div class="pt-top"><b>{{ isp or 'My connection' }}</b><a class="btn sm" href="{{ url_for('portal') }}">Back</a></div>{% endblock %}
+{% block content %}
+<div class="pay-wrap">
+  <section class="pay-card" aria-labelledby="pay-h">
+    <div class="pay-head">
+      <span class="pay-ico">{{ icon('wallet') }}</span>
+      <div><h1 id="pay-h">Renew your connection</h1><p>{{ sub.full_name or sub.username }} · <span class="mono">{{ sub.username }}</span></p></div>
+    </div>
+    {% if sandbox %}<span class="pay-tag">Test mode (bKash sandbox): no real money is taken</span>{% endif %}
+    <dl class="pay-rows">
+      <div><dt>Package</dt><dd>{{ sub.plan_label or sub.plan_name }}{% if sub.download_mbps %} · {{ sub.download_mbps }}/{{ sub.upload_mbps }} Mbps{% endif %}</dd></div>
+      <div><dt>Period</dt><dd>{{ t.days }} days</dd></div>
+      <div><dt>Valid until now</dt><dd>{{ sub.expiry_date|d if sub.expiry_date else '—' }}</dd></div>
+      <div><dt>Valid until after paying</dt><dd class="pay-new">{{ new_expiry|d }}</dd></div>
+      <div><dt>Package price</dt><dd class="mono">{{ cur }} {{ t.amount|money }}</dd></div>
+      {% if t.fee %}<div><dt>bKash fee</dt><dd class="mono">{{ cur }} {{ t.fee|money }}</dd></div>{% endif %}
+    </dl>
+    <div class="pay-total"><span>Total to pay</span><b class="mono">{{ cur }} {{ (t.amount + t.fee)|money }}</b></div>
+    <form method="post" action="{{ url_for('portal_pay') }}" id="pay-form">{{ csrf_input() }}
+      <button class="btn-bkash" type="submit" id="pay-btn">{{ icon('lock') }}<span>Pay with bKash</span></button>
+    </form>
+    <p class="pay-note">{{ icon('info') }}<span>bKash opens next. Enter your bKash number, the code bKash sends, and your PIN. Stay on the page until bKash brings you back here.</span></p>
+  </section>
+</div>
+<script>
+  (function () {
+    var f = document.getElementById("pay-form"), b = document.getElementById("pay-btn");
+    f.addEventListener("submit", function () {        // one click starts one payment
+      setTimeout(function () { b.disabled = true; b.querySelector("span").textContent = "Opening bKash…"; }, 0);
+    });
+    window.addEventListener("pageshow", function () { b.disabled = false; b.querySelector("span").textContent = "Pay with bKash"; });
+  })();
+</script>
+{% endblock %}

@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# ISP RADIUS Panel: pull the latest code and run update.sh. Installed root-owned by install.sh as
+# /usr/local/sbin/isp-panel-deploy, so a deploy user can be allowed exactly this one command with sudo:
+#     deploy ALL=(root) NOPASSWD: /usr/local/sbin/isp-panel-deploy
+# It takes no arguments. The repository path comes from /etc/isp-panel/deploy.conf (written by install.sh).
+set -euo pipefail
+[[ $EUID -eq 0 ]] || { echo "run with sudo" >&2; exit 1; }
+CONF=/etc/isp-panel/deploy.conf
+[[ -f "$CONF" ]] || { echo "No $CONF: install from a git clone (git clone ... && sudo ./install.sh) to use deploys." >&2; exit 1; }
+# shellcheck disable=SC1090
+. "$CONF"
+[[ -d "${DEPLOY_REPO:-}/.git" ]] || { echo "DEPLOY_REPO=${DEPLOY_REPO:-} is not a git clone." >&2; exit 1; }
+BRANCH="${DEPLOY_BRANCH:-main}"
+cd "$DEPLOY_REPO"
+echo "==> git pull origin $BRANCH in $DEPLOY_REPO"
+git fetch --quiet origin "$BRANCH"
+git checkout --quiet "$BRANCH"
+# fast-forward only: a server with local edits stops here instead of merging or losing them
+git merge --ff-only "origin/$BRANCH"
+echo "==> now at $(git rev-parse --short=12 HEAD): $(git log -1 --format=%s)"
+exec bash "$DEPLOY_REPO/isp-radius-panel/update.sh"

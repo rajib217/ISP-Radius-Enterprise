@@ -12,9 +12,9 @@
       <label class="radio"><input type="radio" name="bkash_mode" value="live" {{ 'checked' if s.bkash_mode != 'sandbox' }}> Live</label>
       <label class="radio"><input type="radio" name="bkash_mode" value="sandbox" {{ 'checked' if s.bkash_mode == 'sandbox' }}> Sandbox</label></div>
     <div class="field"><label class="lbl" for="b-key">Key <b class="req">*</b></label><input id="b-key" name="bkash_key" value="{{ s.bkash_key }}" autocomplete="off" spellcheck="false"></div>
-    <div class="field"><label class="lbl" for="b-sec">Secret <b class="req">*</b></label><input id="b-sec" name="bkash_secret" type="password" value="{{ s.bkash_secret }}" autocomplete="new-password"></div>
+    <div class="field"><label class="lbl" for="b-sec">Secret <b class="req">*</b></label><input id="b-sec" name="bkash_secret" type="password" value="" placeholder="{{ 'Saved: leave empty to keep it' if s.bkash_secret else 'Paste the App Secret' }}" autocomplete="new-password">{% if s.bkash_secret %}<div class="help">A secret is saved. It is not shown here; type a new one only to change it.</div>{% endif %}</div>
     <div class="field"><label class="lbl" for="b-usr">Username <b class="req">*</b></label><input id="b-usr" name="bkash_user" value="{{ s.bkash_user }}" autocomplete="off" spellcheck="false"></div>
-    <div class="field"><label class="lbl" for="b-pw">Password <b class="req">*</b></label><input id="b-pw" name="bkash_pass" type="password" value="{{ s.bkash_pass }}" autocomplete="new-password"></div>
+    <div class="field"><label class="lbl" for="b-pw">Password <b class="req">*</b></label><input id="b-pw" name="bkash_pass" type="password" value="" placeholder="{{ 'Saved: leave empty to keep it' if s.bkash_pass else 'bKash merchant password' }}" autocomplete="new-password">{% if s.bkash_pass %}<div class="help">A password is saved. It is not shown here; type a new one only to change it.</div>{% endif %}</div>
     <div class="field"><label class="lbl" for="b-fee">Transaction Fee</label><input id="b-fee" name="bkash_fee" type="number" min="0" step="any" value="{{ s.bkash_fee }}"></div>
     <div class="field"><label class="lbl" for="b-ft">Fee Type</label><select id="b-ft" name="bkash_fee_type"><option value="percent" {{ 'selected' if s.bkash_fee_type != 'fixed' }}>Percentage (*)</option><option value="fixed" {{ 'selected' if s.bkash_fee_type == 'fixed' }}>Fixed amount</option></select></div>
     <div class="field wide"><label class="lbl" for="b-cb">Callback address (optional)</label><input id="b-cb" name="bkash_callback_base" value="{{ s.bkash_callback_base }}" placeholder="https://panel.yourdomain.com" spellcheck="false"><div class="help">The public address bKash sends the reseller back to after paying. Leave empty to use the address the reseller opened the panel from. bKash may require an https:// address registered on your merchant account.</div></div>
@@ -27,8 +27,21 @@
       {% endfor %}
       <div class="help" style="margin-top:8px">Any option other than Automatic needs the bKash Merchant Number above. A reference that matches no subscriber is not credited and is logged.</div>
     </div>
-    <div class="note-box wide" style="border-style:solid">{{ icon('alert') }}<span>These settings are used for reseller <b>Add Balance</b> (bKash checkout). They are not yet used to receive customer payments by webhook; record those under Accounting &rsaquo; Receive payment. Use Sandbox mode with your bKash test credentials to try it first.</span></div>
+    <div class="note-box wide" style="border-style:solid">{{ icon('alert') }}<span>These settings are used for reseller <b>Add Balance</b> and for customer renewals in the <b>customer portal</b> (bKash checkout). Payments whose answer was lost are checked with bKash again every 5 minutes, for up to 3 days. Use Sandbox mode with your bKash test credentials to try it first.</span></div>
   </div>
   <div class="set-foot"><button class="btn primary" type="submit">Submit</button></div>
 </form>
+
+<section class="panel set-card" style="margin-top:16px">
+  <div class="panel-head"><h2>{{ icon('refresh') }} Waiting for bKash</h2></div>
+  {% if stuck %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Started</th><th>For</th><th>Who</th><th class="num">Amount</th><th>Payment ID</th><th>Last answer</th></tr></thead><tbody>
+    {% for r in stuck %}<tr><td class="nowrap">{{ r.created_at|dt }}</td><td>{{ 'Renewal' if r.flow == 'portal' else 'Add Balance' }} #{{ r.id }}</td><td class="mono">{{ r.who or '—' }}</td><td class="num">{{ r.total|money }}</td><td class="mono">{{ r.payment_id or '—' }}</td><td class="muted">{{ r.message or '—' }}</td></tr>{% endfor %}
+  </tbody></table></div>{% else %}<p class="muted" style="margin:0">No payments are waiting. Every started payment was completed, failed or cancelled.</p>{% endif %}
+</section>
+<section class="panel set-card" style="margin-top:16px">
+  <div class="panel-head"><h2>{{ icon('file') }} bKash gateway log</h2><span class="muted">last 30 requests · secrets and tokens are not stored</span></div>
+  {% if logs %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Time</th><th>Step</th><th>For</th><th>Payment ID</th><th>Result</th><th class="num">ms</th></tr></thead><tbody>
+    {% for r in logs %}<tr><td class="nowrap mono">{{ r.created_at|dt }}</td><td class="mono">{{ r.step }}</td><td>{{ {'portal': 'Renewal', 'topup': 'Add Balance', 'token': 'Token'}.get(r.flow, r.flow) }}{% if r.ref_id %} #{{ r.ref_id }}{% endif %}</td><td class="mono">{{ r.payment_id or '—' }}</td><td><span class="badge {{ 'ok' if r.ok else 'bad' }}">{{ 'OK' if r.ok else ('HTTP %s' % r.http_status if r.http_status else 'Error') }}</span> <span class="muted">{{ r.said }}</span></td><td class="num">{{ r.ms }}</td></tr>{% endfor %}
+  </tbody></table></div>{% else %}<p class="muted" style="margin:0">Nothing logged yet.</p>{% endif %}
+</section>
 {% endblock %}

@@ -12,6 +12,7 @@ from datetime import date, timedelta
 from flask import abort, flash, g, redirect, render_template, request, session, url_for
 
 import core
+import bkash
 import mod_subs
 import mod_topup
 import radius
@@ -58,7 +59,7 @@ def pay_terms(sub):
         out["why"] = "Please pay your provider %s%s." % (owner["full_name"] or owner["username"],
                                                        (" (" + owner["phone"] + ")") if owner["phone"] else "")
         return out
-    if s.get("sub_self_activation") != "1" or not mod_topup.configured():
+    if s.get("sub_self_activation") != "1" or not bkash.configured():
         out["why"] = "Online payment is not available. Please contact us to renew."
         return out
     if not sub.get("plan_id") or not sub.get("plan_price") or not out["days"]:
@@ -68,7 +69,7 @@ def pay_terms(sub):
         out["why"] = "Your account is suspended. Please contact us."
         return out
     out["amount"] = round(float(sub["plan_price"]), 2)
-    out["fee"] = mod_topup.fee_for(out["amount"])
+    out["fee"] = bkash.fee_for(out["amount"])
     out["ok"] = True
     return out
 
@@ -146,7 +147,7 @@ def portal():
                      "FROM radacct WHERE username = %s ORDER BY radacctid DESC LIMIT 10", (user,))
     invoices = q("SELECT id, amount, days_added, method, period_to, paid_at FROM payments WHERE subscriber_id = %s "
                  "ORDER BY id DESC LIMIT 50", (sub["id"],))
-    pending = q("SELECT amount, fee, status, message, created_at FROM portal_payments WHERE subscriber_id = %s "
+    pending = q("SELECT id, token, amount, fee, status, message, created_at FROM portal_payments WHERE subscriber_id = %s "
                 "ORDER BY id DESC LIMIT 5", (sub["id"],))
     return render_template("portal.html", sub=sub, state=state, left=left, usage=usage, online=online, sessions=sessions,
                            invoices=invoices, tries=pending, terms=pay_terms(sub), isp=s.get("isp_name", ""),
@@ -188,92 +189,87 @@ def portal_password():
 
 
 # ===================================================================== pay with bKash
-@route("/portal/pay", methods=["POST"])
+def _preview_expiry(sub, days):
+    """The expiry the customer gets if bKash confirms now (same rules as mod_subs.do_renew)."""
+    base = max(sub["expiry_date"] or date.today(), date.today())
+    plan = mod_subs._plan(sub["plan_id"])
+    new = mod_subs.plan_expiry(plan, base, days)
+    if plan and plan.get("fixed_expire_day"):
+        new = mod_subs.fixed_expiry(new, base, plan["fixed_expire_day"])
+    return new
+
+
+@route("/portal/pay", methods=["GET", "POST"])
 def portal_pay():
-    sub = _need() or abort(404)
+    sub = _need()
+    if not sub:
+        return redirect(url_for("portal_login"))
     t = pay_terms(sub)
     if not t["ok"]:
         flash(t["why"], "error")
         return redirect(url_for("portal"))
+    s = core.cfg()
+    if request.method == "GET":                     # the checkout page: what they pay, and until when
+        return render_template("portal_pay.html", sub=sub, t=t, new_expiry=_preview_expiry(sub, t["days"]),
+                               isp=s.get("isp_name", ""), cur=s.get("currency", ""), sandbox=s.get("bkash_mode") == "sandbox")
     token = secrets.token_hex(16)
     tid = insert("INSERT INTO portal_payments (subscriber_id, amount, fee, days, token) VALUES (%s, %s, %s, %s, %s)",
                  (sub["id"], t["amount"], t["fee"], t["days"], token))
     commit()
-    callback = "-"
     try:
-        base, id_token = mod_topup._token()
-        path = url_for("portal_bkash", tid=tid, key=token)
-        cb_base = (core.cfg().get("bkash_callback_base") or "").rstrip("/")
-        callback = (cb_base + path) if cb_base else url_for("portal_bkash", _external=True, tid=tid, key=token)
-        data = mod_topup._post(base + "create", {"authorization": id_token, "x-app-key": core.cfg()["bkash_key"]},
-                               {"mode": "0011", "payerReference": sub["username"][:50], "callbackURL": callback,
-                                "amount": "%.2f" % (t["amount"] + t["fee"]), "currency": "BDT", "intent": "sale",
-                                "merchantInvoiceNumber": "PRT%d" % tid})
-        if not data.get("bkashURL") or not data.get("paymentID"):
-            raise mod_topup.BkashError(str(data.get("statusMessage") or "bKash did not start the payment."))
-    except mod_topup.BkashError as e:
+        data = bkash.create("portal", tid, t["amount"] + t["fee"], sub["username"],
+                            mod_topup.callback_url("portal_bkash", tid=tid, key=token), "PRT%d" % tid)
+    except bkash.BkashError as e:
         x("UPDATE portal_payments SET status = 'failed', message = %s WHERE id = %s", (str(e)[:255], tid))
         commit()
         flash("The payment could not be started. Please try again later or contact us.", "error")
-        return redirect(url_for("portal"))
+        return redirect(url_for("portal_pay"))
     x("UPDATE portal_payments SET payment_id = %s WHERE id = %s", (data["paymentID"], tid))
     commit()
     return redirect(data["bkashURL"])
 
 
-@route("/portal/bkash/<int:tid>/<key>")
-def portal_bkash(tid, key):
-    sub = _need() or abort(404)
-    row = q("SELECT * FROM portal_payments WHERE id = %s AND subscriber_id = %s", (tid, sub["id"]), one=True)
+def _payment(tid, key):
+    """A portal payment found by its id and secret key (no portal sign-in needed: the customer's session may
+    have ended while they were on the bKash page)."""
+    _on()
+    row = q("SELECT * FROM portal_payments WHERE id = %s", (tid,), one=True)
     if not row or not secrets.compare_digest(str(row["token"]), str(key)):
         abort(404)
-    if row["status"] != "pending":
-        flash("This payment was already processed.", "info")
-        return redirect(url_for("portal"))
-    status = request.args.get("status", "")
-    if status != "success" or request.args.get("paymentID", "") != row["payment_id"]:
-        new = "cancelled" if status == "cancel" else "failed"
-        x("UPDATE portal_payments SET status = %s, message = %s WHERE id = %s AND status = 'pending'",
-          (new, "bKash returned: %s" % (status or "no status"), row["id"]))
-        commit()
-        flash("The bKash payment was %s. Nothing was charged to your account." % ("cancelled" if new == "cancelled" else "not completed"), "error")
-        return redirect(url_for("portal"))
-    try:
-        base, id_token = mod_topup._token()
-        hdr = {"authorization": id_token, "x-app-key": core.cfg()["bkash_key"]}
-        data = mod_topup._post(base + "execute", hdr, {"paymentID": row["payment_id"]})
-        if str(data.get("statusCode", "")) != "0000":
-            data = mod_topup._post(base + "payment/status", hdr, {"paymentID": row["payment_id"]})
-    except mod_topup.BkashError:
-        flash("We could not confirm the payment with bKash. If money left your bKash, contact us with payment ID %s." % row["payment_id"], "error")
-        return redirect(url_for("portal"))
-    ok = str(data.get("statusCode", "")) == "0000" and str(data.get("transactionStatus", "Completed")) == "Completed"
-    try:
-        paid = float(data.get("amount") or 0)
-    except (TypeError, ValueError):
-        paid = 0.0
-    if ok and paid and abs(paid - (float(row["amount"]) + float(row["fee"]))) > 0.01:
-        ok = False
-        data["statusMessage"] = "The paid amount did not match."
-    if not ok:
-        x("UPDATE portal_payments SET status = 'failed', message = %s WHERE id = %s AND status = 'pending'",
-          (str(data.get("statusMessage") or "bKash did not confirm the payment.")[:255], row["id"]))
-        commit()
-        flash("bKash did not confirm the payment: %s" % (data.get("statusMessage") or "unknown reason"), "error")
-        return redirect(url_for("portal"))
-    trx = str(data.get("trxID", ""))[:64]
-    with core.get_db().cursor() as c:        # only the request that flips pending -> completed renews the customer
-        c.execute("UPDATE portal_payments SET status = 'completed', trx_id = %s, message = '' WHERE id = %s AND status = 'pending'",
-                  (trx, row["id"]))
-        first = c.rowcount == 1
-    if first:
-        fresh = q("SELECT * FROM subscribers WHERE id = %s", (sub["id"],), one=True)
-        g.me = {"username": "portal:" + sub["username"]}          # who gets written as "received by"
-        try:
-            mod_subs.do_renew(fresh, int(row["days"]), float(row["amount"]), "bkash", ("bKash %s" % trx)[:255])
-        finally:
-            g.pop("me", None)
-        audit("portal_payment", sub["username"], "%.2f bKash %s" % (float(row["amount"]), trx), who=sub["username"])
-    commit()
-    flash("Payment received. Your connection is renewed.", "success")
-    return redirect(url_for("portal"))
+    return row
+
+
+@route("/portal/bkash/<int:tid>/<key>")
+def portal_bkash(tid, key):
+    row = _payment(tid, key)
+    if row["status"] == "pending":
+        status = request.args.get("status", "")
+        if status != "success" or request.args.get("paymentID", "") != row["payment_id"]:
+            bkash.mark("portal", row["id"], "cancelled" if status == "cancel" else "failed",
+                       "bKash returned: %s" % (status or "no status"))
+        else:
+            bkash.check("portal", row)
+    return redirect(url_for("portal_receipt", tid=tid, key=key))
+
+
+@route("/portal/payment/<int:tid>/<key>")
+def portal_receipt(tid, key):
+    """Result of one bKash payment: receipt when paid, a 'confirming' page while bKash has not answered."""
+    row = _payment(tid, key)
+    if row["status"] == "pending" and row["payment_id"]:
+        due = q("SELECT id FROM portal_payments WHERE id = %s AND status = 'pending' "
+                "AND (checked_at IS NULL OR checked_at < NOW() - INTERVAL 15 SECOND)", (tid,), one=True)
+        if due:                                      # at most one bKash check per 15 seconds per payment
+            try:
+                bkash.check("portal", row)
+            except Exception:
+                core.get_db().rollback()
+            row = q("SELECT * FROM portal_payments WHERE id = %s", (tid,), one=True)
+    sub = q("SELECT s.id, s.username, s.full_name, s.expiry_date, s.created_by, p.label AS plan_label, p.name AS plan_name "
+            "FROM subscribers s LEFT JOIN plans p ON p.id = s.plan_id WHERE s.id = %s", (row["subscriber_id"],), one=True) or {}
+    pay = q("SELECT id, period_to, paid_at FROM payments WHERE id = %s", (row["payment_ref"],), one=True) if row.get("payment_ref") else None
+    inv = q("SELECT inv_name, inv_address, inv_phone, inv_footer FROM panel_admins WHERE username = %s",
+            (sub.get("created_by") or "",), one=True) or {}
+    s = core.cfg()
+    return render_template("portal_receipt.html", row=row, sub=sub, pay=pay, inv=inv, signed_in=session.get("cid") == row["subscriber_id"],
+                           isp=s.get("isp_name", ""), cur=s.get("currency", ""))

@@ -18,10 +18,10 @@
   <h2>Renew</h2>
   {% if terms.ok %}
     <p>{{ sub.plan_label or sub.plan_name }} for {{ terms.days }} days: <b>{{ cur }} {{ terms.amount|money }}</b>{% if terms.fee %} + bKash fee {{ cur }} {{ terms.fee|money }}{% endif %}. Your expiry moves forward when bKash confirms the payment.</p>
-    <form method="post" action="{{ url_for('portal_pay') }}">{{ csrf_input() }}<button class="btn primary" type="submit">Pay {{ cur }} {{ (terms.amount + terms.fee)|money }} with bKash</button></form>
+    <a class="btn-bkash" href="{{ url_for('portal_pay') }}" style="max-width:340px">Pay {{ cur }} {{ (terms.amount + terms.fee)|money }} with bKash</a>
   {% else %}<p class="muted" style="margin:0">{{ terms.why }}</p>{% endif %}
-  {% if tries %}<div class="tbl-wrap" style="margin-top:12px"><table class="tbl"><thead><tr><th>Payment attempt</th><th class="num">Amount</th><th>Status</th></tr></thead><tbody>
-    {% for t in tries %}<tr><td class="nowrap">{{ t.created_at|dt }}</td><td class="num">{{ cur }} {{ (t.amount|float + t.fee|float)|money }}</td><td><span class="badge {{ 'ok' if t.status == 'completed' else ('warn' if t.status == 'pending' else 'bad') }}">{{ t.status|capitalize }}</span></td></tr>{% endfor %}
+  {% if tries %}<div class="tbl-wrap pay-attempts" style="margin-top:12px"><table class="tbl"><thead><tr><th>Payment attempt</th><th class="num">Amount</th><th>Status</th></tr></thead><tbody>
+    {% for t in tries %}<tr><td class="nowrap"><a href="{{ url_for('portal_receipt', tid=t.id, key=t.token) }}">{{ t.created_at|dt }}</a></td><td class="num">{{ cur }} {{ (t.amount|float + t.fee|float)|money }}</td><td><span class="badge {{ 'ok' if t.status == 'completed' else ('warn' if t.status == 'pending' else 'bad') }}">{{ 'Confirming' if t.status == 'pending' else t.status|capitalize }}</span></td></tr>{% endfor %}
   </tbody></table></div>{% endif %}
 </section>
 

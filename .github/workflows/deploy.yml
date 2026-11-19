@@ -1,0 +1,124 @@
+# Deploy the ISP RADIUS Panel to the production server on every push to main.
+#
+# The server pulls the code and runs isp-radius-panel/update.sh, which backs up the database, applies the schema
+# and gracefully reloads only the panel's own services. FreeRADIUS, MariaDB and Caddy are never restarted, so
+# customers stay online during a deploy.
+#
+# Repository secrets (Settings > Secrets and variables > Actions):
+#   SERVER_HOST          server address (IP or name)                                   required
+#   SERVER_USER          SSH user that may run: sudo /usr/local/sbin/isp-panel-deploy   required
+#   SERVER_SSH_KEY       that user's private key (ed25519 recommended)                  required
+#   SERVER_KNOWN_HOSTS   output of "ssh-keyscan -H <host>" checked by hand once         strongly recommended
+#   SERVER_PORT          SSH port                                                       optional, default 22
+#   PANEL_URL            public address, e.g. https://panel.yourdomain.com             optional, enables the public check
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# one deploy at a time; a newer push waits for the running one instead of cancelling it half way
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check the code
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python syntax
+        run: |
+          python3 -m py_compile isp-radius-panel/panel/*.py
+          python3 -m py_compile isp-radius-panel/deploy/isp-panel-fwsync
+
+      - name: Shell syntax
+        run: |
+          bash -n isp-radius-panel/install.sh
+          bash -n isp-radius-panel/update.sh
+          bash -n isp-radius-panel/deploy/isp-panel-deploy
+
+      - name: The app imports
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-flask python3-pymysql python3-werkzeug >/dev/null
+          cd isp-radius-panel/panel
+          PANEL_SECRET_KEY=ci PANEL_DATA_DIR="$RUNNER_TEMP/panel-data" PYTHONDONTWRITEBYTECODE=1 python3 -c 'import app; print("routes:", len(list(app.app.url_map.iter_rules())))'
+
+  deploy:
+    name: Deploy to the server
+    needs: check
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 25
+    steps:
+      - name: Set up SSH
+        env:
+          SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.SERVER_KNOWN_HOSTS }}
+          HOST: ${{ secrets.SERVER_HOST }}
+          PORT: ${{ secrets.SERVER_PORT || '22' }}
+        run: |
+          if [ -z "$SSH_KEY" ] || [ -z "$HOST" ]; then
+            echo "::error::Set the SERVER_HOST, SERVER_USER and SERVER_SSH_KEY repository secrets."; exit 1
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ -n "$KNOWN_HOSTS" ]; then
+            printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            echo "::warning::SERVER_KNOWN_HOSTS is not set: trusting the server key seen now. Add the secret to pin it."
+            ssh-keyscan -p "$PORT" -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Pull and update on the server
+        id: update
+        env:
+          HOST: ${{ secrets.SERVER_HOST }}
+          USER: ${{ secrets.SERVER_USER }}
+          PORT: ${{ secrets.SERVER_PORT || '22' }}
+        run: |
+          set -o pipefail
+          ssh -i ~/.ssh/deploy_key -p "$PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 \
+            "$USER@$HOST" 'sudo -n /usr/local/sbin/isp-panel-deploy' 2>&1 | tee "$RUNNER_TEMP/deploy.log"
+          rev="$(sed -n 's/^REVISION=//p' "$RUNNER_TEMP/deploy.log" | tail -n1)"
+          [ -n "$rev" ] || { echo "::error::update.sh did not report the new revision."; exit 1; }
+          echo "revision=$rev" >> "$GITHUB_OUTPUT"
+
+      - name: Health check
+        env:
+          PANEL_URL: ${{ secrets.PANEL_URL }}
+          HOST: ${{ secrets.SERVER_HOST }}
+          USER: ${{ secrets.SERVER_USER }}
+          PORT: ${{ secrets.SERVER_PORT || '22' }}
+          REV: ${{ steps.update.outputs.revision }}
+        run: |
+          check() {   # $1 = body from /healthz
+            case "$1" in *'"ok":true'*|*'"ok": true'*) ;; *) return 1;; esac
+            case "$1" in *"$REV"*) return 0;; *) return 1;; esac
+          }
+          if [ -n "$PANEL_URL" ]; then
+            url="${PANEL_URL%/}/healthz"
+            for i in $(seq 1 12); do
+              code="$(curl -sS -o body.json -w '%{http_code}' --max-time 10 "$url" || true)"
+              if [ "$code" = 200 ] && check "$(cat body.json)"; then echo "200 OK from $url, revision $REV"; exit 0; fi
+              echo "attempt $i: HTTP $code $(cat body.json 2>/dev/null)"; sleep 5
+            done
+            echo "::error::$url did not answer 200 with revision $REV."; exit 1
+          fi
+          # no public address configured: ask the panel on the server itself
+          body="$(ssh -i ~/.ssh/deploy_key -p "$PORT" -o BatchMode=yes "$USER@$HOST" 'curl -fsS --max-time 10 http://127.0.0.1:8000/healthz')"
+          check "$body" || { echo "::error::Health check failed: $body"; exit 1; }
+          echo "200 OK on the server, revision $REV (set the PANEL_URL secret to also check the public HTTPS address)"
+
+      - name: Remove the key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

@@ -18,12 +18,22 @@ GROUP_RE = re.compile(r"^[A-Za-z0-9_. \-]{2,64}$")
 
 
 def reload_radius():
+    sync_firewall()
     try:
         r = subprocess.run(["sudo", "-n", "/usr/bin/systemctl", "restart", "freeradius"],
                            capture_output=True, text=True, timeout=20)
         return r.returncode == 0, (r.stderr or r.stdout).strip()
     except (OSError, subprocess.TimeoutExpired) as exc:
         return False, str(exc)
+
+
+def sync_firewall():
+    """Open (or close) RADIUS in UFW for the routers now saved; the minute timer does the same if this fails."""
+    try:
+        subprocess.run(["sudo", "-n", "/usr/bin/systemctl", "start", "--no-block", "isp-panel-fwsync.service"],
+                       capture_output=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
 
 
 # ===================================================================== NAS

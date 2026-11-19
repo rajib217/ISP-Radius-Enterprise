@@ -105,10 +105,14 @@ Passwords must be stored in clear text so CHAP and MS-CHAPv2 can work. Protect t
 
 ## Security
 
-- Open only what you need: UDP 1812/1813 from your routers, TCP 80/443 from your office. Restrict both with `ufw` or your router's firewall.
-- Put the panel behind HTTPS before using it over the internet. With a domain name pointing at the server:
-  `sudo apt install certbot python3-certbot-nginx && sudo certbot --nginx -d panel.example.com`
-  then set `PANEL_COOKIE_SECURE=1` in `/etc/isp-panel/panel.env` and run `sudo systemctl restart isp-panel`.
+- The installer switches on UFW: SSH, TCP 80/443 and UDP 443 for everyone, and UDP 1812/1813 (RADIUS) only for the
+  routers saved under Network > Routers. A router added later is allowed within a minute (`isp-panel-fwsync.timer`).
+  Rules you add by hand are left alone.
+- HTTPS: give the installer a subdomain (for example `panel.yourdomain.com`, plus an optional `pay.yourdomain.com`
+  for bKash). First add an **A record** for each at Hostinger (hPanel > Domains > DNS records) pointing to the server's
+  public IP, and remove any AAAA record. The installer waits until public DNS shows the right IP, then Caddy gets
+  Let's Encrypt certificates and renews them by itself. Without a subdomain the panel runs on plain HTTP by IP.
+  To add HTTPS later, run `sudo ./install.sh` again and enter the subdomain.
 - Secrets are generated at install in `/etc/isp-panel/panel.env` (readable by root and the panel user only).
 - Login attempts are limited to 8 failures per 10 minutes per address. Every change is recorded under Logs > Panel activity.
 - RADIUS does not log attempted passwords (the installer removes that from the stock `radpostauth` query).
@@ -122,10 +126,54 @@ echo '30 2 * * * root mysqldump --single-transaction radius | gzip > /var/backup
 
 Copy these files off the server regularly.
 
+## Updates and automatic deploys
+
+Customers stay online during an update: `update.sh` changes only the panel (code, database schema, and its
+own services). It never restarts FreeRADIUS, MariaDB or Caddy.
+
+What one update does, stopping at the first problem with the running panel left as it was:
+
+1. Copies the new code next to the live one and checks that it starts (syntax and imports).
+2. Backs up the database to `/backups/isp-panel-<date>-<revision>.sql.gz` and keeps the last 7. Session history
+   tables (`radacct_archive`, `radpostauth`, traffic and gateway logs) are saved without their rows; the nightly
+   backup has those.
+3. Applies `sql/panel_schema.sql` (it only adds tables, columns and indexes).
+4. Swaps the code in and reloads the web panel gracefully: new workers start, old ones finish their requests.
+5. Checks `http://127.0.0.1:8000/healthz`. If the new code does not answer, the previous code goes back automatically.
+
+If an update also changes the system setup (a new service, FreeRADIUS or Caddy settings), it stops before step 1
+and asks you to run `sudo ./install.sh` once by hand.
+
+By hand on the server: `cd /opt/isp-panel/src && sudo git pull && sudo bash isp-radius-panel/update.sh`
+
+### One-time setup for GitHub Actions (`.github/workflows/deploy.yml`, runs on every push to `main`)
+
+```bash
+# 1. a root-owned clone, installed from there
+sudo git clone https://github.com/<you>/ISP-Radius-Enterprise /opt/isp-panel/src
+cd /opt/isp-panel/src/isp-radius-panel && sudo ./install.sh
+
+# 2. a deploy user that may run exactly one command as root
+sudo adduser --disabled-password --gecos "" deploy
+echo 'deploy ALL=(root) NOPASSWD: /usr/local/sbin/isp-panel-deploy' | sudo tee /etc/sudoers.d/isp-panel-deploy
+sudo chmod 440 /etc/sudoers.d/isp-panel-deploy
+sudo -u deploy mkdir -m 700 /home/deploy/.ssh
+# paste the PUBLIC half of a new key pair (ssh-keygen -t ed25519 -f deploy_key) into:
+sudo -u deploy nano /home/deploy/.ssh/authorized_keys
+
+# 3. the server's host key, to pin it in GitHub (check the fingerprint once)
+ssh-keyscan -H <server-ip>
+```
+
+Then in GitHub, under Settings > Secrets and variables > Actions, add `SERVER_HOST`, `SERVER_USER` (`deploy`),
+`SERVER_SSH_KEY` (the PRIVATE key) and `SERVER_KNOWN_HOSTS` (the ssh-keyscan output). Optionally add `SERVER_PORT`,
+and `PANEL_URL` (for example `https://panel.yourdomain.com`) to also check the public HTTPS address after each deploy.
+A private repository also needs a read-only deploy key on the server for `git pull`.
+
 ## Everyday commands
 
 ```bash
-systemctl status freeradius isp-panel isp-panel-sender mariadb nginx
+systemctl status freeradius isp-panel isp-panel-sender isp-panel-noc mariadb caddy
 journalctl -u isp-panel -f                  # panel log
 sudo systemctl stop freeradius && sudo freeradius -X     # RADIUS in debug mode, shows exactly why a login fails
 radtest USER PASSWORD 127.0.0.1 0 $(grep RADIUS_LOCAL_SECRET /etc/isp-panel/panel.env | cut -d= -f2)
@@ -466,7 +514,7 @@ When an admin gives a reseller (or sub-reseller) the **Network** permission, tha
 - **Back up now:** a button on the page. It runs in the background and the page reloads when finished.
 - **Where files live:** `/var/lib/isp-panel/backups/`. You can download any backup, delete it, or copy a `.sql.gz` there with scp and it appears in the list.
 - **Restore:** press Restore on a backup (made here, uploaded, or downloaded from Drive). You must type RESTORE and enter your own password. The panel first checks the whole file, then saves the current data as a "Before a restore" backup, then loads the file. If loading fails it puts the previous data back automatically. While it runs customers cannot log in and the panel may show errors for a minute or two; do it at a quiet time.
-- **Upload a backup file:** the page accepts a `.sql.gz` made by this panel (up to 4 GB; nginx is set for this on that one URL only). Other upload pages stay limited to 20 MB. The file is checked but nothing changes until you press Restore.
+- **Upload a backup file:** the page accepts a `.sql.gz` made by this panel (up to 4 GB; Caddy allows this on that one URL only). Other upload pages stay limited to 20 MB. The file is checked but nothing changes until you press Restore.
 - **Google Drive:** uses your own Google Cloud project, so no one else holds your data.
   1. console.cloud.google.com: create a project and enable the Google Drive API.
   2. OAuth consent screen: External, then **Publish app** (In production). In Testing mode Google makes the sign-in expire every 7 days.

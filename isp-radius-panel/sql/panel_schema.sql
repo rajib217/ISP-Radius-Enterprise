@@ -673,3 +673,30 @@ CREATE TABLE IF NOT EXISTS coa_queue (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY idx_user (username)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- bKash: every request and answer to the payment gateway (secrets and tokens removed), for audits and disputes.
+CREATE TABLE IF NOT EXISTS gateway_logs (
+  id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  gateway      VARCHAR(16)  NOT NULL DEFAULT 'bkash',
+  flow         VARCHAR(16)  NOT NULL DEFAULT '',
+  ref_id       INT UNSIGNED NOT NULL DEFAULT 0,
+  payment_id   VARCHAR(64)  NOT NULL DEFAULT '',
+  step         VARCHAR(32)  NOT NULL DEFAULT '',
+  http_status  SMALLINT UNSIGNED NULL,
+  ms           INT UNSIGNED NOT NULL DEFAULT 0,
+  ok           TINYINT(1)   NOT NULL DEFAULT 0,
+  request      TEXT NULL,
+  response     TEXT NULL,
+  error        VARCHAR(255) NOT NULL DEFAULT '',
+  KEY idx_created (created_at),
+  KEY idx_payment (payment_id),
+  KEY idx_ref (flow, ref_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- bKash: when a pending payment was last confirmed with bKash, and the payment (receipt) a portal renewal made
+ALTER TABLE portal_payments ADD COLUMN IF NOT EXISTS checked_at DATETIME NULL;
+ALTER TABLE portal_payments ADD COLUMN IF NOT EXISTS payment_ref INT UNSIGNED NULL;
+ALTER TABLE topups ADD COLUMN IF NOT EXISTS checked_at DATETIME NULL;
+ALTER TABLE portal_payments ADD KEY IF NOT EXISTS idx_pending (status, created_at);
+ALTER TABLE topups ADD KEY IF NOT EXISTS idx_pending (status, created_at);

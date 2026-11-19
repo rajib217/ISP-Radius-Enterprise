@@ -1487,3 +1487,46 @@ dialog.modal.drawer .modal-body { align-content: start; }
 @media (max-width: 767px) { #noc .panel-head .w-220 { width: 100%; } .rgrid { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .rdot.up::after, .live-log tr.fresh { animation: none; } }
 .live-log .reason { white-space: nowrap; }
+
+/* ===================================================================== bKash checkout + receipt (customer portal) */
+:root { --bkash: #E2136E; --bkash-hover: #C10F5E; }                 /* bKash brand pink; white text on it is 4.6:1 */
+.pay-wrap { max-width: 460px; width: 100%; margin: 0 auto; display: grid; gap: var(--s-4, 16px); }
+.pay-card { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r-lg, 14px); padding: 20px; display: grid; gap: 16px; box-shadow: var(--shadow-1); }
+.pay-head { display: flex; align-items: center; gap: 12px; }
+.pay-head h1 { font-family: var(--display); font-size: 20px; margin: 0; line-height: 1.2; }
+.pay-head p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+.pay-ico { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; flex: none; background: var(--accent-soft); color: var(--accent); }
+.pay-ico .i { width: 22px; height: 22px; }
+.pay-ico.ok { background: var(--ok-soft); color: var(--ok); } .pay-ico.bad { background: var(--bad-soft); color: var(--bad); }
+.pay-ico.wait { background: var(--warn-soft); color: var(--warn); }
+.pay-ico.wait .i { animation: pay-spin 1.4s linear infinite; }
+@keyframes pay-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .pay-ico.wait .i { animation: none; } }
+.pay-rows { margin: 0; display: grid; gap: 0; }
+.pay-rows > div { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px dashed var(--rule); font-size: 14px; }
+.pay-rows > div:last-child { border-bottom: 0; }
+.pay-rows dt { color: var(--muted); } .pay-rows dd { margin: 0; text-align: right; font-weight: 500; }
+.pay-rows .mono, .pay-total .mono { font-family: var(--mono); }
+.pay-new { color: var(--ok); font-weight: 700; }
+.pay-total { display: flex; justify-content: space-between; align-items: baseline; padding: 14px 16px; border-radius: var(--r-md, 10px); background: var(--surface-2); }
+.pay-total span { color: var(--muted); font-size: 13px; }
+.pay-total b { font-family: var(--display); font-size: 26px; font-variant-numeric: tabular-nums; }
+.btn-bkash { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 48px; border: 0; border-radius: var(--r-md, 10px);
+  background: var(--bkash); color: #fff; font: 600 16px/1 var(--font); cursor: pointer; text-decoration: none; transition: background var(--dur-fast, .12s); }
+.btn-bkash:hover { background: var(--bkash-hover); }
+.btn-bkash:focus-visible { outline: 3px solid var(--accent-ring, rgba(37,99,235,.4)); outline-offset: 2px; }
+.btn-bkash[disabled] { opacity: .7; cursor: progress; }
+.btn-bkash .i { width: 18px; height: 18px; }
+.pay-note { margin: 0; color: var(--muted); font-size: 13px; display: flex; gap: 8px; align-items: flex-start; }
+.pay-note .i { width: 16px; height: 16px; flex: none; margin-top: 1px; }
+.pay-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.pay-actions .btn { flex: 1; justify-content: center; }
+.pay-amount { font-family: var(--display); font-size: 34px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
+.pay-amount small { display: block; font: 500 13px var(--font); color: var(--muted); margin-top: 2px; }
+.pay-tag { display: inline-flex; padding: 2px 8px; border-radius: 99px; background: var(--warn-soft); color: var(--warn); font-size: 12px; font-weight: 600; }
+.pay-attempts a { color: inherit; }
+@media print {
+  .pt-top, .pay-actions, .pay-note, .pt-flash { display: none !important; }
+  .pay-card { box-shadow: none; border: 0; padding: 0; }
+  body { background: #fff; }
+}

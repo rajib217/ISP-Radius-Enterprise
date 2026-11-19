@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+"""Open RADIUS (udp 1812, 1813) in UFW only for the routers listed in the panel (nas table), and close it again for
+routers that were removed. Run as root by isp-panel-fwsync.service: every minute, and right after a router is saved.
+
+Only rules carrying the comment "isp-radius" are touched; rules added by hand are left alone."""
+import ipaddress
+import os
+import re
+import subprocess
+import sys
+
+TAG = "isp-radius"
+ENV = "/etc/isp-panel/panel.env"
+
+
+def env():
+    out = {}
+    with open(ENV) as f:
+        for line in f:
+            if "=" in line and not line.lstrip().startswith("#"):
+                k, v = line.rstrip("\n").split("=", 1)
+                out[k.strip()] = v
+    return out
+
+
+def ufw(*args):
+    return subprocess.run(["ufw"] + list(args), capture_output=True, text=True, timeout=30)
+
+
+def wanted():
+    import pymysql
+    e = env()
+    conn = pymysql.connect(host=e.get("DB_HOST", "127.0.0.1"), port=int(e.get("DB_PORT", "3306")), user=e["DB_USER"],
+                           password=e["DB_PASS"], database=e.get("DB_NAME", "radius"), connect_timeout=5)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT nasname FROM nas")
+            names = [r[0] for r in cur.fetchall()]
+    finally:
+        conn.close()
+    out = set()
+    for n in names:
+        try:
+            net = ipaddress.ip_network(n.strip(), strict=False)
+        except ValueError:
+            print("skipped %r: not an IP address or subnet (use the router's IP in the panel)" % n)
+            continue
+        if net.is_loopback:
+            continue
+        out.add(str(net.network_address) if net.num_addresses == 1 else str(net))
+    return out
+
+
+def current():
+    """Sources of our tagged rules, from 'ufw status' lines such as:
+    1812,1813/udp   ALLOW   203.0.113.7   # isp-radius"""
+    r = ufw("status")
+    found = set()
+    for line in r.stdout.splitlines():
+        if "# " + TAG in line and "1812,1813/udp" in line:
+            m = re.match(r"^\s*1812,1813/udp(?: \(v6\))?\s+ALLOW(?: IN)?\s+(\S+)", line)
+            if m:
+                found.add(m.group(1))
+    return found
+
+
+def main():
+    if "Status: active" not in ufw("status").stdout:
+        return 0                      # firewall off: nothing to sync
+    want, have = wanted(), current()
+    for src in sorted(want - have):
+        r = ufw("allow", "from", src, "to", "any", "port", "1812,1813", "proto", "udp", "comment", TAG)
+        print("opened RADIUS for %s: %s" % (src, (r.stdout or r.stderr).strip()))
+    for src in sorted(have - want):
+        r = ufw("delete", "allow", "from", src, "to", "any", "port", "1812,1813", "proto", "udp")
+        print("closed RADIUS for %s: %s" % (src, (r.stdout or r.stderr).strip()))
+    return 0
+
+
+if __name__ == "__main__":
+    if os.geteuid() != 0:
+        sys.exit("run as root")
+    sys.exit(main())

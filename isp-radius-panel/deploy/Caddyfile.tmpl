@@ -1,0 +1,66 @@
+# ISP RADIUS Panel - Caddy v2 (written by install.sh; edit the template in deploy/, then re-run the installer).
+#
+# Caddy gets the Let's Encrypt certificates for the domains below by itself and renews them about 30 days before
+# they expire. Nothing to do by hand. HTTP on port 80 is redirected to HTTPS.
+{
+	email __ACME_EMAIL__
+	servers {
+		protocols h1 h2 h3
+	}
+}
+
+(panel) {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Frame-Options DENY
+		X-Content-Type-Options nosniff
+		Referrer-Policy same-origin
+		-Server
+	}
+
+	# the database restore upload is the only large request
+	@upload path /settings/backup/upload
+	handle @upload {
+		request_body {
+			max_size 4GB
+		}
+		reverse_proxy 127.0.0.1:8000 {
+			transport http {
+				read_timeout 900s
+				write_timeout 900s
+			}
+		}
+	}
+
+	handle_path /static/* {
+		root * __APP__/static
+		header Cache-Control "public, max-age=604800"
+		file_server
+	}
+
+	handle {
+		request_body {
+			max_size 20MB
+		}
+		reverse_proxy 127.0.0.1:8000 {
+			transport http {
+				read_timeout 600s
+			}
+		}
+	}
+
+	log {
+		output file /var/log/caddy/isp-panel.log {
+			roll_size 20MiB
+			roll_keep 5
+		}
+	}
+}
+
+__SITES__ {
+	__TLS__
+	import panel
+}
+__FALLBACK__

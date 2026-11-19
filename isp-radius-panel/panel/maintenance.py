@@ -362,6 +362,15 @@ def poll_olts(conn, cur):
     return done
 
 
+def bkash_sweep():
+    """Confirm bKash payments whose callback never arrived (browser closed, timeout). The renewal code needs the
+    Flask app, so this runs inside a request context of the panel itself."""
+    from app import app
+    import bkash
+    with app.test_request_context("/maintenance/bkash"):
+        return bkash.sweep()
+
+
 def main():
     conn = db.connect()
     cur = conn.cursor()
@@ -395,6 +404,13 @@ def main():
     except Exception as exc:   # alerts are a bonus: never let them stop the rest of the job
         conn.rollback()
         print("alerts failed: %s" % exc)
+
+    try:
+        fixed = bkash_sweep()
+        if fixed:
+            print("bKash: settled or closed %d stuck payment(s)" % fixed)
+    except Exception as exc:   # bKash being down must not stop the rest of the job
+        print("bKash check failed: %s" % exc)
 
     try:
         n_auto = subscriber_automation(conn, cur)

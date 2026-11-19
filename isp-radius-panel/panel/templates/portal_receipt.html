@@ -1,0 +1,53 @@
+{% extends "portal_base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}{{ 'Receipt' if row.status == 'completed' else 'Payment' }}{% endblock %}
+{% block head %}{% if row.status == 'pending' %}<meta http-equiv="refresh" content="10">{% endif %}{% endblock %}
+{% block top %}<div class="pt-top"><b>{{ inv.inv_name or isp or 'My connection' }}</b>{% if signed_in %}<a class="btn sm" href="{{ url_for('portal') }}">My account</a>{% endif %}</div>{% endblock %}
+{% block content %}
+<div class="pay-wrap">
+  <section class="pay-card" aria-labelledby="rc-h" {% if row.status == 'pending' %}aria-live="polite"{% endif %}>
+    {% if row.status == 'completed' %}
+      <div class="pay-head"><span class="pay-ico ok">{{ icon('check') }}</span>
+        <div><h1 id="rc-h">Payment successful</h1><p>Your connection is renewed.</p></div></div>
+      <div class="pay-amount mono">{{ cur }} {{ (row.amount|float + row.fee|float)|money }}<small>paid with bKash</small></div>
+      <dl class="pay-rows">
+        <div><dt>bKash Trx ID</dt><dd class="mono">{{ row.trx_id or '—' }}</dd></div>
+        <div><dt>Date</dt><dd>{{ (pay.paid_at if pay else row.created_at)|dt }}</dd></div>
+        <div><dt>Customer</dt><dd>{{ sub.full_name or sub.username }} · <span class="mono">{{ sub.username }}</span></dd></div>
+        {% if sub.plan_label or sub.plan_name %}<div><dt>Package</dt><dd>{{ sub.plan_label or sub.plan_name }}</dd></div>{% endif %}
+        <div><dt>Period</dt><dd>{{ row.days }} days</dd></div>
+        <div><dt>Valid until</dt><dd class="pay-new">{{ (pay.period_to if pay else sub.expiry_date)|d }}</dd></div>
+        <div><dt>Package price</dt><dd class="mono">{{ cur }} {{ row.amount|money }}</dd></div>
+        {% if row.fee|float %}<div><dt>bKash fee</dt><dd class="mono">{{ cur }} {{ row.fee|money }}</dd></div>{% endif %}
+        {% if pay %}<div><dt>Receipt no.</dt><dd class="mono">#{{ pay.id }}</dd></div>{% endif %}
+      </dl>
+      <p class="pay-note">{{ icon('info') }}<span>If you were offline, your router reconnects within a minute. {{ inv.inv_footer or 'Thank you for your payment.' }}</span></p>
+      <div class="pay-actions">
+        <button class="btn" type="button" onclick="window.print()">{{ icon('printer') }} Print</button>
+        {% if signed_in %}<a class="btn primary" href="{{ url_for('portal') }}">Done</a>{% else %}<a class="btn primary" href="{{ url_for('portal_login') }}">Sign in</a>{% endif %}
+      </div>
+    {% elif row.status == 'pending' %}
+      <div class="pay-head"><span class="pay-ico wait">{{ icon('refresh') }}</span>
+        <div><h1 id="rc-h">Confirming with bKash…</h1><p>This page checks again every 10 seconds.</p></div></div>
+      <div class="pay-amount mono">{{ cur }} {{ (row.amount|float + row.fee|float)|money }}</div>
+      <dl class="pay-rows">
+        <div><dt>Payment ID</dt><dd class="mono">{{ row.payment_id or '—' }}</dd></div>
+        <div><dt>Started</dt><dd>{{ row.created_at|dt }}</dd></div>
+      </dl>
+      <p class="pay-note">{{ icon('info') }}<span>Do not pay again. If money left your bKash, your connection is renewed automatically, at the latest within 15 minutes. You can close this page.</span></p>
+    {% else %}
+      <div class="pay-head"><span class="pay-ico bad">{{ icon('x') }}</span>
+        <div><h1 id="rc-h">{{ 'Payment cancelled' if row.status == 'cancelled' else 'Payment not completed' }}</h1><p>Nothing was charged for this attempt.</p></div></div>
+      {% if (row.message or '').startswith('PAID') %}
+        <p class="pay-note">{{ icon('alert') }}<span>bKash took a different amount than expected. Please contact us with bKash Trx ID <b class="mono">{{ row.trx_id or row.payment_id }}</b> and we will fix it.</span></p>
+      {% elif row.message and row.status != 'cancelled' %}
+        <dl class="pay-rows"><div><dt>bKash said</dt><dd>{{ row.message }}</dd></div></dl>
+      {% endif %}
+      <div class="pay-actions">
+        {% if signed_in %}<a class="btn" href="{{ url_for('portal') }}">My account</a><a class="btn-bkash" href="{{ url_for('portal_pay') }}">Try again</a>
+        {% else %}<a class="btn primary" href="{{ url_for('portal_login') }}">Sign in to try again</a>{% endif %}
+      </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

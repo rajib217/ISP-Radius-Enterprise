@@ -76,6 +76,33 @@ app.config.update(
 
 
 # ====================================================================
+#  health check (update.sh and the GitHub deploy check this after every update)
+# ====================================================================
+_REVISION = None
+
+
+@app.route("/healthz")
+def healthz():
+    """200 + {"ok": true, "revision": ...} when this worker runs and the database answers; 503 otherwise.
+    Shows nothing private: no versions of other software, no counts, no errors."""
+    global _REVISION
+    if _REVISION is None:
+        try:
+            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "REVISION")) as f:
+                _REVISION = f.read().strip()[:40]
+        except OSError:
+            _REVISION = "unknown"
+    try:
+        q("SELECT 1")
+        ok = True
+    except Exception:
+        ok = False
+    resp = jsonify({"ok": ok, "revision": _REVISION})
+    resp.status_code = 200 if ok else 503
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+# ====================================================================
 #  template helpers
 # ====================================================================
 @app.template_filter("bytes")
@@ -189,7 +216,7 @@ def gate():
         sent = request.form.get("_csrf") or request.headers.get("X-CSRF-Token", "")
         if not session.get("csrf") or not secrets.compare_digest(sent, session["csrf"]):
             abort(400, "Your session expired. Reload the page and try again.")
-    if request.endpoint in ("login", "branding") or (request.endpoint or "").startswith("portal"):
+    if request.endpoint in ("login", "branding", "healthz") or (request.endpoint or "").startswith("portal"):
         return None          # the customer portal has its own sign-in (mod_portal.py)
     uid = session.get("uid")
     if not uid:

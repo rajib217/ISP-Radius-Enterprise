@@ -14,7 +14,7 @@ DEFAULT_SETTINGS = {
     "archive_months": "12",      # move accounting rows older than this to radacct_archive (0 = never)
     "coa_port": "3799",          # router port for disconnect requests
     # general
-    "show_credit": "0", "company_slogan": "", "support_phone": "", "support_email": "", "timezone": "Asia/Dhaka",
+    "show_credit": "0", "company_slogan": "", "support_phone": "", "support_email": "", "company_address": "", "timezone": "Asia/Dhaka",
     "address": "", "city": "", "country": "", "zip_code": "", "latitude": "", "longitude": "",
     "meta_description": "", "meta_keyword": "", "meta_author": "", "copyright_text": "",
     "phone_format_on": "0", "phone_format": "[11-13]", "identity_format_on": "0", "identity_format": "[11-13]",
