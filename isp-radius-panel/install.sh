@@ -250,8 +250,18 @@ if ! command -v caddy >/dev/null 2>&1; then
   curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
   curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt > /etc/apt/sources.list.d/caddy-stable.list
   apt-get update -y
-  apt-get install -y caddy
-  systemctl stop caddy || true     # the package starts it at once; it starts again once its Caddyfile is written
+  # The package would start Caddy at once, and fail while nginx still holds port 80 (that would stop this installer).
+  # policy-rc.d tells the package scripts not to start services; Caddy starts below, once its Caddyfile is written.
+  OWN_POLICY=0
+  if [[ ! -e /usr/sbin/policy-rc.d ]]; then         # never replace one that the system already has
+    printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d; chmod 755 /usr/sbin/policy-rc.d; OWN_POLICY=1
+  fi
+  if ! apt-get install -y caddy; then
+    if (( OWN_POLICY )); then rm -f /usr/sbin/policy-rc.d; fi
+    die "Could not install Caddy."
+  fi
+  if (( OWN_POLICY )); then rm -f /usr/sbin/policy-rc.d; fi
+  systemctl stop caddy 2>/dev/null || true
 fi
 command -v caddy >/dev/null || die "caddy binary not found after install."
 
@@ -771,6 +781,10 @@ visudo -cf /etc/sudoers.d/isp-panel >/dev/null || { rm -f /etc/sudoers.d/isp-pan
 
 # ------------------------------------------------------------------ first data
 c_ok "Saving the company profile, super admin and router"
+# a username that does not exist yet needs a password, even on a re-run where "keep the current one" was chosen
+if [[ -z "$ADMIN_PASS" && "$(mariadb -N -B -e "SELECT COUNT(*) FROM panel_admins WHERE username = '$ADMIN_USER'" "$DB_NAME")" == 0 ]]; then
+  ADMIN_PASS="$(gen_secret)"; ADMIN_PASS_SHOWN="$ADMIN_PASS"
+fi
 SEED=$(cd "$APP_DIR" && set -a && . "$ENV_FILE" && set +a && \
   SEED_ISP_NAME="$ISP_NAME" SEED_ISP_PHONE="$ISP_PHONE" SEED_ISP_ADDRESS="$ISP_ADDRESS" SEED_CALLBACK_BASE="$CALLBACK_BASE" \
   SEED_ADMIN_USER="$ADMIN_USER" SEED_ADMIN_NAME="$ADMIN_NAME" SEED_ADMIN_EMAIL="$ADMIN_EMAIL" SEED_ADMIN_PASS="$ADMIN_PASS" \
