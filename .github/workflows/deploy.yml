@@ -149,6 +149,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - name: Run setup-auto-deploy.sh, then use the printed key over SSH
         run: sudo bash tests/check_auto_deploy.sh
 

@@ -2,6 +2,7 @@
 # End-to-end check of deploy/setup-auto-deploy.sh on a throw-away Ubuntu machine (GitHub Actions job "autodeploy"):
 # real sshd, real deploy user, the key the script prints, the SSH gate and the one sudo command. Needs root.
 set -euo pipefail
+trap 'echo "::error file=tests/check_auto_deploy.sh,line=$LINENO::stopped at: $BASH_COMMAND"' ERR
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fail() { echo "FAIL: $*"; echo "::error file=deploy/setup-auto-deploy.sh::$*"; exit 1; }
 ok() { echo "ok    $*"; }
@@ -10,8 +11,10 @@ ok() { echo "ok    $*"; }
 mkdir -p /etc/isp-panel; [[ -f /etc/isp-panel/panel.env ]] || echo "DB_PASS=ci" > /etc/isp-panel/panel.env
 rm -rf /tmp/origin.git /opt/isp-panel/src
 git init -q --bare /tmp/origin.git
+git -C /tmp/origin.git config receive.shallowUpdate true      # the Actions checkout may be shallow
 git -c safe.directory="*" -C "$ROOT" push -q /tmp/origin.git HEAD:refs/heads/main
-command -v sshd >/dev/null || apt-get install -y -qq openssh-server >/dev/null
+if ! command -v sshd >/dev/null; then apt-get update -qq; apt-get install -y -qq openssh-server >/dev/null; fi
+mkdir -p /run/sshd
 systemctl start ssh 2>/dev/null || service ssh start
 
 bash "$ROOT/deploy/setup-auto-deploy.sh" --repo /tmp/origin.git --dir /opt/isp-panel/src > /tmp/setup.out 2>&1 \

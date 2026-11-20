@@ -15,6 +15,7 @@
 #  Each run makes a NEW key and removes the old one, so paste the new private key into GitHub again.
 # ---------------------------------------------------------------------------
 set -euo pipefail
+trap 'echo "setup-auto-deploy.sh stopped at line $LINENO: $BASH_COMMAND" >&2' ERR
 
 REPO_URL=""
 DIR=/opt/isp-panel/src
@@ -97,9 +98,13 @@ c_ok "SSH key for GitHub created (locked to deploying only)"
 [[ -f "$ETC/install.conf" ]] && . "$ETC/install.conf"
 HOST="${SAVED_PUBLIC_IP:-}"
 [[ -n "$HOST" ]] || HOST="$(curl -4 -fsS --max-time 6 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')"
-PORT="$(sshd -T 2>/dev/null | awk '$1 == "port" {print $2; exit}')"; PORT="${PORT:-22}"
+# sshd -T fails on Ubuntu 24.04 when ssh is socket-activated and /run/sshd is missing: then read sshd_config
+PORT="$( { sshd -T 2>/dev/null || true; } | awk '$1 == "port" {print $2; exit}')"
+[[ -n "$PORT" ]] || PORT="$(cat /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf 2>/dev/null | awk 'tolower($1) == "port" {print $2; exit}' || true)"
+[[ "$PORT" =~ ^[0-9]+$ ]] || PORT=22
 HOSTPAT="$HOST"; [[ "$PORT" == 22 ]] || HOSTPAT="[$HOST]:$PORT"
-KNOWN="$(for f in /etc/ssh/ssh_host_*_key.pub; do [[ -f "$f" ]] && printf '%s %s\n' "$HOSTPAT" "$(cut -d' ' -f1,2 "$f")"; done)"
+KNOWN="$(for f in /etc/ssh/ssh_host_*_key.pub; do [[ -f "$f" ]] && printf '%s %s\n' "$HOSTPAT" "$(cut -d' ' -f1,2 "$f")"; done; true)"
+[[ -n "$KNOWN" ]] || die "No SSH host keys in /etc/ssh (is openssh-server installed?)"
 PANEL_URL=""
 [[ -n "${SAVED_DASH_DOMAIN:-}" ]] && PANEL_URL="https://$SAVED_DASH_DOMAIN"
 
