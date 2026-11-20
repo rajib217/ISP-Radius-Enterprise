@@ -17,9 +17,17 @@ if ! command -v sshd >/dev/null; then apt-get update -qq; apt-get install -y -qq
 mkdir -p /run/sshd
 systemctl start ssh 2>/dev/null || service ssh start
 
-bash "$ROOT/deploy/setup-auto-deploy.sh" --repo /tmp/origin.git --dir /opt/isp-panel/src > /tmp/setup.out 2>&1 \
+# like a real server: an older clone made by hand before the SSH gate existed, and the script downloaded on its own
+OLD="$(git -c safe.directory="*" -C "$ROOT" log --diff-filter=A --format=%H -- deploy/isp-panel-ssh-gate | tail -n1)^"
+git clone -q /tmp/origin.git /opt/isp-panel/src
+git -C /opt/isp-panel/src reset -q --hard "$(git -c safe.directory="*" -C "$ROOT" rev-parse "$OLD")"
+[[ ! -f /opt/isp-panel/src/deploy/isp-panel-ssh-gate ]] || fail "test setup: the old clone already has the gate"
+cp "$ROOT/deploy/setup-auto-deploy.sh" /tmp/setup-alone.sh
+bash /tmp/setup-alone.sh --repo /tmp/origin.git --dir /opt/isp-panel/src > /tmp/setup.out 2>&1 \
   || { cat /tmp/setup.out; fail "setup-auto-deploy.sh exited with an error"; }
-ok "setup script finished"
+ok "setup script finished (downloaded alone, older clone already there)"
+[[ "$(git -C /opt/isp-panel/src rev-parse HEAD)" == "$(git -C /tmp/origin.git rev-parse main)" ]] || fail "the older clone was not brought up to date"
+ok "older clone brought up to date"
 grep -q "^DEPLOY_REPO=/opt/isp-panel/src" /etc/isp-panel/deploy.conf || fail "deploy.conf not written"
 [[ "$(stat -c %U /opt/isp-panel/src)" == root ]] || fail "the clone is not root-owned"
 ok "root-owned clone and deploy.conf"
