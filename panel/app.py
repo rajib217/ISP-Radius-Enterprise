@@ -370,14 +370,22 @@ def dashboard():
     tabdata = dash.load(tab) if tab else None
     if seller:
         # a seller's own customers (and their downline's) whose package ends within 7 days
-        names = core.my_downline()
+        names = list(core.my_downline() or [])
+        where = ("WHERE s.status = 'active' AND s.expiry_date BETWEEN CURDATE() AND CURDATE() + INTERVAL 7 DAY "
+                 "AND s.created_by IN (" + ",".join(["%s"] * len(names)) + ") ") if names else ""
+        total = q("SELECT COUNT(*) AS c FROM subscribers s " + where, names, one=True)["c"] if names else 0
+        per = 20                                        # 20 customers a page (the owner's choice)
+        pages = max((total + per - 1) // per, 1)
+        page = min(max(request.args.get("page", 1, type=int) or 1, 1), pages)
+        exp_pg = {"page": page, "per": per, "pages": pages, "total": total, "offset": (page - 1) * per,
+                  "first": (page - 1) * per + 1 if total else 0, "last": min(page * per, total)}
         my_expiring = q("SELECT s.id, s.username, s.full_name, s.phone, s.expiry_date, s.created_by, "
                         "COALESCE(p.label, p.name) AS plan_label FROM subscribers s LEFT JOIN plans p ON p.id = s.plan_id "
-                        "WHERE s.status = 'active' AND s.expiry_date BETWEEN CURDATE() AND CURDATE() + INTERVAL 7 DAY "
-                        "AND s.created_by IN (" + ",".join(["%s"] * len(names)) + ") "
-                        "ORDER BY s.expiry_date, s.username LIMIT 20", list(names)) if names else []
+                        + where + "ORDER BY s.expiry_date, s.username LIMIT %s OFFSET %s",
+                        names + [per, exp_pg["offset"]]) if names else []
         return render_template("dashboard.html", seller=True, tabs=tabs, tab=tab, td=tabdata, attention=core.attention(),
-                               notices=_notices(), my_expiring=my_expiring, today=date.today())
+                               notices=_notices(), my_expiring=my_expiring, exp_pg=exp_pg,
+                               exp_keep={"tab": tab} if request.args.get("tab") else {}, today=date.today())
     st = q("SELECT COUNT(*) AS total, "
            "SUM(status = 'suspended') AS suspended, "
            "SUM(status = 'active' AND expiry_date IS NOT NULL AND expiry_date < CURDATE()) AS expired, "

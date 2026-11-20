@@ -284,6 +284,22 @@ def check_rules(flask_app, ids):
     home = sub.get("/").get_data(as_text=True)
     check("badda.jewel" in home and "uttara.shop" not in home, "sub-reseller dashboard lists only their own expiring customers")
     check("Expiring soon subscribers" not in adm_home and "gulshan.office" in adm_home, "admin dashboard keeps its own Expiring soon list")
+    home = res.get("/").get_data(as_text=True)
+    check(home.find("Reports &amp; Statistics") < home.find("Expiring soon subscribers"),
+          "the seller list comes after Reports & Statistics")
+    conn = db.connect()
+    with conn.cursor() as cur:
+        for k in range(23):                    # 23 more of the reseller's customers expiring this week: 25 in all
+            cur.execute("INSERT INTO subscribers (username, full_name, status, expiry_date, created_by, plan_id) "
+                        "VALUES (%s, 'Paging test', 'active', CURDATE() + INTERVAL %s DAY, 'karim', 1)", ("pg.user%02d" % k, k % 7))
+    conn.commit(); conn.close()
+    def rows(html):
+        part = html[html.find('id="my-expiring"'):]
+        part = part[:part.find("</section>")]
+        return part.count("<li>")
+    p1, p2 = res.get("/").get_data(as_text=True), res.get("/?page=2").get_data(as_text=True)
+    check(rows(p1) == 20 and rows(p2) == 5 and "21–25 of 25" in p2,
+          "20 expiring customers a page (page 1: %d, page 2: %d)" % (rows(p1), rows(p2)))
 
     # ---- activation money rules
     adm = client(ids["admin"])

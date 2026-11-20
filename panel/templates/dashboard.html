@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import icon, money with context %}
+{% from "_macros.html" import icon, money, pager with context %}
 {% block title %}Dashboard{% endblock %}
 {% block content %}
 <div class="page-head">
@@ -26,26 +26,6 @@
   <span class="muted" style="align-self:center">Needs attention</span>
   {% for a in todo %}<a role="listitem" href="{{ url_for(a.endpoint, **a.args) }}">{{ icon('alert') }}{{ a.label }}: {{ a.c }}</a>{% endfor %}
 </div></section>
-{% endif %}
-
-{% if seller %}
-{# ---- resellers / sub-resellers / retailers: their own customers whose package ends within 7 days ---- #}
-<section class="panel" style="margin-bottom:16px" aria-labelledby="my-exp-h">
-  <div class="panel-head"><h2 id="my-exp-h">Expiring soon subscribers</h2>
-    <a class="aside" href="{{ url_for('subscribers', status='expiring') }}">View all</a></div>
-  {% if my_expiring %}
-  <ul class="list">
-    {% for s in my_expiring %}{% set left = (s.expiry_date - today).days %}
-    <li>
-      <span class="grow"><a href="{{ url_for('subscriber_view', sid=s.id) }}"><b class="mono">{{ s.username }}</b></a>
-        <small>{{ s.full_name or '—' }}{% if s.phone %} · {{ s.phone }}{% endif %}{% if s.plan_label %} · {{ s.plan_label }}{% endif %}{% if s.created_by != me.username %} · by {{ s.created_by }}{% endif %}</small></span>
-      <span class="badge {{ 'bad' if left <= 1 else 'warn' }}" title="Expires {{ s.expiry_date|d }}">{{ 'Today' if left == 0 else ('Tomorrow' if left == 1 else 'In ' ~ left ~ ' days') }}</span>
-      {% if can('subscribers', 'edit') %}<a class="btn sm" href="{{ url_for('subscriber_activation', username=s.username) }}">Renew</a>{% endif %}
-    </li>
-    {% endfor %}
-  </ul>
-  {% else %}<div class="empty"><h3>No subscriber expires this week</h3><p>Your customers whose package ends in the next 7 days appear here.</p></div>{% endif %}
-</section>
 {% endif %}
 
 {% if not seller %}
@@ -128,6 +108,28 @@
   </div>
 </section>
 {% endif %}
+
+{% if seller %}
+{# ---- resellers / sub-resellers / retailers: their own customers whose package ends within 7 days ---- #}
+<section class="panel" id="my-expiring" style="margin-bottom:16px" aria-labelledby="my-exp-h">
+  <div class="panel-head"><h2 id="my-exp-h">Expiring soon subscribers</h2>{% if exp_pg.total %}<span class="badge warn">{{ exp_pg.total }}</span>{% endif %}
+    <a class="aside" href="{{ url_for('subscribers', status='expiring') }}">View all</a></div>
+  {% if my_expiring %}
+  <ul class="list">
+    {% for s in my_expiring %}{% set left = (s.expiry_date - today).days %}
+    <li>
+      <span class="grow"><a href="{{ url_for('subscriber_view', sid=s.id) }}"><b class="mono">{{ s.username }}</b></a>
+        <small>{{ s.full_name or '—' }}{% if s.phone %} · {{ s.phone }}{% endif %}{% if s.plan_label %} · {{ s.plan_label }}{% endif %}{% if s.created_by != me.username %} · by {{ s.created_by }}{% endif %}</small></span>
+      <span class="badge {{ 'bad' if left <= 1 else 'warn' }}" title="Expires {{ s.expiry_date|d }}">{{ 'Today' if left == 0 else ('Tomorrow' if left == 1 else 'In ' ~ left ~ ' days') }}</span>
+      {% if can('subscribers', 'edit') %}<a class="btn sm" href="{{ url_for('subscriber_activation', username=s.username) }}">Renew</a>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {{ pager(exp_pg, dict(exp_keep, _anchor='my-expiring'), 'dashboard') }}
+  {% else %}<div class="empty"><h3>No subscriber expires this week</h3><p>Your customers whose package ends in the next 7 days appear here.</p></div>{% endif %}
+</section>
+{% endif %}
+
 
 {% if not seller %}
 
