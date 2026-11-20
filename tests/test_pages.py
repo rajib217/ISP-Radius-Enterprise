@@ -487,6 +487,17 @@ def check_rules(flask_app, ids):
     finally:
         _bk.mark, _bk.core.audit, _bk.core.commit, _bk.call, _bk.token = _orig
 
+    # ---- Phase 2 shell: the topbar "online" pill is ISP-wide, so never for sellers
+    import re as _re3
+    a_html = adm.get("/subscribers").get_data(as_text=True)
+    r_cl = client(ids["reseller"])
+    r_html = r_cl.get("/subscribers").get_data(as_text=True)
+    check(_re3.search(r'class="live-pill".*?data-live="online">[\d,]+<', a_html, _re3.S) is not None,
+          "admin topbar shows the online count straight away")
+    check("live-pill" not in r_html and r_cl.get("/api/live").status_code == 403,
+          "resellers get no ISP-wide online pill and /api/live refuses them")
+    check("bottom-nav" in r_html and 'href="/subscribers"' in r_html, "reseller gets the phone bottom navigation")
+
     # ---- BTRC Report (admin only)
     import zipfile as _z2, io as _io2, re as _re2
     adm.post("/reports/btrc/settings", data={"_csrf": "ci", "btrc_division": "Chattogram", "btrc_district": "Brahmanbaria",

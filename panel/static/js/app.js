@@ -5,13 +5,14 @@
   var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
   function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
 
-  /* theme */
-  var themeBtn = $("[data-theme-toggle]");
-  if (themeBtn) themeBtn.addEventListener("click", function () {
-    var next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-    document.documentElement.dataset.theme = next;
-    store("isp-theme", next);
-    document.dispatchEvent(new Event("themechange"));
+  /* theme (topbar button and sidebar button both work) */
+  $$("[data-theme-toggle]").forEach(function (themeBtn) {
+    themeBtn.addEventListener("click", function () {
+      var next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+      document.documentElement.dataset.theme = next;
+      store("isp-theme", next);
+      document.dispatchEvent(new Event("themechange"));
+    });
   });
 
   /* desktop: hide the menu for a full-width page (remembered) */
@@ -535,4 +536,18 @@
     });
   }
   $$("table.tbl").forEach(cardify);
+
+  /* Phase 2 shell: keyboard shortcuts (DESIGN.md B10) and bottom-nav scroll behaviour */
+  document.addEventListener("keydown", function (e) {
+    var t = e.target, typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+    if (e.key === "Escape") { document.body.classList.remove("nav-open"); return; }
+    if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === "/") { var s = $("[data-global-search]"); if (s) { e.preventDefault(); s.focus(); } }
+    else if (e.key === "[") { var b = $("[data-side-toggle]"); if (b) b.click(); }
+  });
+  var bn = $(".bottom-nav"), lastY = window.scrollY || 0;
+  if (bn) window.addEventListener("scroll", function () {
+    var y = window.scrollY || 0;
+    if (Math.abs(y - lastY) > 8) { bn.classList.toggle("bn-hidden", y > lastY && y > 120); lastY = y; }
+  }, { passive: true });
 })();

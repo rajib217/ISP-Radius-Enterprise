@@ -184,10 +184,22 @@ def asset_url(name):
     return url_for("static", filename=name, v=v)
 
 
+def _sees_live():
+    """ISP-wide live numbers (/api/live, the topbar pill): admin, or staff with Online sessions access. Never sellers."""
+    me = getattr(g, "me", None)
+    if not me:
+        return False
+    return me["role"] == "admin" or (me["role"] not in core.SELLER_ROLES and core.can("online"))
+
+
 @app.context_processor
 def inject():
     if "csrf" not in session:
         session["csrf"] = secrets.token_hex(16)
+    nav_nodes = nav.build() if getattr(g, "me", None) else []
+    live_online = None
+    if _sees_live():          # the topbar "online" pill: ISP-wide count, so admin and staff with Online access only
+        live_online = q("SELECT COUNT(*) AS c FROM radacct WHERE acctstoptime IS NULL", one=True)["c"]
     return {
         "me": getattr(g, "me", None),
         "switched_from": session.get("real_uid"),
@@ -207,7 +219,9 @@ def inject():
         "can": core.can,
         "can_fn": core.can_fn,
         "bw": core.bw_text,
-        "nav": nav.build() if getattr(g, "me", None) else [],
+        "nav": nav_nodes,
+        "bottom_nav": nav.bottom_nav(nav_nodes) if nav_nodes else [],
+        "live_online": live_online,
     }
 
 
@@ -450,6 +464,8 @@ def dashboard():
 
 @app.route("/api/live")
 def api_live():
+    if g.get("me") and g.me["role"] in core.SELLER_ROLES:
+        abort(403)            # ISP-wide numbers; sellers see only their own customers
     online = q("SELECT COUNT(*) AS c FROM radacct WHERE acctstoptime IS NULL", one=True)["c"]
     bad = q("SELECT COUNT(*) AS c FROM radpostauth WHERE reply = 'Access-Reject' "
             "AND authdate >= NOW() - INTERVAL 1 HOUR", one=True)["c"]

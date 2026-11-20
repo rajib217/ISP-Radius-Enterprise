@@ -168,3 +168,46 @@ def build():
             node["active"] = endpoint in grp["match"]
         out.append(node)
     return out
+
+
+# Phone bottom navigation (DESIGN.md B6): four shortcuts picked from build() output, so the
+# permission filtering above is never bypassed, plus a "More" button that opens the full menu.
+_BOTTOM = {
+    "staff": [("dashboard", "Home", "home"), ("subscribers", "Subscribers", "users"),
+              ("online", "Online", "activity"), ("payments", "Payments", "dollar")],
+    "seller": [("dashboard", "Home", "home"), ("subscribers", "Subscribers", "users"),
+               ("subscriber_activation", "Activate", "bolt"), ("add_balance", "Balance", "wallet")],
+}
+
+
+def bottom_nav(nodes=None):
+    """Up to 4 {label, url, icon, active} shortcuts for the phone bottom bar, from build() nodes."""
+    nodes = build() if nodes is None else nodes
+    if not nodes:
+        return []
+    by_url, group_active = {}, {}
+    for node in nodes:
+        if node.get("url"):
+            by_url[node["url"]] = node.get("active", False)
+        for kid in node.get("children") or []:
+            by_url.setdefault(kid["url"], kid.get("active", False))
+            if kid.get("active"):
+                group_active[node["key"]] = True
+    # two seller shortcuts are pages, not menu items; gate them exactly as the dashboard does
+    extra_ok = {"subscriber_activation": lambda: core.can("subscribers", "edit"),
+                "add_balance": lambda: g.me["role"] in core.SELLER_ROLES}
+    want = _BOTTOM["seller" if g.me["role"] in core.SELLER_ROLES else "staff"]
+    out = []
+    for endpoint, label, icon in want:
+        try:
+            url = url_for(endpoint)
+        except Exception:
+            continue
+        if url in by_url:
+            active = by_url[url] or (endpoint == "subscribers" and group_active.get("subs", False))
+        elif endpoint in extra_ok and extra_ok[endpoint]():
+            active = (request.endpoint or "") == endpoint
+        else:
+            continue                       # not in this user's menu: skip the slot, never invent a link
+        out.append({"label": label, "url": url, "icon": icon, "active": bool(active)})
+    return out[:4]

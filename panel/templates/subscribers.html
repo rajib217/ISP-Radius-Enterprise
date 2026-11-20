@@ -144,8 +144,8 @@
           <td class="who-cell" data-card="title">{% if s.photo %}<img class="lavatar" src="{{ url_for('subscriber_photo', sid=s.id) }}" alt="">{% else %}<span class="lavatar ph">{{ icon('user') }}</span>{% endif %}
             <span><a href="{{ url_for('subscriber_view', sid=s.id) }}"><b>{{ s.full_name or s.username }}</b></a>
             <a class="uname" href="{{ url_for('subscriber_view', sid=s.id) }}">{{ s.username }}</a></span></td>
-          <td data-card="key">{% if s.state == 'suspended' %}<span class="pill bad">Suspended</span>{% elif s.state == 'expired' %}<span class="pill bad">Expired</span>{% else %}<span class="pill ok">Active</span>{% endif %}
-            {% if s.grace_until and s.grace_until >= today %}<span class="pill info" title="Grace until {{ s.grace_until|d }}">Grace</span>{% endif %}</td>
+          <td data-card="key">{% if s.state == 'suspended' %}<span class="pill gray">Suspended</span>{% elif s.state == 'expired' %}<span class="pill bad">Expired</span>{% else %}<span class="pill ok">Active</span>{% endif %}
+            {% if s.grace_until and s.grace_until >= today %}<span class="pill warn" title="Grace until {{ s.grace_until|d }}">Grace</span>{% endif %}</td>
           <td data-card="key">{% if s.online %}<span class="badge ok live">Online</span>{% else %}<span class="badge mute">Offline</span>{% endif %}</td>
           <td class="nowrap" data-card="key">{% if s.expiry_date %}<span class="pill {{ 'bad' if s.state == 'expired' else ('warn' if s.days_left is not none and s.days_left <= 3 else 'ok') }}" title="{{ s.expiry_date.strftime('%d %b %Y') }} 00:00:00">{{ s.expiry_date.strftime('%d %b %Y') }}</span>{% else %}<span class="muted">No expiry</span>{% endif %}</td>
           <td data-c="password"><span class="pill info mono">{{ s.password or '—' }}</span></td>

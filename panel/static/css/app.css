@@ -42,13 +42,15 @@
   --neutral: #94A3B8;  --neutral-text: #475569;  --neutral-soft: #F1F5F9;
   --info-text: #1D4ED8;
 
-  /* sidebar (stays dark until the Phase 2 shell) */
-  --side-bg: #0B1120;
-  --side-ink: #94A3B8;
-  --side-ink-strong: #F1F5F9;
-  --side-hover: rgb(255 255 255 / .06);
-  --side-active: rgb(59 130 246 / .18);
-  --side-line: rgb(255 255 255 / .08);
+  /* sidebar (Phase 2 shell: light surface in light mode, dark block only in dark mode) */
+  --side-bg: var(--surface);
+  --side-ink: var(--text-muted);
+  --side-ink-strong: var(--text);
+  --side-hover: var(--surface-2);
+  --side-active: var(--accent-soft);
+  --side-line: var(--border);
+  --side-w-rail: 64px;
+  --topbar-h: 56px;
 
   /* chart series, in order */
   --c1: var(--accent); --c2: var(--online); --c3: var(--expiring); --c4: #8B5CF6; --c5: #EC4899; --c6: var(--neutral);
@@ -91,6 +93,11 @@
   --info-text: #93C5FD;
 
   --side-bg: #070A12;
+  --side-ink: #94A3B8;
+  --side-ink-strong: #F1F5F9;
+  --side-hover: rgb(255 255 255 / .06);
+  --side-active: rgb(59 130 246 / .18);
+  --side-line: rgb(255 255 255 / .08);
   --shadow-pop: 0 12px 32px -8px rgb(0 0 0 / .6), 0 2px 6px rgb(0 0 0 / .3);
 }
 
@@ -399,16 +406,19 @@ code { font-family: var(--mono); font-size: 12.5px; background: var(--surface-2)
   .profile { grid-template-columns: 1fr; }
 }
 @media (max-width: 900px) {
-  .app { grid-template-columns: 1fr; }
-  .side { position: fixed; z-index: 60; left: 0; top: 0; width: 270px; transform: translateX(-100%); transition: transform .18s; }
-  body.nav-open .side { transform: none; box-shadow: 0 0 0 100vmax rgb(2 6 23 / .5); }
-  .btn.burger { display: inline-flex; }
-  .topbar, .content { padding-left: 16px; padding-right: 16px; }
   .hero { grid-template-columns: 1fr; }
   .hero-num { border-right: 0; border-bottom: 1px solid var(--rule); }
   .login { grid-template-columns: 1fr; }
   .login-art { display: none; }
   .hide-sm { display: none; }
+}
+/* Phase 2 shell breakpoints: drawer below 768px, icon rail 768-1023px (see shell section) */
+@media (max-width: 767px) {
+  .app { grid-template-columns: 1fr; }
+  .side { position: fixed; z-index: 60; left: 0; top: 0; width: 270px; transform: translateX(-100%); transition: transform .18s; }
+  body.nav-open .side { transform: none; box-shadow: 0 0 0 100vmax rgb(2 6 23 / .5); }
+  .btn.burger { display: inline-flex; }
+  .topbar, .content { padding-left: 16px; padding-right: 16px; }
 }
 @media (max-width: 640px) {
   .grid-2, .grid-3 { grid-template-columns: 1fr; }
@@ -584,9 +594,8 @@ form.inline { display: inline; }
 .form-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 6px 0 24px; }
 @media (max-width: 760px) { .pkg .quota { grid-template-columns: 1fr; } .pkg .quota .help { grid-column: auto; } }
 
-/* the top bar only exists on narrow screens, for the menu button */
-.topbar { display: none; }
-@media (max-width: 900px) { .topbar { display: flex; } }
+/* Phase 2 shell: the top bar exists at every size (see the shell section at the end of this file) */
+.topbar { display: flex; }
 
 /* action dropdowns */
 details.dd { position: relative; display: inline-block; }
@@ -641,11 +650,9 @@ dl.kv dt { color: var(--muted); } dl.kv dd { margin: 0; font-weight: 600; word-b
   border: 1px solid var(--rule); background: var(--paper); color: var(--ink); display: grid; place-items: center; cursor: pointer;
   box-shadow: 0 2px 8px rgba(0,0,0,.2); transition: left .15s; }
 .side-toggle:hover { background: var(--fiber-soft); }
-html.side-off .app { grid-template-columns: minmax(0, 1fr); }
-html.side-off .side { display: none; }
-html.side-off .side-toggle { left: 10px; }
-html.side-off .content { max-width: none; padding-top: 52px; }
-@media (max-width: 900px) { .side-toggle { display: none; } }
+/* collapsed = 64px icon rail (Phase 2 shell section at the end of this file), never fully hidden */
+html.side-off .side-toggle { left: calc(var(--side-w-rail) - 18px); }
+@media (max-width: 1023px) { .side-toggle { display: none; } }
 @media print { .side-toggle { display: none !important; } }
 
 /* ONU detail page */
@@ -1545,3 +1552,89 @@ dialog.modal.drawer .modal-body { align-content: start; }
 .led-amt.pos { background: var(--ok-soft); color: var(--online-text, var(--ok)); }
 .led-amt.neg { background: var(--bad-soft); color: var(--bad); }
 @media print { .filters, .listbar .pager, .page-head .actions { display: none !important; } }
+
+/* =====================================================================
+   Phase 2 shell (DESIGN.md B6/B7/B10): topbar, 64px rail, bottom nav.
+   Same class names and markup hooks as before; this section only restyles
+   the shell and adds the new shell pieces. Page components are untouched.
+   ===================================================================== */
+
+/* ---- topbar: 56px at every size ---- */
+.topbar { height: var(--topbar-h); padding: 0 20px; gap: 12px; }
+.topbar-title { font-family: var(--font-display); font-weight: 600; font-size: var(--text-lg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 28vw; }
+.topbar-search { flex: 1; max-width: 460px; }
+.topbar-search input { height: 36px; }
+.live-pill { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: 99px; background: var(--online-soft); color: var(--online-text); font-size: var(--text-sm); font-weight: 500; white-space: nowrap; }
+.live-pill b { font-variant-numeric: tabular-nums; }
+.who-chip { display: inline-flex; align-items: center; gap: 8px; color: var(--text); font-weight: 500; white-space: nowrap; }
+.who-chip:hover { text-decoration: none; }
+.who-chip .av { width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: var(--on-accent, #fff); display: grid; place-items: center; font-weight: 600; flex: none; }
+@media (max-width: 767px) { .topbar-title, .live-word, .who-chip-name { display: none; } .topbar-search { max-width: none; } }
+
+/* ---- sidebar rail: collapsed (side-off) or tablet width ---- */
+html.side-off .app { grid-template-columns: var(--side-w-rail) minmax(0, 1fr); }
+html.side-off .side { padding: 16px 8px 10px; overflow: visible; }
+html.side-off .brand { justify-content: center; padding: 2px 0 14px; }
+html.side-off .brand > span, html.side-off .brand-logo + span { display: none; }
+html.side-off .nav-link, html.side-off .nav-group > summary, html.side-off .nav-logout button { justify-content: center; padding: 10px 0; }
+html.side-off .nav-link > span, html.side-off .nav-group > summary > span, html.side-off .nav-group > summary > .i:last-child, html.side-off .nav-logout button > span { display: none; }
+html.side-off .nav-group { position: relative; }
+html.side-off .nav-sub { display: none; position: absolute; left: calc(100% + 8px); top: 0; z-index: 80; min-width: 220px; max-height: min(70vh, 560px); overflow-y: auto; margin: 0; padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-pop); }
+html.side-off .nav-group:hover .nav-sub, html.side-off .nav-group:focus-within .nav-sub, html.side-off .nav-group[open] .nav-sub { display: grid; }
+html.side-off .nav-sub a { color: var(--text); padding: 8px 10px; }
+html.side-off .nav-sub a:hover, html.side-off .nav-sub a.on { background: var(--accent-soft); color: var(--text); }
+html.side-off .side-foot .links button > span, html.side-off .side-foot .who > span:last-child { display: none; }
+html.side-off .side-foot .who { justify-content: center; }
+@media (min-width: 768px) and (max-width: 1023px) {
+  /* tablet: rail by default, same look as side-off */
+  .app { grid-template-columns: var(--side-w-rail) minmax(0, 1fr); }
+  .side { padding: 16px 8px 10px; overflow: visible; }
+  .brand { justify-content: center; padding: 2px 0 14px; }
+  .brand > span { display: none; }
+  .nav-link, .nav-group > summary, .nav-logout button { justify-content: center; padding: 10px 0; }
+  .nav-link > span, .nav-group > summary > span, .nav-group > summary > .i:last-child, .nav-logout button > span { display: none; }
+  .nav-group { position: relative; }
+  .nav-sub { display: none; position: absolute; left: calc(100% + 8px); top: 0; z-index: 80; min-width: 220px; max-height: min(70vh, 560px); overflow-y: auto; margin: 0; padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-pop); }
+  .nav-group:hover .nav-sub, .nav-group:focus-within .nav-sub, .nav-group[open] .nav-sub { display: grid; }
+  .nav-sub a { color: var(--text); padding: 8px 10px; }
+  .nav-sub a:hover, .nav-sub a.on { background: var(--accent-soft); color: var(--text); }
+  .side-foot .links button > span, .side-foot .who > span:last-child { display: none; }
+  .side-foot .who { justify-content: center; }
+}
+
+/* ---- phone bottom navigation ---- */
+.bottom-nav { display: none; }
+@media (max-width: 767px) {
+  .bottom-nav { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; position: fixed; left: 0; right: 0; bottom: 0; z-index: 55; min-height: 64px; padding-bottom: env(safe-area-inset-bottom); background: var(--surface); border-top: 1px solid var(--border); transition: transform var(--dur); }
+  .bottom-nav.bn-hidden { transform: translateY(110%); }
+  .bottom-nav a, .bottom-nav button { display: grid; justify-items: center; align-content: center; gap: 2px; min-height: 56px; padding: 6px 2px; background: none; border: 0; font: inherit; font-size: 11px; font-weight: 500; color: var(--text-muted); cursor: pointer; text-decoration: none; }
+  .bottom-nav a .i, .bottom-nav button .i { width: 22px; height: 22px; }
+  .bottom-nav a.on { color: var(--accent); }
+  .content { padding-bottom: calc(88px + env(safe-area-inset-bottom)); }
+  .toasts { bottom: calc(76px + env(safe-area-inset-bottom)); }
+}
+
+/* ---- B7/B10 small fixes ---- */
+@media (max-width: 767px) {
+  .btn { height: 44px; }
+  .btn.sm { height: 38px; }
+  .card-toggle { width: 44px; height: 44px; }
+}
+
+/* phones always get the full drawer, even if the desktop rail preference is saved */
+@media (max-width: 767px) {
+  html.side-off .app { grid-template-columns: 1fr; }
+  html.side-off .side { padding: 20px 12px 12px; overflow-y: auto; }
+  html.side-off .brand { justify-content: flex-start; padding: 2px 10px 20px; }
+  html.side-off .brand > span { display: block; }
+  html.side-off .nav-link, html.side-off .nav-group > summary, html.side-off .nav-logout button { justify-content: flex-start; padding: 8px 11px; }
+  html.side-off .nav-link > span, html.side-off .nav-group > summary > span, html.side-off .nav-logout button > span { display: inline; }
+  html.side-off .nav-group > summary > .i:last-child { display: block; }
+  html.side-off .nav-sub { position: static; min-width: 0; max-height: none; box-shadow: none; border: 0; background: none; }
+  html.side-off .nav-group:not([open]) .nav-sub { display: none; }
+  html.side-off .nav-group[open] .nav-sub { display: grid; }
+  html.side-off .side-foot .links button > span, html.side-off .side-foot .who > span:last-child { display: inline; }
+  html.side-off .side-foot .who { justify-content: flex-start; }
+}
+
+@media print { .bottom-nav, .live-pill, .topbar-search, .topbar-theme, .who-chip { display: none !important; } }
