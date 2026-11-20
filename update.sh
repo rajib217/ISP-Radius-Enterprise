@@ -2,7 +2,7 @@
 # ---------------------------------------------------------------------------
 #  ISP RADIUS Panel - safe code update (no internet interruption)
 #
-#  Usage:   sudo bash update.sh            (from the updated isp-radius-panel folder)
+#  Usage:   sudo bash update.sh            (from the updated project folder)
 #  GitHub Actions runs it through /usr/local/sbin/isp-panel-deploy after "git pull".
 #
 #  What it touches: the panel code, the panel database schema, and the panel's own services
@@ -38,7 +38,7 @@ c_warn() { printf '\033[1;33m!!\033[0m  %s\n' "$*"; }
 die()    { printf '\033[1;31mUPDATE STOPPED:\033[0m %s\n' "$*" >&2; exit 1; }
 
 [[ $EUID -eq 0 ]] || die "Run as root:  sudo bash update.sh"
-[[ -f "$SRC_DIR/panel/app.py" && -f "$SRC_DIR/sql/panel_schema.sql" ]] || die "Run this from the isp-radius-panel folder."
+[[ -f "$SRC_DIR/panel/app.py" && -f "$SRC_DIR/sql/panel_schema.sql" ]] || die "Run this from the project folder (the one with update.sh, panel/ and sql/)."
 [[ -f "$ENV_FILE" && -d "$APP_DIR" ]] || die "The panel is not installed here yet. Run: sudo ./install.sh"
 
 exec 9>"${LOCK_FILE:-/run/isp-panel-update.lock}"

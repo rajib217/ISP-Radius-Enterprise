@@ -5,7 +5,7 @@ FreeRADIUS + MariaDB + a web admin panel for managing PPPoE subscribers, built f
 **What you get**
 
 - FreeRADIUS configured to read users, plans and routers from MariaDB (PAP, CHAP and MS-CHAPv2 all work)
-- A web panel on port 80 with light and dark themes, usable on a phone
+- A web panel with automatic HTTPS (Caddy + Let's Encrypt), light and dark themes, usable on a phone
 - Dashboard with live online count, 24-hour curve, plan mix, routers, expiring accounts
 - Subscribers: search, filters, bulk suspend / activate / change plan / add days, CSV import and export, renew with payment record
 - Online sessions with one-click disconnect (RADIUS Disconnect-Request to the router)
@@ -47,20 +47,20 @@ The sidebar has these groups, and each one is a working feature:
 
 **Automatic messages.** Settings > Automatic messages: welcome and payment messages, and expiry reminders N days before (for example `3, 1, 0`). Their text is the `welcome`, `payment` and `expiry` templates, which you can edit under SMS > Templates and Email > Templates. Messages go through a queue, and a background service (`isp-panel-sender`) sends them at the speed you set, so sending to 20,000 customers does not freeze the panel.
 
-**Upgrading from version 1.** Copy this folder over the old one on the server and run `sudo ./install.sh` again. Data and passwords are kept; new tables are added.
+**Upgrading.** See "Updates and automatic deploys" below. Data and passwords are always kept.
 
 ## Install
 
-Copy this folder to a fresh Ubuntu 24.04 server and run:
+The step-by-step Linux install guide (DNS records, the setup wizard, HTTPS, MikroTik commands) is in the
+[README](../README.md#4-install). In short, on a fresh Ubuntu 24.04 server:
 
 ```bash
-sudo ./install.sh
+sudo git clone https://github.com/rajib217/ISP-Radius-Enterprise.git /opt/isp-panel/src
+cd /opt/isp-panel/src && sudo bash install.sh
 ```
 
-It takes a few minutes. At the end it prints the panel address and the first admin password.
-Options: `ADMIN_USER=boss ADMIN_PASS='...' TIMEZONE=Asia/Dhaka sudo -E ./install.sh`
-
-The installer is safe to run again. It keeps passwords and data, and keeps backups of every FreeRADIUS file it edits (`*.orig-isp`).
+The installer is safe to run again. It keeps passwords and data, and keeps backups of every FreeRADIUS file it edits
+(in `/etc/freeradius/3.0/isp-backups/`).
 
 ## First steps in the panel
 
@@ -144,14 +144,14 @@ What one update does, stopping at the first problem with the running panel left 
 If an update also changes the system setup (a new service, FreeRADIUS or Caddy settings), it stops before step 1
 and asks you to run `sudo ./install.sh` once by hand.
 
-By hand on the server: `cd /opt/isp-panel/src && sudo git pull && sudo bash isp-radius-panel/update.sh`
+By hand on the server: `cd /opt/isp-panel/src && sudo git pull && sudo bash update.sh`
 
 ### One-time setup for GitHub Actions (`.github/workflows/deploy.yml`, runs on every push to `main`)
 
 ```bash
 # 1. a root-owned clone, installed from there
 sudo git clone https://github.com/<you>/ISP-Radius-Enterprise /opt/isp-panel/src
-cd /opt/isp-panel/src/isp-radius-panel && sudo ./install.sh
+cd /opt/isp-panel/src && sudo ./install.sh
 
 # 2. a deploy user that may run exactly one command as root
 sudo adduser --disabled-password --gecos "" deploy

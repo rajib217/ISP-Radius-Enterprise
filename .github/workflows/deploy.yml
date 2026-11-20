@@ -1,6 +1,6 @@
 # Deploy the ISP RADIUS Panel to the production server on every push to main.
 #
-# The server pulls the code and runs isp-radius-panel/update.sh, which backs up the database, applies the schema
+# The server pulls the code and runs update.sh, which backs up the database, applies the schema
 # and gracefully reloads only the panel's own services. FreeRADIUS, MariaDB and Caddy are never restarted, so
 # customers stay online during a deploy.
 #
@@ -35,20 +35,20 @@ jobs:
 
       - name: Python syntax
         run: |
-          python3 -m py_compile isp-radius-panel/panel/*.py
-          python3 -m py_compile isp-radius-panel/deploy/isp-panel-fwsync
+          python3 -m py_compile panel/*.py
+          python3 -m py_compile deploy/isp-panel-fwsync
 
       - name: Shell syntax
         run: |
-          bash -n isp-radius-panel/install.sh
-          bash -n isp-radius-panel/update.sh
-          bash -n isp-radius-panel/deploy/isp-panel-deploy
+          bash -n install.sh
+          bash -n update.sh
+          bash -n deploy/isp-panel-deploy
 
       - name: The app imports
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq python3-flask python3-pymysql python3-werkzeug >/dev/null
-          cd isp-radius-panel/panel
+          cd panel
           PANEL_SECRET_KEY=ci PANEL_DATA_DIR="$RUNNER_TEMP/panel-data" PYTHONDONTWRITEBYTECODE=1 python3 -c 'import app; print("routes:", len(list(app.app.url_map.iter_rules())))'
 
   deploy:

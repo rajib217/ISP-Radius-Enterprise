@@ -31,7 +31,7 @@ die()    { printf '\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 rand()   { openssl rand -hex 16; }
 
 [[ $EUID -eq 0 ]] || die "Run as root:  sudo ./install.sh"
-[[ -f "$SRC_DIR/panel/app.py" ]] || die "Run this script from the unpacked isp-radius-panel folder."
+[[ -f "$SRC_DIR/panel/app.py" ]] || die "Run this script from the project folder (the one with install.sh, panel/ and sql/)."
 
 . /etc/os-release
 if [[ "${ID:-}" != "ubuntu" || "${VERSION_ID:-}" != "24.04" ]]; then

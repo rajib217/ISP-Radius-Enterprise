@@ -42,4 +42,4 @@ letsencrypt/
 Thumbs.db
 
 # ---- local build leftovers
-isp-radius-panel-*.zip
+*.zip

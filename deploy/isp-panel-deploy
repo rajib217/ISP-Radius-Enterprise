@@ -18,4 +18,8 @@ git checkout --quiet "$BRANCH"
 # fast-forward only: a server with local edits stops here instead of merging or losing them
 git merge --ff-only "origin/$BRANCH"
 echo "==> now at $(git rev-parse --short=12 HEAD): $(git log -1 --format=%s)"
-exec bash "$DEPLOY_REPO/isp-radius-panel/update.sh"
+# update.sh sits at the repository root (older layouts kept it in isp-radius-panel/)
+for u in "$DEPLOY_REPO/update.sh" "$DEPLOY_REPO/isp-radius-panel/update.sh"; do
+  [[ -f "$u" ]] && exec bash "$u"
+done
+echo "update.sh not found in $DEPLOY_REPO" >&2; exit 1

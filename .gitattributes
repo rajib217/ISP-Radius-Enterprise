@@ -1,0 +1,10 @@
+# Server files must keep Unix line endings, even when edited on Windows (CRLF breaks bash and Caddy).
+* text=auto
+*.sh            text eol=lf
+*.py            text eol=lf
+*.sql           text eol=lf
+*.tmpl          text eol=lf
+deploy/isp-panel-*  text eol=lf
+*.woff2 binary
+*.png   binary
+*.ico   binary
