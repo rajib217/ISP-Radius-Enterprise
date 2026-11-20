@@ -4,8 +4,10 @@ from flask import g, request, url_for
 import core
 
 
-def _i(label, endpoint, match=None, args=None, none_of=None, module=None, admin=False, tier=None, fn=None):
-    return {"fn": fn, "tier": tier, "admin": admin, "label": label, "endpoint": endpoint, "match": match or [endpoint], "args": args or {},
+def _i(label, endpoint, match=None, args=None, none_of=None, module=None, admin=False, tier=None, fn=None, own=None):
+    # own: a function key that opens this one page on its own, even without the group's module (Ledger Reports and
+    # bKash Payments: sellers get them only through that tick, staff through it or the Accounting module)
+    return {"own": own, "fn": fn, "tier": tier, "admin": admin, "label": label, "endpoint": endpoint, "match": match or [endpoint], "args": args or {},
             "none_of": none_of or [], "module": module}
 
 
@@ -20,9 +22,6 @@ STRUCTURE = [
     _g("mypkg", "My Packages", "package", endpoint="my_packages"),
     _g("myusers", "My Users", "users", endpoint="my_users", match=["my_users", "user_transfer", "my_user_save", "my_user_packages", "my_user_delete"], sellers=True, fn="usr.module"),
     _g("myprofit", "My Profit", "chart", endpoint="my_profit", match=["my_profit", "my_profit_csv"], sellers=True, fn="rep.myprofit"),
-    _g("myledger", "Ledger Reports", "file", endpoint="ledger", match=["ledger", "ledger_csv", "ledger_xlsx"], sellers=True, fn="led.module"),
-    _g("mybkash", "bKash Payments", "card", endpoint="bkash_payments",
-       match=["bkash_payments", "bkash_payments_csv", "bkash_payments_xlsx"], sellers=True, fn="bkp.module"),
     _g("users", "Users", "users", admin=True, items=[
         _i("Roles", "roles"),
         _i("Users", "admins", ["admins", "admin_save", "admin_toggle", "admin_delete"], none_of=["group"]),
@@ -67,8 +66,8 @@ STRUCTURE = [
         _i("Expenses", "expenses"),
         _i("Income & expense", "acct_summary"),
         _i("Dues", "dues"),
-        _i("Ledger Reports", "ledger", ["ledger", "ledger_csv", "ledger_xlsx"]),
-        _i("bKash Payments", "bkash_payments", ["bkash_payments", "bkash_payments_csv", "bkash_payments_xlsx"]),
+        _i("Ledger Reports", "ledger", ["ledger", "ledger_csv", "ledger_xlsx"], own="led.module"),
+        _i("bKash Payments", "bkash_payments", ["bkash_payments", "bkash_payments_csv", "bkash_payments_xlsx"], own="bkp.module"),
     ]),
     _g("inv", "Inventory", "archive", module="inventory", items=[
         _i("Items", "inventory", none_of=["low"]),
@@ -134,13 +133,15 @@ def _active(item, endpoint):
 def build():
     endpoint = request.endpoint or ""
     is_admin = g.me["role"] == "admin"
+    seller = g.me["role"] in core.SELLER_ROLES
     out = []
     for grp in STRUCTURE:
         if grp["admin"] and not is_admin:
             continue
         if grp["sellers"] and (g.me["role"] not in core.SELLER_ROLES or not core.can_fn(grp["fn"])):
             continue
-        if grp["module"] and not core.can(grp["module"]):
+        mod_ok = not grp["module"] or core.can(grp["module"])
+        if not mod_ok and not any(it.get("own") for it in grp["items"] or []):
             continue
         if grp["module"] == "plans" and g.me["role"] in core.SELLER_ROLES:
             continue                      # sellers see their packages under My Packages only
@@ -150,6 +151,11 @@ def build():
             off = core.tiers_off()
             for it in grp["items"]:
                 if it.get("tier") in off:
+                    continue
+                if it.get("own"):              # same rule as the page itself (mod_ledger / mod_bkash_report _allowed)
+                    if not (core.can_fn(it["own"]) if seller else (mod_ok or core.can_fn(it["own"]))):
+                        continue
+                elif not mod_ok:
                     continue
                 if it["module"] and not core.can(it["module"]):
                     continue

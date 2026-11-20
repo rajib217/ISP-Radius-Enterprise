@@ -415,6 +415,13 @@ def check_rules(flask_app, ids):
     r = res2.get("/ledger")
     page = r.get_data(as_text=True)
     check(r.status_code == 200 and 'href="/ledger"' in res2.get("/").get_data(as_text=True), "with the permission the reseller opens the ledger")
+    def side_menu(html):
+        return html.split('<nav class="nav"', 1)[-1].split("</nav>", 1)[0]
+    for who, cl in (("admin", adm), ("reseller", res2)):
+        m = side_menu(cl.get("/").get_data(as_text=True))
+        acct = m.split('data-key="acct"', 1)[-1].split("</details>", 1)[0] if 'data-key="acct"' in m else ""
+        check(m.count('href="/ledger"') == 1 and 'href="/ledger"' in acct,
+              "%s menu shows Ledger Reports once, under Accounting" % who)
     check("banani.cafe" in page and "led-type t-package-cost" in page and "uttara.salma" not in page,
           "reseller sees their own and their customers' entries, not the admin's customers")
     check(sub.get("/ledger").status_code == 403, "the sub-reseller role still needs its own permission")
@@ -453,6 +460,11 @@ def check_rules(flask_app, ids):
     res3 = client(ids["reseller"])
     bk = res3.get("/bkash-payments").get_data(as_text=True)
     check("TR0011CJ" in bk and "TR0011CI" not in bk, "with the permission the reseller sees their own top-ups, not the admin's customers")
+    for who, cl in (("admin", adm), ("reseller", res3)):
+        m = side_menu(cl.get("/").get_data(as_text=True))
+        acct = m.split('data-key="acct"', 1)[-1].split("</details>", 1)[0] if 'data-key="acct"' in m else ""
+        check(m.count('href="/bkash-payments"') == 1 and 'href="/bkash-payments"' in acct,
+              "%s menu shows bKash Payments once, under Accounting" % who)
     check(res3.get("/payments").status_code == 403 and res3.get("/bkash-payments.csv").status_code == 403,
           "the bKash tick does not open Payments, and export needs its own tick")
     c, x = adm.get("/bkash-payments.csv"), adm.get("/bkash-payments.xlsx")
