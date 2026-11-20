@@ -1,0 +1,14 @@
+#!/bin/sh
+# ISP RADIUS Panel: the only commands GitHub Actions may run over SSH as the deploy user.
+# Installed as /usr/local/sbin/isp-panel-ssh-gate and set as the forced command of the deploy key
+# (authorized_keys: command="/usr/local/sbin/isp-panel-ssh-gate",restrict ...). Whatever the client asks for,
+# only these two run; anything else is refused. Keep in sync with .github/workflows/deploy.yml.
+case "$SSH_ORIGINAL_COMMAND" in
+  "sudo -n /usr/local/sbin/isp-panel-deploy")
+    exec sudo -n /usr/local/sbin/isp-panel-deploy ;;
+  "curl -fsS --max-time 10 http://127.0.0.1:8000/healthz")
+    exec curl -fsS --max-time 10 http://127.0.0.1:8000/healthz ;;
+  *)
+    echo "isp-panel-ssh-gate: this key may only deploy the panel (refused: ${SSH_ORIGINAL_COMMAND:-interactive login})" >&2
+    exit 1 ;;
+esac

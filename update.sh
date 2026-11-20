@@ -132,6 +132,7 @@ mv "$NEW_DIR" "$APP_DIR"
 SBIN="${SBIN_DIR:-/usr/local/sbin}"
 [[ -f "$SRC_DIR/deploy/isp-panel-fwsync" ]] && install -m 755 "$SRC_DIR/deploy/isp-panel-fwsync" "$SBIN/isp-panel-fwsync"
 [[ -f "$SRC_DIR/deploy/isp-panel-deploy" ]] && install -m 755 "$SRC_DIR/deploy/isp-panel-deploy" "$SBIN/isp-panel-deploy"
+[[ -f "$SRC_DIR/deploy/isp-panel-ssh-gate" && -f "$SBIN/isp-panel-ssh-gate" ]] && install -m 755 "$SRC_DIR/deploy/isp-panel-ssh-gate" "$SBIN/isp-panel-ssh-gate"
 
 reload_panel() {
   if systemctl show -p ExecReload isp-panel.service | grep -q 'kill'; then

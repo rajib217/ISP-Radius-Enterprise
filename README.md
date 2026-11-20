@@ -141,9 +141,10 @@ database changes and switches to the new code. If the new code does not answer, 
 If an update needs system changes, it stops and asks you to run `sudo bash install.sh` once instead.
 Running the installer again is always safe: it keeps your data and passwords and offers your last answers as defaults.
 
-**Automatic deploys from GitHub.** `.github/workflows/deploy.yml` deploys every push to `main`. For the one-time setup
-(a deploy user allowed one sudo command, and four repository secrets), see
-[Updates and automatic deploys](docs/USER-GUIDE.md#updates-and-automatic-deploys) in the user guide.
+**Automatic deploys from GitHub.** `.github/workflows/deploy.yml` deploys every push to `main` once all checks pass.
+To set it up, run `sudo bash deploy/setup-auto-deploy.sh` once on the server, then paste the values it prints into
+GitHub (Settings > Secrets and variables > Actions). Details are in
+[Updates and automatic deploys](docs/USER-GUIDE.md#updates-and-automatic-deploys).
 
 ## 8. Security and firewall
 

@@ -148,31 +148,29 @@ By hand on the server: `cd /opt/isp-panel/src && sudo git pull && sudo bash upda
 
 ### One-time setup for GitHub Actions (`.github/workflows/deploy.yml`, runs on every push to `main`)
 
+On the server, from the project folder (or any copy of it), run once:
+
 ```bash
-# 1. a root-owned clone, installed from there
-sudo git clone https://github.com/<you>/ISP-Radius-Enterprise /opt/isp-panel/src
-cd /opt/isp-panel/src && sudo ./install.sh
-
-# 2. a deploy user that may run exactly one command as root
-sudo adduser --disabled-password --gecos "" deploy
-echo 'deploy ALL=(root) NOPASSWD: /usr/local/sbin/isp-panel-deploy' | sudo tee /etc/sudoers.d/isp-panel-deploy
-sudo chmod 440 /etc/sudoers.d/isp-panel-deploy
-sudo -u deploy mkdir -m 700 /home/deploy/.ssh
-# paste the PUBLIC half of a new key pair (ssh-keygen -t ed25519 -f deploy_key) into:
-sudo -u deploy nano /home/deploy/.ssh/authorized_keys
-
-# 3. the server's host key, to pin it in GitHub (check the fingerprint once)
-ssh-keyscan -H <server-ip>
+sudo bash deploy/setup-auto-deploy.sh
 ```
 
-Before any deploy, GitHub also runs `tests/test_pages.py`: it starts a real MariaDB 10.11, loads the FreeRADIUS and
-panel schemas, fills in sample data, and opens every page as admin, reseller, staff and customer. If any page answers
-500, the deploy does not happen and the failing page and code line are shown on the Actions page.
+It does everything on the server and touches nothing customers use (no FreeRADIUS, MariaDB or Caddy restart):
 
-Then in GitHub, under Settings > Secrets and variables > Actions, add `SERVER_HOST`, `SERVER_USER` (`deploy`),
-`SERVER_SSH_KEY` (the PRIVATE key) and `SERVER_KNOWN_HOSTS` (the ssh-keyscan output). Optionally add `SERVER_PORT`,
-and `PANEL_URL` (for example `https://panel.yourdomain.com`) to also check the public HTTPS address after each deploy.
-A private repository also needs a read-only deploy key on the server for `git pull`.
+- makes a root-owned git clone in `/opt/isp-panel/src`. If that folder already holds copied files, pass
+  `--dir /opt/isp-panel/repo` instead. It then points `/etc/isp-panel/deploy.conf` at the clone.
+- creates a `deploy` user with no password. Its sudo rights cover only `/usr/local/sbin/isp-panel-deploy`.
+- makes a new SSH key for GitHub, locked to `/usr/local/sbin/isp-panel-ssh-gate`. The key can only start a deploy
+  or read the health check: no shell, no forwarding, no other command.
+- prints what to add in GitHub under Settings > Secrets and variables > Actions: `SERVER_HOST`, `SERVER_USER`,
+  `SERVER_KNOWN_HOSTS` and `SERVER_SSH_KEY`, plus `SERVER_PORT` when SSH is not on 22, and `PANEL_URL` when HTTPS is
+  set up. The private key is shown once and is not kept on the server; running the script again makes a new one.
+
+Before any deploy, GitHub runs five checks: the code, every page on a real MariaDB (`tests/test_pages.py`, which
+also checks 27 business rules), FreeRADIUS accepting the installer's config, UFW accepting its firewall rules, and
+this auto-deploy setup on a real SSH server. If any check fails, nothing is deployed, and the Actions page shows why.
+
+By hand, without GitHub: `sudo /usr/local/sbin/isp-panel-deploy`. A private repository also needs a read-only
+deploy key on the server for `git pull`.
 
 ## Everyday commands
 

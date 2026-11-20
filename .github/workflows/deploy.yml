@@ -7,6 +7,7 @@
 # Repository secrets (Settings > Secrets and variables > Actions):
 #   SERVER_HOST          server address (IP or name)                                   required
 #   SERVER_USER          SSH user that may run: sudo /usr/local/sbin/isp-panel-deploy   required
+#   (deploy/setup-auto-deploy.sh on the server creates that user and prints all the values below)
 #   SERVER_SSH_KEY       that user's private key (ed25519 recommended)                  required
 #   SERVER_KNOWN_HOSTS   output of "ssh-keyscan -H <host>" checked by hand once         strongly recommended
 #   SERVER_PORT          SSH port                                                       optional, default 22
@@ -46,6 +47,9 @@ jobs:
           bash -n deploy/isp-panel-deploy
           bash -n tests/check_freeradius_config.sh
           bash -n tests/check_firewall_rules.sh
+          bash -n tests/check_auto_deploy.sh
+          bash -n deploy/setup-auto-deploy.sh
+          sh -n deploy/isp-panel-ssh-gate
 
       - name: The app imports
         run: |
@@ -139,9 +143,18 @@ jobs:
       - name: Dry-run every ufw command of install.sh and isp-panel-fwsync
         run: sudo bash tests/check_firewall_rules.sh
 
+  autodeploy:
+    name: Auto-deploy setup works (real sshd)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: Run setup-auto-deploy.sh, then use the printed key over SSH
+        run: sudo bash tests/check_auto_deploy.sh
+
   deploy:
     name: Deploy to the server
-    needs: [check, pages, freeradius, firewall]
+    needs: [check, pages, freeradius, firewall, autodeploy]
     runs-on: ubuntu-24.04
     environment: production
     timeout-minutes: 25
