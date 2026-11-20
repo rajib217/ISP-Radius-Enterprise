@@ -458,6 +458,45 @@ def check_rules(flask_app, ids):
     c, x = adm.get("/bkash-payments.csv"), adm.get("/bkash-payments.xlsx")
     check(c.status_code == 200 and "TR0011CI" in c.get_data(as_text=True) and x.status_code == 200 and x.data[:2] == b"PK",
           "admin CSV and Excel exports work")
+
+    # ---- BTRC Report (admin only)
+    import zipfile as _z2, io as _io2, re as _re2
+    adm.post("/reports/btrc/settings", data={"_csrf": "ci", "btrc_division": "Chattogram", "btrc_district": "Brahmanbaria",
+                                             "btrc_thana": "Nabinagar", "btrc_client_type": "", "btrc_connection_type": "",
+                                             "btrc_distribution_point": "", "btrc_connectivity_type": ""})
+    page = adm.get("/reports/btrc")
+    check(page.status_code == 200 and "BTRC Report" in page.get_data(as_text=True), "admin opens the BTRC Report tab")
+    check(res.get("/reports/btrc").status_code == 403 and res.get("/reports/btrc.xlsx").status_code == 403
+          and client(ids["staff"]).get("/reports/btrc").status_code == 403, "resellers and staff cannot open or download it")
+    x = adm.get("/reports/btrc.xlsx")
+    sheet = _z2.ZipFile(_io2.BytesIO(x.data)).read("xl/worksheets/sheet1.xml").decode()
+    def cells(row_xml):
+        out = []
+        for attrs, inner in _re2.findall(r"<c ([^>]*?)>(.*?)</c>", row_xml, _re2.S):
+            ref = _re2.search(r'r="([A-Z]+)', attrs).group(1)
+            t = _re2.findall(r"<t[^>]*>(.*?)</t>", inner) or _re2.findall(r"<v>(.*?)</v>", inner)
+            out.append((ref, t[0] if t else "", 's="1"' in attrs))
+        return out
+    rows_x = _re2.findall(r"<row[^>]*>(.*?)</row>", sheet, _re2.S)
+    head = [c[1] for c in cells(rows_x[0])]
+    check(head == ["client_type", "connection_type", "client_username", "bandwidth_distribution_point", "connectivity_type",
+                   "activation_date", "bandwidth_allocation", "allocated_ip", "division", "district", "thana", "address",
+                   "client_mobile", "client_email", "selling_price_bdt_excluding_vat"], "Excel header matches the BTRC sample")
+    by_user = {}
+    for rx in rows_x[1:]:
+        c = {ref: (v, date_style) for ref, v, date_style in cells(rx)}
+        by_user[c["C"][0]] = c
+    shop = by_user.get("uttara.shop", {})
+    shop_price = float(one("SELECT price FROM user_plans WHERE user_id = %s AND plan_id = 2", (ids["reseller"],))["price"])
+    check(shop and shop["A"][0] == "Home" and shop["B"][0] == "Wired" and shop["D"][0] == "NOC" and shop["E"][0] == "Shared"
+          and shop["I"][0] == "Chattogram" and shop["K"][0] == "Nabinagar" and shop["G"][0] == "20"
+          and abs(float(shop["O"][0]) - shop_price) < 0.01, "row values: defaults, location, Mbps and the reseller's customer price")
+    check(shop and shop["F"][1] and 40000 < int(shop["F"][0]) < 60000, "activation_date is a real Excel date")
+    check(shop and shop["H"][0].startswith("100.64."), "allocated_ip comes from the customer's latest session")
+    check(len(by_user) >= 8, "everyone activated or renewed this month is in the sheet (%d)" % len(by_user))
+    old = adm.get("/reports/btrc.xlsx?month=2001-01")
+    old_rows = _re2.findall(r"<row ", _z2.ZipFile(_io2.BytesIO(old.data)).read("xl/worksheets/sheet1.xml").decode())
+    check(len(old_rows) == 1, "a month with no activations gives only the header row")
     return bad
 
 

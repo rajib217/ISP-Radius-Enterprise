@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}BTRC Report{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Reports</h1><p class="sub">BTRC downstream subscriber report · {{ start.strftime('%B %Y') }}</p></div>
+  <form class="actions" method="get" action="{{ url_for('btrc_report') }}">
+    <input type="month" name="month" value="{{ month }}" aria-label="Month" style="width:auto">
+    <button class="btn primary" type="submit">Show</button>
+    <a class="btn" href="{{ url_for('btrc_xlsx', month=month) }}">{{ icon('download') }}Download Excel</a>
+  </form>
+</div>
+<div class="tabs">
+  <a href="{{ url_for('reports', tab='traffic') }}">Traffic</a>
+  <a href="{{ url_for('reports', tab='collection') }}">Collection</a>
+  <a href="{{ url_for('reports', tab='customers') }}">Customers</a>
+  <a href="{{ url_for('reports', tab='profit') }}">Seller profit</a>
+  <a href="{{ url_for('reports', tab='server') }}">Server</a>
+  <a class="on" href="{{ url_for('btrc_report') }}">BTRC Report</a>
+</div>
+
+{% if missing %}
+<div class="notice warn" role="status">{{ icon('alert') }}<div><strong>Fill in {{ missing|join(', ') }}</strong><p>BTRC needs the division, district and thana of your service area. Save them below; they go into every row.</p></div></div>
+{% endif %}
+
+<section class="panel">
+  <div class="panel-head"><h2>Report settings</h2><span class="aside">Used for every customer in the sheet</span></div>
+  <form method="post" action="{{ url_for('btrc_settings') }}" class="panel-body">
+    {{ csrf_input() }}<input type="hidden" name="month" value="{{ month }}">
+    <div class="grid3" style="display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+      {% for key, label, default in fields %}
+      <div class="field"><label class="lbl" for="b-{{ key }}">{{ label }}</label>
+        <input id="b-{{ key }}" name="{{ key }}" value="{{ settings[key] }}" maxlength="64" placeholder="{{ default or label }}"></div>
+      {% endfor %}
+    </div>
+    <div style="margin-top:12px"><button class="btn primary" type="submit">Save settings</button></div>
+  </form>
+</section>
+
+<section class="panel" style="margin-top:16px">
+  <div class="panel-head"><h2>{{ '{:,}'.format(total) }} customer{{ '' if total == 1 else 's' }} activated or renewed in {{ start.strftime('%B %Y') }}</h2>
+    <span class="aside">{% if total > rows|length %}First {{ rows|length }} shown · the Excel file has all {{ '{:,}'.format(total) }}{% else %}All shown{% endif %}</span></div>
+  {% if rows %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr>{% for c in columns %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for r in rows %}<tr>
+      {% for c in columns %}<td class="{{ 'mono' if c in ('client_username', 'allocated_ip') else '' }} {{ 'num' if c in ('bandwidth_allocation', 'selling_price_bdt_excluding_vat') else '' }} nowrap">{{ r[c].strftime('%m/%d/%Y') if c == 'activation_date' else (r[c] if r[c] not in (none, '') else '') }}</td>{% endfor %}
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="empty"><h3>Nobody was activated or renewed in {{ start.strftime('%B %Y') }}</h3><p>Pick another month above.</p></div>{% endif %}
+</section>
+{% endblock %}

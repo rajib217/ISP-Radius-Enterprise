@@ -18,7 +18,8 @@
   <a class="{{ 'on' if tab == 'collection' }}" href="{{ url_for('reports', tab='collection', **{'from': start.isoformat(), 'to': end.isoformat()}) }}">Collection</a>
   <a class="{{ 'on' if tab == 'customers' }}" href="{{ url_for('reports', tab='customers', **{'from': start.isoformat(), 'to': end.isoformat()}) }}">Customers</a>
   <a class="{{ 'on' if tab == 'profit' }}" href="{{ url_for('reports', tab='profit', **{'from': start.isoformat(), 'to': end.isoformat()}) }}">Seller profit</a>
-  {% if me.role == 'admin' %}<a class="{{ 'on' if tab == 'server' }}" href="{{ url_for('reports', tab='server', **{'from': start.isoformat(), 'to': end.isoformat()}) }}">Server</a>{% endif %}
+  {% if me.role == 'admin' %}<a class="{{ 'on' if tab == 'server' }}" href="{{ url_for('reports', tab='server', **{'from': start.isoformat(), 'to': end.isoformat()}) }}">Server</a>
+  <a href="{{ url_for('btrc_report') }}">BTRC Report</a>{% endif %}
 </div>
 
 {% if tab == 'traffic' %}

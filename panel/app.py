@@ -1461,6 +1461,7 @@ import mod_topup  # noqa: E402,F401
 import mod_portal  # noqa: E402,F401
 import mod_ledger  # noqa: E402,F401
 import mod_bkash_report  # noqa: E402,F401
+import mod_btrc  # noqa: E402,F401
 import mod_noc  # noqa: E402,F401
 
 core.attach(app)

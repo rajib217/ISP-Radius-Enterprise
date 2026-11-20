@@ -43,6 +43,8 @@ DEFAULT_SETTINGS = {
     "modules_off": "notices",           # comma list of modules switched off for everyone
     # NOC service (noc.py): router health every 30 s, Telegram on router down / high CPU, auto-disconnect of expired
     "noc_snmp_community": "", "noc_cpu_alert": "85", "al_noc": "1", "auto_kick_expired": "1",
+    "btrc_division": "", "btrc_district": "", "btrc_thana": "", "btrc_client_type": "Home", "btrc_connection_type": "Wired",
+    "btrc_distribution_point": "NOC", "btrc_connectivity_type": "Shared",
     # email
     "smtp_host": "", "smtp_port": "587", "smtp_security": "starttls", "smtp_user": "", "smtp_pass": "",
     "smtp_from": "", "smtp_from_name": "", "email_rate": "120",
