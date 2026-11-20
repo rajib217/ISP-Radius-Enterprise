@@ -645,14 +645,7 @@ dl.kv dt { color: var(--muted); } dl.kv dd { margin: 0; font-weight: 600; word-b
 .listbar .seg .dd summary { list-style: none; padding: 7px 12px; cursor: pointer; border-radius: 6px; }
 .listbar .seg .dd { position: relative; }
 
-/* menu hide / show button (desktop) */
-.side-toggle { position: fixed; z-index: 70; top: 14px; left: calc(var(--side-w) - 18px); width: 32px; height: 32px; border-radius: 50%;
-  border: 1px solid var(--rule); background: var(--paper); color: var(--ink); display: grid; place-items: center; cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0,0,0,.2); transition: left .15s; }
-.side-toggle:hover { background: var(--fiber-soft); }
-/* collapsed = 64px icon rail (Phase 2 shell section at the end of this file), never fully hidden */
-html.side-off .side-toggle { left: calc(var(--side-w-rail) - 18px); }
-@media (max-width: 1023px) { .side-toggle { display: none; } }
+/* menu collapse / expand button: lives in the topbar (Phase 2 shell section at the end of this file) */
 @media print { .side-toggle { display: none !important; } }
 
 /* ONU detail page */
@@ -1573,6 +1566,7 @@ dialog.modal.drawer .modal-body { align-content: start; }
 
 /* ---- sidebar rail: collapsed (side-off) or tablet width ---- */
 html.side-off .app { grid-template-columns: var(--side-w-rail) minmax(0, 1fr); }
+html.side-off .content { max-width: none; }
 html.side-off .side { padding: 16px 8px 10px; overflow: visible; }
 html.side-off .brand { justify-content: center; padding: 2px 0 14px; }
 html.side-off .brand > span, html.side-off .brand-logo + span { display: none; }
@@ -1636,5 +1630,19 @@ html.side-off .side-foot .who { justify-content: center; }
   html.side-off .side-foot .links button > span, html.side-off .side-foot .who > span:last-child { display: inline; }
   html.side-off .side-foot .who { justify-content: flex-start; }
 }
+
+/* ---- brand (logo + ISP name): never underlined, theme-aware default mark ---- */
+.brand, .brand:hover { text-decoration: none; }
+.brand:hover { background: var(--side-hover); border-radius: var(--r-md); }
+.brand-mark { width: 32px; height: 32px; flex: none; }
+.brand-mark .ring-outer { stroke: var(--accent); }
+.brand-mark .ring-inner { stroke: var(--online); }
+.brand-mark .ring-dot { fill: var(--accent); }
+.brand img.brand-logo { width: 32px; height: 32px; object-fit: contain; }
+
+/* ---- collapse / expand toggle in the topbar: chevrons flip in rail mode ---- */
+.side-toggle .i { transition: transform var(--dur); }
+html.side-off .side-toggle .i { transform: rotate(180deg); }
+@media (max-width: 1023px) { .side-toggle { display: none; } }
 
 @media print { .bottom-nav, .live-pill, .topbar-search, .topbar-theme, .who-chip { display: none !important; } }
