@@ -704,3 +704,7 @@ ALTER TABLE topups ADD KEY IF NOT EXISTS idx_pending (status, created_at);
 -- Expiry time per subscriber ("HH:MM", NULL = the package's fixed time, else the end of the day). Activation sets it to
 -- the time of activation, so a 30-day package bought at 15:30 ends at 15:30.
 ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS expiry_time VARCHAR(5) NULL;
+
+-- Ledger Reports read these by date
+ALTER TABLE user_ledger ADD KEY IF NOT EXISTS idx_created (created_at);
+ALTER TABLE sub_ledger ADD KEY IF NOT EXISTS idx_created (created_at);

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, pager %}
+{% block title %}Ledger Reports{% endblock %}
+{% set role_names = {'subscriber': 'Subscriber', 'portal': 'Portal', 'admin': 'Admin', 'reseller': 'Reseller', 'subreseller': 'Sub-reseller', 'retailer': 'Retailer'} %}
+{% macro acct(user, role) %}{% if user %}<span class="led-acct {{ 'sub' if role in ('subscriber', 'portal') else '' }}">{{ user }}{% if role %} <small>({{ role_names.get(role, role|capitalize) }})</small>{% endif %}</span>{% else %}<span class="muted">—</span>{% endif %}{% endmacro %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Ledger Reports</h1>
+    <p class="sub">{{ 'Your account, the people below you and their customers' if scope == 'mine' else 'Every money movement' }} · {{ f['from']|d }} to {{ f['to']|d }}</p></div>
+  <div class="actions">
+    {% if can_export %}
+    <a class="btn" href="{{ url_for('ledger_xlsx', **keep) }}">{{ icon('download') }}Excel</a>
+    <a class="btn" href="{{ url_for('ledger_csv', **keep) }}">{{ icon('file') }}CSV</a>
+    {% endif %}
+    <button class="btn" type="button" onclick="window.print()">{{ icon('printer') }}Print</button>
+  </div>
+</div>
+
+<section class="panel">
+  <form class="filters panel-body" method="get" style="padding-bottom:0">
+    <div class="search">{{ icon('search') }}<input type="search" name="q" value="{{ f.q }}" placeholder="Username, staff or note" aria-label="Search"></div>
+    <select name="type" aria-label="Type"><option value="">All types</option>
+      {% for k, label, _ in types %}<option value="{{ k }}" {{ 'selected' if f.type == k }}>{{ label }}</option>{% endfor %}</select>
+    <input type="date" name="from" value="{{ f['from'].isoformat() }}" aria-label="From">
+    <input type="date" name="to" value="{{ f['to'].isoformat() }}" aria-label="To">
+    <select name="per" aria-label="Rows per page">{% for n in (25, 50, 100, 200) %}<option {{ 'selected' if pg.per == n }}>{{ n }}</option>{% endfor %}</select>
+    <button class="btn" type="submit">{{ icon('filter') }}Filter</button>
+  </form>
+
+  {% if rows %}
+  <div class="listbar"><span class="muted">Showing {{ pg.first }} to {{ pg.last }} of {{ '{:,}'.format(pg.total) }} records</span>{{ pager(pg, keep, 'ledger') }}</div>
+  <div class="tbl-wrap"><table class="tbl led-tbl">
+    <thead><tr><th>ID</th><th>Trx ID</th><th>Type</th><th>Primary (Account)</th><th>Participant (Account)</th><th class="num">Amount</th>
+      <th>Ref ID</th><th class="num">P.Balance</th><th class="num">N.Balance</th><th>Created</th><th>Action By</th></tr></thead>
+    <tbody>{% for r in rows %}
+      <tr>
+        <td class="muted num" data-label="ID">{{ r.sid }}</td>
+        <td data-label="Trx ID" data-card="key"><span class="led-chip mono" title="{{ r.note or '' }}">{{ r.trx }}</span></td>
+        <td data-label="Type" data-card="key"><span class="led-type t-{{ r.kind|lower|replace(' ', '-') }}">{{ r.kind }}</span></td>
+        <td data-label="Primary" data-card="title">{{ acct(r.p_user, r.p_role) }}</td>
+        <td data-label="Participant">{{ acct(r.part_user, r.part_role) }}</td>
+        <td class="num" data-label="Amount" data-card="key"><span class="led-amt {{ 'neg' if r.amount < 0 else 'pos' }}">{{ '%.2f'|format(r.amount) }}</span></td>
+        <td data-label="Ref ID"><span class="led-chip">{{ r.ref }}</span></td>
+        <td class="num" data-label="P.Balance">{% if r.pbal is not none %}<span class="led-chip num">{{ '{:,.2f}'.format(r.pbal) }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="num" data-label="N.Balance">{% if r.nbal is not none %}<span class="led-chip num">{{ '{:,.2f}'.format(r.nbal) }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="nowrap" data-label="Created"><span class="led-chip">{{ r.created.strftime('%Y-%m-%d %H:%M') }}</span></td>
+        <td data-label="Action By">{% if r.action_by %}<span class="led-chip">{{ r.action_by }}</span>{% endif %}</td>
+      </tr>{% endfor %}</tbody>
+  </table></div>
+  <div class="listbar"><span class="muted">Showing {{ pg.first }} to {{ pg.last }} of {{ '{:,}'.format(pg.total) }} records</span>{{ pager(pg, keep, 'ledger') }}</div>
+  {% else %}<div class="empty"><h3>No ledger entries</h3><p>Nothing matches these filters between {{ f['from']|d }} and {{ f['to']|d }}. Try a longer date range.</p></div>{% endif %}
+</section>
+{% endblock %}

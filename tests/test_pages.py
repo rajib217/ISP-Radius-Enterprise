@@ -403,6 +403,36 @@ def check_rules(flask_app, ids):
     activate(res, r, 3, payment="on", method="cash", amount="9999")
     check(abs(float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"]) - rb1) < 0.01,
           "reseller cannot activate an unallocated package")
+
+    # ---- Ledger Reports
+    led = adm.get("/ledger").get_data(as_text=True)
+    check(all(t in led for t in ("led-type t-invoice", "led-type t-profit", "led-type t-package-cost", "led-type t-topup", "banani.cafe", "karim")),
+          "admin ledger shows invoices, profit, package cost and balance top-ups")
+    check(res.get("/ledger").status_code == 403 and 'href="/ledger"' not in res.get("/").get_data(as_text=True),
+          "reseller without the Ledger permission is refused and has no menu link")
+    run("INSERT INTO role_funcs (role, fkey, allowed) VALUES ('reseller', 'led.mine', 1) ON DUPLICATE KEY UPDATE allowed = 1")
+    res2 = client(ids["reseller"])
+    r = res2.get("/ledger")
+    page = r.get_data(as_text=True)
+    check(r.status_code == 200 and 'href="/ledger"' in res2.get("/").get_data(as_text=True), "with the permission the reseller opens the ledger")
+    check("banani.cafe" in page and "led-type t-package-cost" in page and "uttara.salma" not in page,
+          "reseller sees their own and their customers' entries, not the admin's customers")
+    check(sub.get("/ledger").status_code == 403, "the sub-reseller role still needs its own permission")
+    prof = adm.get("/ledger?type=profit").get_data(as_text=True)
+    check("led-type t-profit" in prof and "led-type t-package-cost" not in prof and "led-type t-invoice" not in prof,
+          "type filter shows only that type")
+    c = res2.get("/ledger.csv")
+    x = res2.get("/ledger.xlsx")
+    import zipfile as _zf, io as _io
+    try:
+        sheet = _zf.ZipFile(_io.BytesIO(x.data)).read("xl/worksheets/sheet1.xml").decode()
+    except Exception:
+        sheet = ""
+    check(c.status_code == 200 and "banani.cafe" in c.get_data(as_text=True) and x.status_code == 200 and "banani.cafe" in sheet,
+          "CSV and Excel exports work and hold the reseller's entries")
+    cost_row = one("SELECT balance_after FROM user_ledger WHERE user_id = %s AND method = 'activation' ORDER BY id DESC LIMIT 1", (ids["reseller"],))
+    check(cost_row is not None and ("{:,.2f}".format(float(cost_row["balance_after"]))) in page,
+          "package cost row shows the reseller's balance after the charge")
     return bad
 
 

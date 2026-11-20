@@ -1530,3 +1530,18 @@ dialog.modal.drawer .modal-body { align-content: start; }
   .pay-card { box-shadow: none; border: 0; padding: 0; }
   body { background: #fff; }
 }
+
+/* ===================================================================== Ledger Reports */
+.led-tbl td { vertical-align: middle; }
+.led-chip { display: inline-block; padding: 3px 8px; border-radius: 6px; background: var(--surface-2); font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.led-acct { display: inline-block; padding: 3px 8px; border-radius: 6px; background: var(--surface-2); font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.led-acct small { font-weight: 500; color: var(--muted); }
+.led-acct.sub { background: var(--accent-soft); color: var(--info-text); }
+.led-acct.sub small { color: inherit; opacity: .8; }
+.led-type { display: inline-block; padding: 3px 8px; border-radius: 6px; font-size: 12.5px; font-weight: 600; background: var(--neutral-soft); color: var(--neutral-text); }
+.led-type.t-profit, .led-type.t-topup, .led-type.t-balance-topup, .led-type.t-balance-add { background: var(--ok-soft); color: var(--online-text, var(--ok)); }
+.led-type.t-invoice, .led-type.t-balance-used, .led-type.t-package-cost, .led-type.t-balance-deduct { background: var(--bad-soft); color: var(--bad); }
+.led-amt { display: inline-block; padding: 3px 8px; border-radius: 6px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.led-amt.pos { background: var(--ok-soft); color: var(--online-text, var(--ok)); }
+.led-amt.neg { background: var(--bad-soft); color: var(--bad); }
+@media print { .filters, .listbar .pager, .page-head .actions { display: none !important; } }

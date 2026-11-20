@@ -160,6 +160,7 @@ TABS = [
     ]},
     {"title": "Reports", "icon": "chart", "groups": [
         G("My Profit (Reseller)", None, [I("rep.myprofit", "Module", "Resellers / sub-resellers / retailers: see their own profit and that of the people below them", "vn")]),
+        G("Ledger (Reseller)", None, [I("led.mine", "Module", "Resellers / sub-resellers / retailers: Ledger Reports for their own account, the people below them and their customers (off until you tick it)", "vno")]),
         G("Reports", "reports", [I("rep.module", "Module", "", "vg"), I("rep.sales", "Sales Reports", "", "v"),
                                  I("rep.payment", "Payment Reports", "", "v"), I("rep.btrc", "BTRC Reports", "", "vn"),
                                  I("rep.bandwidth", "Bandwidth Usage Reports", "", "vn")]),
@@ -183,6 +184,7 @@ RANK = {"none": 0, "view": 1, "edit": 2}
 # page / action  ->  the key (or any one of several keys) a role needs ticked to use it
 ENDPOINT_FN = {
     "my_profit": "rep.myprofit", "my_profit_csv": "rep.myprofit",
+    "ledger": ("led.view", "led.mine"), "ledger_csv": ("led.export", "led.mine"), "ledger_xlsx": ("led.export", "led.mine"),
     "subscriber_new": "sub.add", "subscriber_edit": "sub.edit", "subscriber_delete": "sub.delete",
     "import_csv": "sub.import", "import_sample": "sub.import", "subscribers_export": "sub.export",
     "subscriber_renew": "sub.activation", "subscriber_activate": ("sub.activation", "sub.mass_activation"), "subscriber_activation": ("sub.activation", "sub.mass_activation"),
