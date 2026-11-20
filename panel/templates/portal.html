@@ -41,7 +41,7 @@
 <section class="panel"><h2>Invoices</h2>
   {% if invoices %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th class="num">Amount</th><th>Method</th><th>Valid until</th><th></th></tr></thead><tbody>
     {% for p in invoices %}<tr><td class="nowrap">{{ p.paid_at|dt }}</td><td class="num">{{ cur }} {{ p.amount|money }}</td><td>{{ p.method }}</td><td>{{ p.period_to|d }}</td><td><a class="btn sm" href="{{ url_for('portal_invoice', pid=p.id) }}">Invoice</a></td></tr>{% endfor %}
-  </tbody></table></div>{% else %}<p class="muted" style="margin:0">No payments yet.</p>{% endif %}
+  </tbody></table></div>{% else %}<div class="empty"><h3>No payments yet</h3><p>Your payment history will appear here after your first payment.</p></div>{% endif %}
 </section>
 
 {% if sessions is not none %}

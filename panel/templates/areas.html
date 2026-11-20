@@ -15,8 +15,8 @@
       <td class="num"><a href="{{ url_for('subscribers', area=a.name) }}">{{ '{:,}'.format(a.total) }}</a></td>
       <td class="num hide-sm">{{ a.expired }}</td><td class="num hide-sm">{{ a.suspended }}</td><td class="hide-sm muted">{{ a.note or '' }}</td>
       <td class="act">{% if can('area', 'edit') %}
-        <button class="btn sm icon" data-open="area-dlg" data-edit='{{ {"id": a.id, "name": a.name, "note": a.note, "zone_id": a.zone_id or ""}|tojson }}' aria-label="Edit {{ a.name }}">{{ icon('edit') }}</button>
-        <form method="post" action="{{ url_for('area_delete', rid=a.id) }}" data-confirm="Remove {{ a.name }} from the list? Customers keep their address text.">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ a.name }}">{{ icon('trash') }}</button></form>{% endif %}</td>
+        <button class="btn sm icon" data-open="area-dlg" data-edit='{{ {"id": a.id, "name": a.name, "note": a.note, "zone_id": a.zone_id or ""}|tojson }}' aria-label="Edit {{ a.name }}" title="Edit {{ a.name }}">{{ icon('edit') }}</button>
+        <form method="post" action="{{ url_for('area_delete', rid=a.id) }}" data-confirm="Remove {{ a.name }} from the list? Customers keep their address text.">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ a.name }}" title="Delete {{ a.name }}">{{ icon('trash') }}</button></form>{% endif %}</td>
     </tr>{% endfor %}</tbody>
   </table></div>
   {% if unassigned %}<div class="panel-body muted">{{ '{:,}'.format(unassigned) }} customer{{ '' if unassigned == 1 else 's' }} have no area set.</div>{% endif %}
@@ -26,7 +26,7 @@
 <dialog class="modal" id="area-dlg" aria-labelledby="area-title">
   <form method="post" action="{{ url_for('area_save') }}">
     {{ csrf_input() }}<input type="hidden" name="id">
-    <div class="modal-head"><h2 id="area-title" data-title data-title-new="New area" data-title-edit="Edit area">New area</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="area-title" data-title data-title-new="New area" data-title-edit="Edit area">New area</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack">
       <div class="field"><label class="lbl" for="ar-name">Name</label><input id="ar-name" name="name" maxlength="64" required><div class="help">Renaming also renames it on every customer in this area.</div></div>
       <div class="field"><label class="lbl" for="ar-zone">Zone</label><select id="ar-zone" name="zone_id"><option value="">None</option>{% for z in zones %}<option value="{{ z.id }}">{{ z.name }}</option>{% endfor %}</select></div>

@@ -22,7 +22,7 @@
       <td class="act">
         {% if d.inline %}<a class="btn sm icon" href="{{ url_for('document_download', did=d.id, inline=1) }}" target="_blank" rel="noopener" aria-label="View {{ d.title }}" title="View">{{ icon('eye') }}</a>{% endif %}
         <a class="btn sm icon" href="{{ url_for('document_download', did=d.id) }}" aria-label="Download {{ d.title }}" title="Download">{{ icon('download') }}</a>
-        {% if can('documents', 'edit') and (me.role in ('admin', 'manager') or d.uploaded_by == me.username) %}<form method="post" action="{{ url_for('document_delete', did=d.id) }}" data-confirm="Delete {{ d.title }}?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ d.title }}">{{ icon('trash') }}</button></form>{% endif %}</td>
+        {% if can('documents', 'edit') and (me.role in ('admin', 'manager') or d.uploaded_by == me.username) %}<form method="post" action="{{ url_for('document_delete', did=d.id) }}" data-confirm="Delete {{ d.title }}?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ d.title }}" title="Delete {{ d.title }}">{{ icon('trash') }}</button></form>{% endif %}</td>
     </tr>{% endfor %}</tbody>
   </table></div>
   {{ pager(pg, keep, 'documents') }}
@@ -32,7 +32,7 @@
 <dialog class="modal" id="doc-dlg" aria-labelledby="doc-title">
   <form method="post" action="{{ url_for('document_upload') }}" enctype="multipart/form-data">
     {{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">
-    <div class="modal-head"><h2 id="doc-title">Upload document</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="doc-title">Upload document</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack">
       <div class="field"><label class="lbl" for="dc-file">File</label><input id="dc-file" name="file" type="file" required><div class="help">Allowed: {{ allowed }}. Up to 20 MB.</div></div>
       <div class="field"><label class="lbl" for="dc-title">Title</label><input id="dc-title" name="title" maxlength="200" placeholder="Same as the file name if empty"></div>

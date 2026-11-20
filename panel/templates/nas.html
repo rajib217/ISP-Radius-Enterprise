@@ -64,7 +64,7 @@
 <dialog class="modal" id="nas-dlg" aria-labelledby="nas-title">
   <form method="post" action="{{ url_for('nas_save') }}">
     {{ csrf_input() }}<input type="hidden" name="id">
-    <div class="modal-head"><h2 id="nas-title" data-title data-title-new="Add NAS" data-title-edit="Edit NAS">Add NAS</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="nas-title" data-title data-title-new="Add NAS" data-title-edit="Edit NAS">Add NAS</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body"><div class="grid-2">
       <div class="field"><label class="lbl" for="n-short">NAS Name</label><input id="n-short" name="shortname" maxlength="32" placeholder="Agrabad-POP" required></div>
       <div class="field"><label class="lbl" for="n-ip">NAS IP</label><input id="n-ip" name="nasname" placeholder="10.10.0.1" spellcheck="false" required><div class="help">The address the router sends from.</div></div>
@@ -84,7 +84,7 @@
 <dialog class="modal" id="grp-dlg" aria-labelledby="grp-title">
   <form method="post" action="{{ url_for('nas_group_save') }}">
     {{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">
-    <div class="modal-head"><h2 id="grp-title">Create NAS Group</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="grp-title">Create NAS Group</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack"><div class="field"><label class="lbl" for="g-name">Group name</label><input id="g-name" name="name" maxlength="64" required></div>
       <div class="field"><label class="lbl" for="g-note">Note</label><input id="g-note" name="note" maxlength="255"></div></div>
     <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Create</button></div>
@@ -92,7 +92,7 @@
 </dialog>
 <dialog class="modal wide" id="setup-dlg" aria-labelledby="setup-title">
   <form method="dialog">
-    <div class="modal-head"><h2 id="setup-title">MikroTik setup</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="setup-title">MikroTik setup</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack"><p>Paste this in the router's terminal. Then set <code>/ppp profile</code> local-address and turn on the PPPoE server for your interface.</p>
       <textarea name="script" rows="5" readonly spellcheck="false" class="mono"></textarea>
       <p class="muted">The router's source address must match NAS IP. Port 3799 lets this panel disconnect customers.</p></div>

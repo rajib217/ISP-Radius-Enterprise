@@ -2,7 +2,7 @@
 <dialog class="modal" id="onu-dlg" aria-labelledby="onu-title">
   <form method="post" action="{{ url_for('onu_save') }}">
     {{ csrf_input() }}<input type="hidden" name="id">
-    <div class="modal-head"><h2 id="onu-title" data-title data-title-new="Add ONU" data-title-edit="Edit ONU">Add ONU</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="onu-title" data-title data-title-new="Add ONU" data-title-edit="Edit ONU">Add ONU</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body"><div class="grid-2">
       <div class="field"><label class="lbl" for="o-name">Name</label><input id="o-name" name="name" maxlength="64"></div>
       <div class="field"><label class="lbl" for="o-olt">OLT</label><select id="o-olt" name="olt_id"><option value="">None</option>{% for o in olts %}<option value="{{ o.id }}">{{ o.name }}</option>{% endfor %}</select></div>

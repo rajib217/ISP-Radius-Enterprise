@@ -26,7 +26,7 @@
 <dialog class="modal" id="usr-dlg" aria-labelledby="usr-title">
   <form method="post" action="{{ url_for('my_user_save') }}" autocomplete="off">
     {{ csrf_input() }}<input type="hidden" name="id">
-    <div class="modal-head"><h2 id="usr-title" data-title data-title-new="Add {{ (child_label or 'user')|lower }}" data-title-edit="Edit user">Add {{ (child_label or 'user')|lower }}</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="usr-title" data-title data-title-new="Add {{ (child_label or 'user')|lower }}" data-title-edit="Edit user">Add {{ (child_label or 'user')|lower }}</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body"><div class="grid-2">
       <div class="field"><label class="lbl" for="u-name">Full Name <b class="req">*</b></label><input id="u-name" name="full_name" required maxlength="128"></div>
       <div class="field"><label class="lbl" for="u-user">Username <b class="req">*</b></label><input id="u-user" name="username" data-lock-on-edit required spellcheck="false"></div>
@@ -45,7 +45,7 @@
 <dialog class="modal" id="pw-dlg" aria-labelledby="pw-title">
   <form method="post" action="" id="pw-form" autocomplete="off">
     {{ csrf_input() }}<input type="hidden" name="action">
-    <div class="modal-head"><h2 id="pw-title">Change password</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="pw-title">Change password</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack"><div class="field"><label class="lbl">User</label><input name="pw_user" class="plainval" readonly></div>
       <div class="field"><label class="lbl" for="pw-new">New password <b class="req">*</b></label><input id="pw-new" name="password" type="password" minlength="8" required autocomplete="new-password"></div></div>
     <div class="modal-foot"><button type="button" class="btn" data-close>Close</button><button class="btn primary" type="submit">Save</button></div>
@@ -57,7 +57,7 @@
 <dialog class="modal" id="bal-dlg" aria-labelledby="bal-title">
   <form method="post" action="{{ url_for('user_transfer') }}">
     {{ csrf_input() }}<input type="hidden" name="user_id" value="">
-    <div class="modal-head"><h2 id="bal-title">Add Balance</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="bal-title">Add Balance</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack">
       <div class="field"><label class="lbl">User</label><input name="user_label" class="plainval" readonly value=""></div>
       <div class="field"><label class="lbl" for="bal-method">Payment Method <b class="req">*</b></label><select id="bal-method" name="method" required><option value="">Select A Method</option>{% for v, l in methods %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>

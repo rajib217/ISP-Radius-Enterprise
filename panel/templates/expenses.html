@@ -22,8 +22,8 @@
       <td class="who-cell">{{ e.paid_to or '—' }}{% if e.note %}<small>{{ e.note }}</small>{% endif %}</td>
       <td class="num"><b>{{ e.amount|money }}</b></td><td class="hide-sm">{{ e.method }}</td>
       <td class="act">{% if can('accounting', 'edit') %}
-        <button class="btn sm icon" data-open="exp-dlg" data-edit='{{ {"id": e.id, "spent_on": e.spent_on.isoformat(), "category": e.category, "amount": e.amount|string, "paid_to": e.paid_to, "method": e.method, "note": e.note}|tojson }}' aria-label="Edit expense {{ e.id }}">{{ icon('edit') }}</button>
-        <form method="post" action="{{ url_for('expense_delete', eid=e.id) }}" data-confirm="Delete this expense?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete expense {{ e.id }}">{{ icon('trash') }}</button></form>{% endif %}</td>
+        <button class="btn sm icon" data-open="exp-dlg" data-edit='{{ {"id": e.id, "spent_on": e.spent_on.isoformat(), "category": e.category, "amount": e.amount|string, "paid_to": e.paid_to, "method": e.method, "note": e.note}|tojson }}' aria-label="Edit expense {{ e.id }}" title="Edit expense {{ e.id }}">{{ icon('edit') }}</button>
+        <form method="post" action="{{ url_for('expense_delete', eid=e.id) }}" data-confirm="Delete this expense?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete expense {{ e.id }}" title="Delete expense {{ e.id }}">{{ icon('trash') }}</button></form>{% endif %}</td>
     </tr>{% endfor %}</tbody>
   </table></div>
   {{ pager(pg, keep, 'expenses') }}
@@ -40,7 +40,7 @@
 <dialog class="modal" id="exp-dlg" aria-labelledby="exp-title">
   <form method="post" action="{{ url_for('expense_save') }}">
     {{ csrf_input() }}<input type="hidden" name="id">
-    <div class="modal-head"><h2 id="exp-title" data-title data-title-new="Add expense" data-title-edit="Edit expense">Add expense</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="exp-title" data-title data-title-new="Add expense" data-title-edit="Edit expense">Add expense</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body">
       <div class="grid-2">
         <div class="field"><label class="lbl" for="ex-date">Date</label><input id="ex-date" name="spent_on" type="date" required></div>

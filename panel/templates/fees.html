@@ -16,8 +16,8 @@
       <td><span class="badge {{ 'ok' if r.active else 'bad' }}">{{ 'Active' if r.active else 'Off' }}</span></td>
       <td class="hide-sm muted">{{ r.note or '' }}</td>
       <td class="act">{% if can('plans', 'edit') %}
-        <button class="btn sm icon" data-open="fee-dlg" data-edit='{{ {"id": r.id, "name": r.name, "kind": r.kind, "mode": r.mode, "value": r.value|string, "active": r.active|string, "note": r.note}|tojson }}' aria-label="Edit {{ r.name }}">{{ icon('edit') }}</button>
-        <form method="post" action="{{ url_for('fee_delete', fid=r.id) }}" data-confirm="Delete {{ r.name }}?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ r.name }}">{{ icon('trash') }}</button></form>{% endif %}</td>
+        <button class="btn sm icon" data-open="fee-dlg" data-edit='{{ {"id": r.id, "name": r.name, "kind": r.kind, "mode": r.mode, "value": r.value|string, "active": r.active|string, "note": r.note}|tojson }}' aria-label="Edit {{ r.name }}" title="Edit {{ r.name }}">{{ icon('edit') }}</button>
+        <form method="post" action="{{ url_for('fee_delete', fid=r.id) }}" data-confirm="Delete {{ r.name }}?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ r.name }}" title="Delete {{ r.name }}">{{ icon('trash') }}</button></form>{% endif %}</td>
     </tr>{% endfor %}</tbody>
   </table></div>
   {% else %}<div class="empty"><h3>No taxes or fees</h3><p>Add VAT or a service charge and it is included when renewing.</p></div>{% endif %}
@@ -26,7 +26,7 @@
 <dialog class="modal" id="fee-dlg" aria-labelledby="fee-title">
   <form method="post" action="{{ url_for('fee_save') }}">
     {{ csrf_input() }}<input type="hidden" name="id">
-    <div class="modal-head"><h2 id="fee-title" data-title data-title-new="Add tax / fee" data-title-edit="Edit tax / fee">Add tax / fee</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="fee-title" data-title data-title-new="Add tax / fee" data-title-edit="Edit tax / fee">Add tax / fee</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack">
       <div class="field"><label class="lbl" for="fe-name">Name</label><input id="fe-name" name="name" maxlength="64" required placeholder="VAT"></div>
       <div class="field"><label class="lbl" for="fe-kind">Kind</label><select id="fe-kind" name="kind"><option value="tax">Tax</option><option value="fee">Extra fee</option></select></div>

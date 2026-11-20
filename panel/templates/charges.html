@@ -27,7 +27,7 @@
       <td class="hide-sm">{{ r.created_by }}</td>
       <td class="act">{% if can('subscribers', 'edit') %}
         {% if not r.paid %}<form class="inline" method="post" action="{{ url_for('charge_paid', cid=r.id) }}" data-confirm="Mark as paid and record the payment?">{{ csrf_input() }}<button class="btn sm" type="submit">{{ icon('check') }}Paid</button></form>{% endif %}
-        <form class="inline" method="post" action="{{ url_for('charge_delete', cid=r.id) }}" data-confirm="Delete this charge?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete charge">{{ icon('trash') }}</button></form>{% endif %}</td>
+        <form class="inline" method="post" action="{{ url_for('charge_delete', cid=r.id) }}" data-confirm="Delete this charge?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete charge" title="Delete charge">{{ icon('trash') }}</button></form>{% endif %}</td>
     </tr>{% endfor %}</tbody>
   </table></div>
   {{ pager(pg, keep, 'charges') }}
@@ -37,7 +37,7 @@
 <dialog class="modal" id="charge-dlg" aria-labelledby="ch-title">
   <form method="post" action="{{ url_for('charge_save') }}">
     {{ csrf_input() }}
-    <div class="modal-head"><h2 id="ch-title">Add charge</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="ch-title">Add charge</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack">
       <div class="field"><label class="lbl" for="ch-user">Username</label><input id="ch-user" name="username" value="{{ request.args.get('username', '') }}" required autocomplete="off"></div>
       <div class="field"><label class="lbl" for="ch-name">Charge</label><input id="ch-name" name="name" maxlength="64" list="ch-names" required placeholder="Installation"></div>

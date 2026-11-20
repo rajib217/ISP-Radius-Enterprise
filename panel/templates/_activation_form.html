@@ -1,7 +1,7 @@
 <form class="actform{{ ' act-in-modal' if act_modal }}" id="act-form" method="post" action="{{ url_for('subscriber_activate') }}" autocomplete="off"
       data-lookup="{{ url_for('subscriber_lookup') }}" data-charge="{{ url_for('subscriber_charge_info') }}" data-currency="{{ currency }}">
   {{ csrf_input() }}{% if back %}<input type="hidden" name="next" value="{{ back }}">{% elif act_modal %}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">{% endif %}<input type="hidden" name="print" value="1" id="act-print" disabled>
-  {% if act_modal %}<div class="modal-head"><h2 id="act-title">Activation</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+  {% if act_modal %}<div class="modal-head"><h2 id="act-title">Activation</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
   <div class="modal-body act-body">{% endif %}
 
   <section class="actcard">

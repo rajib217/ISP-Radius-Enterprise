@@ -32,7 +32,7 @@
       <form method="post" action="{{ url_for('logout') }}" class="nav-logout">{{ csrf_input() }}<button type="submit">{{ icon('logout') }}<span>Logout</span></button></form>
     </nav>
     <div class="side-foot">
-      <div class="links"><button type="button" data-theme-toggle aria-label="Switch light or dark theme">{{ icon('sun') }}<span>Theme</span></button></div>
+      <div class="links"><button type="button" data-theme-toggle aria-label="Switch light or dark theme" title="Switch light or dark theme">{{ icon('sun') }}<span>Theme</span></button></div>
       <a class="who" href="{{ url_for('profile') }}">
         <span class="av">{{ (me.full_name or me.username)[:1]|upper }}</span>
         <span><b>{{ me.full_name or me.username }}</b><small>{{ me.role|replace('c_', '', 1)|replace('_', ' ')|capitalize if me.role.startswith('c_') else me.role|capitalize }}</small></span>
@@ -42,7 +42,7 @@
 
   <div class="main">
     <header class="topbar">
-      <button class="btn icon burger" data-nav-toggle aria-label="Open menu">{{ icon('menu') }}</button>
+      <button class="btn icon burger" data-nav-toggle aria-label="Open menu" title="Open menu">{{ icon('menu') }}</button>
       <button type="button" class="btn icon side-toggle" data-side-toggle aria-label="Collapse or expand the menu" title="Collapse / expand menu ( [ )">{{ icon('chevrons-left') }}</button>
       <span class="topbar-title">{{ self.title() }}</span>
       {% if can('subscribers') %}<form class="search topbar-search" method="get" action="{{ url_for('subscribers') }}" role="search">
@@ -66,12 +66,18 @@
 
 {% if bottom_nav %}<nav class="bottom-nav" aria-label="Quick">
   {% for b in bottom_nav %}<a href="{{ b.url }}" class="{{ 'on' if b.active }}" {% if b.active %}aria-current="page"{% endif %}>{{ icon(b.icon) }}<span>{{ b.label }}</span></a>{% endfor %}
-  <button type="button" data-nav-toggle aria-label="Open full menu">{{ icon('menu') }}<span>More</span></button>
+  <button type="button" data-nav-toggle aria-label="Open full menu" title="Open full menu">{{ icon('menu') }}<span>More</span></button>
 </nav>{% endif %}
+
+<dialog class="modal confirm-dlg" id="confirm-dlg" aria-labelledby="confirm-title">
+  <div class="modal-head"><h2 id="confirm-title">Are you sure?</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
+  <div class="modal-body"><p data-confirm-msg></p></div>
+  <div class="modal-foot"><button type="button" class="btn" data-close data-confirm-cancel>Cancel</button><button type="button" class="btn danger" data-confirm-yes>Confirm</button></div>
+</dialog>
 
 <div class="toasts" role="status" aria-live="polite">
   {% for cat, msg in get_flashed_messages(with_categories=true) %}
-    <div class="toast {{ cat }}"><p>{{ msg }}</p><button type="button" aria-label="Dismiss">{{ icon('x') }}</button></div>
+    <div class="toast {{ cat }}"><p>{{ msg }}</p><button type="button" aria-label="Dismiss" title="Dismiss">{{ icon('x') }}</button></div>
   {% endfor %}
 </div>
 

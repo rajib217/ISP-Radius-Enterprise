@@ -12,8 +12,8 @@
     <tbody>{% for g in rows %}<tr>
       <td><b>{{ g.name }}</b></td><td class="num"><a href="{{ url_for('nas_list', group=g.id) }}">{{ g.routers }}</a></td><td class="num">{{ '{:,}'.format(g.online|int) }}</td><td class="hide-sm muted">{{ g.note or '' }}</td>
       <td class="act">{% if can('network', 'edit') %}
-        <button class="btn sm icon" data-open="grp-dlg" data-edit='{{ {"id": g.id, "name": g.name, "note": g.note}|tojson }}' aria-label="Edit {{ g.name }}">{{ icon('edit') }}</button>
-        <form method="post" action="{{ url_for('nas_group_delete', gid=g.id) }}" data-confirm="Delete group {{ g.name }}? Its routers stay, ungrouped.">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ g.name }}">{{ icon('trash') }}</button></form>{% endif %}</td>
+        <button class="btn sm icon" data-open="grp-dlg" data-edit='{{ {"id": g.id, "name": g.name, "note": g.note}|tojson }}' aria-label="Edit {{ g.name }}" title="Edit {{ g.name }}">{{ icon('edit') }}</button>
+        <form method="post" action="{{ url_for('nas_group_delete', gid=g.id) }}" data-confirm="Delete group {{ g.name }}? Its routers stay, ungrouped.">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ g.name }}" title="Delete {{ g.name }}">{{ icon('trash') }}</button></form>{% endif %}</td>
     </tr>{% endfor %}</tbody></table></div>
   {% else %}<div class="empty"><h3>No NAS groups</h3><p>Create one, for example by city or tower.</p></div>{% endif %}
 </section>
@@ -21,7 +21,7 @@
 <dialog class="modal" id="grp-dlg" aria-labelledby="grp-title">
   <form method="post" action="{{ url_for('nas_group_save') }}">
     {{ csrf_input() }}<input type="hidden" name="id">
-    <div class="modal-head"><h2 id="grp-title" data-title data-title-new="Create NAS Group" data-title-edit="Edit NAS Group">Create NAS Group</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="grp-title" data-title data-title-new="Create NAS Group" data-title-edit="Edit NAS Group">Create NAS Group</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack"><div class="field"><label class="lbl" for="g-name">Group name</label><input id="g-name" name="name" maxlength="64" required></div>
       <div class="field"><label class="lbl" for="g-note">Note</label><input id="g-note" name="note" maxlength="255"></div></div>
     <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save</button></div>

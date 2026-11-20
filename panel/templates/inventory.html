@@ -26,8 +26,8 @@
       <td class="act"><a class="btn sm icon" href="{{ url_for('inventory_moves', item=i.id) }}" aria-label="History of {{ i.name }}" title="History">{{ icon('file') }}</a>
         {% if can('inventory', 'edit') %}
         <button class="btn sm icon" data-open="move-dlg" data-new data-fill='{{ {"item_id": i.id}|tojson }}' aria-label="Move stock of {{ i.name }}" title="Move stock">{{ icon('refresh') }}</button>
-        <button class="btn sm icon" data-open="item-dlg" data-edit='{{ {"id": i.id, "name": i.name, "category": i.category, "sku": i.sku, "unit": i.unit, "min_qty": i.min_qty, "unit_cost": i.unit_cost|string, "location": i.location, "note": i.note}|tojson }}' aria-label="Edit {{ i.name }}">{{ icon('edit') }}</button>
-        {% if me.role == 'admin' %}<form method="post" action="{{ url_for('inventory_delete', iid=i.id) }}" data-confirm="Delete {{ i.name }} and its history?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ i.name }}">{{ icon('trash') }}</button></form>{% endif %}
+        <button class="btn sm icon" data-open="item-dlg" data-edit='{{ {"id": i.id, "name": i.name, "category": i.category, "sku": i.sku, "unit": i.unit, "min_qty": i.min_qty, "unit_cost": i.unit_cost|string, "location": i.location, "note": i.note}|tojson }}' aria-label="Edit {{ i.name }}" title="Edit {{ i.name }}">{{ icon('edit') }}</button>
+        {% if me.role == 'admin' %}<form method="post" action="{{ url_for('inventory_delete', iid=i.id) }}" data-confirm="Delete {{ i.name }} and its history?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ i.name }}" title="Delete {{ i.name }}">{{ icon('trash') }}</button></form>{% endif %}
         {% endif %}</td>
     </tr>{% endfor %}</tbody>
   </table></div>
@@ -39,7 +39,7 @@
 <dialog class="modal" id="item-dlg" aria-labelledby="item-title">
   <form method="post" action="{{ url_for('inventory_save') }}">
     {{ csrf_input() }}<input type="hidden" name="id">
-    <div class="modal-head"><h2 id="item-title" data-title data-title-new="New item" data-title-edit="Edit item">New item</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="item-title" data-title data-title-new="New item" data-title-edit="Edit item">New item</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body"><div class="grid-2">
       <div class="field span-2"><label class="lbl" for="it-name">Name</label><input id="it-name" name="name" maxlength="128" required></div>
       <div class="field"><label class="lbl" for="it-cat">Category</label><input id="it-cat" name="category" list="it-cats" maxlength="64" value="Other"><datalist id="it-cats">{% for c in cats %}<option value="{{ c }}">{% endfor %}</datalist></div>
@@ -57,7 +57,7 @@
 <dialog class="modal" id="move-dlg" aria-labelledby="move-title">
   <form method="post" action="{{ url_for('inventory_move') }}">
     {{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">
-    <div class="modal-head"><h2 id="move-title">Move stock</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="move-title">Move stock</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body"><div class="grid-2">
       <div class="field span-2"><label class="lbl" for="mv-item">Item</label><select id="mv-item" name="item_id" required>{% for i in rows %}<option value="{{ i.id }}">{{ i.name }} ({{ i.qty }} {{ i.unit }})</option>{% endfor %}</select><div class="help">Only items on this page are listed. Use the search first to find another item.</div></div>
       <div class="field"><label class="lbl" for="mv-kind">What happened</label><select id="mv-kind" name="kind">{% for k, t in kinds %}<option value="{{ k }}">{{ t }}</option>{% endfor %}</select></div>

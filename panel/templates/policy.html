@@ -47,7 +47,7 @@
 <dialog class="modal wide" id="policy-dlg" aria-labelledby="policy-title">
   <form method="post" action="{{ url_for('policy_save') }}">
     {{ csrf_input() }}<input type="hidden" name="orig">
-    <div class="modal-head"><h2 id="policy-title" data-title>Add policy</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="policy-title" data-title>Add policy</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack">
       <div class="field"><label class="lbl" for="pol-group">Group Name</label><input id="pol-group" name="group" maxlength="64" required placeholder="e.g. suspended"></div>
       <div id="policy-rows" class="stack"></div>

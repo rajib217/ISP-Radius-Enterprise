@@ -19,7 +19,7 @@
 <dialog class="modal" id="alloc-dlg" aria-labelledby="alloc-title">
   <form method="post" action="{{ url_for('allocation_save') }}">
     {{ csrf_input() }}<input type="hidden" name="user_id">
-    <div class="modal-head"><h2 id="alloc-title">Allocate packages</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="alloc-title">Allocate packages</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack">
       <div class="field"><label class="lbl" for="al-plans">Packages (hold Ctrl or Cmd to pick several)</label>
         <select id="al-plans" name="plans" multiple size="10">{% for p in plans %}<option value="{{ p.id }}">{{ p.label }} - {{ p.price }}</option>{% endfor %}</select>

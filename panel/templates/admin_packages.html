@@ -66,7 +66,7 @@ items.forEach(function(i){i.addEventListener("click",function(){pick(i.dataset.i
 document.getElementById("apForm").addEventListener("input",refresh);
 document.getElementById("apSearch").addEventListener("input",refresh);document.getElementById("apFilter").addEventListener("change",refresh);
 document.getElementById("apReset").addEventListener("click",function(){edits.forEach(function(e){var v=init[e.dataset.edit].split("|");q("input[data-f]",e).forEach(function(i,k){i.value=v[k];});});refresh();});
-document.getElementById("apForm").addEventListener("submit",function(ev){if(edits.some(function(e){return state(e)==="attn";})){ev.preventDefault();var bad=edits.filter(function(e){return state(e)==="attn";})[0];pick(bad.dataset.edit);alert("Fix the packages marked Needs attention first (the price cannot be below the minimum).");}});
+document.getElementById("apForm").addEventListener("submit",function(ev){if(edits.some(function(e){return state(e)==="attn";})){ev.preventDefault();var bad=edits.filter(function(e){return state(e)==="attn";})[0];pick(bad.dataset.edit);(window.panelAlert||window.alert)("Fix the packages marked Needs attention first (the price cannot be below the minimum).");}});
 if(items.length)pick(items[0].dataset.id);refresh();
 })();
 </script>{% endblock %}

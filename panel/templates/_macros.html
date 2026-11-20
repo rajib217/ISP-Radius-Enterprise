@@ -1,8 +1,8 @@
 {% macro icon(name) %}<svg class="i" aria-hidden="true"><use href="#i-{{ name }}"/></svg>{% endmacro %}
 
 {% macro state_badge(state) -%}
-  {%- if state == 'suspended' %}<span class="badge bad">Suspended</span>
-  {%- elif state == 'expired' %}<span class="badge warn">Expired</span>
+  {%- if state == 'suspended' %}<span class="badge mute">Suspended</span>
+  {%- elif state == 'expired' %}<span class="badge bad">Expired</span>
   {%- else %}<span class="badge ok">Active</span>{% endif -%}
 {%- endmacro %}
 

@@ -17,7 +17,7 @@
 <dialog class="modal" id="brand-dlg" aria-labelledby="brand-title">
   <form method="post" action="" id="brand-form" enctype="multipart/form-data">
     {{ csrf_input() }}
-    <div class="modal-head"><h2 id="brand-title">Upload</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="brand-title">Upload</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body">
       <div class="field"><label class="lbl" for="brand-file">Image (PNG, JPG, GIF, WebP or ICO, up to 1 MB)</label><input id="brand-file" type="file" name="file" accept="image/png,image/jpeg,image/gif,image/webp,image/x-icon"></div>
       <div id="brand-now" class="help"></div>

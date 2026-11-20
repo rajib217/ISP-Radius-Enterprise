@@ -1,7 +1,7 @@
 <dialog class="modal" id="admin-dlg" aria-labelledby="admin-title">
   <form method="post" action="{{ url_for('admin_save') }}" autocomplete="off">
     {{ csrf_input() }}<input type="hidden" name="id"><input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">
-    <div class="modal-head"><h2 id="admin-title" data-title data-title-new="Add user" data-title-edit="Edit user">Add user</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="admin-title" data-title data-title-new="Add user" data-title-edit="Edit user">Add user</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body">
       <div class="notice-box">{{ icon('alert') }}<span>Sub-resellers and retailers should belong to a reseller: pick the reseller under "Belongs to" below.</span></div>
       <div class="grid-3 togglerow">

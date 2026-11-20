@@ -73,7 +73,7 @@
     <div class="kvc-body">
       <div class="who"><span class="pavatar sm ph">{{ icon('user') }}</span><div><b>{{ sub.full_name or sub.username }}</b><small>{{ sub.username }}</small></div></div>
       <dl><dt>Phone</dt><dd>{{ sub.phone or '—' }}</dd><dt>Serial</dt><dd>{{ sub.serial or '—' }}</dd><dt>Identity (NID)</dt><dd>{{ sub.identity or '—' }}</dd><dt>Email</dt><dd>{{ sub.email or '—' }}</dd>
-      <dt>Password</dt><dd><span class="secret" id="pw" data-value="{{ password }}" data-shown="0">••••••••</span> <button class="btn sm icon" type="button" data-reveal="pw" aria-label="Show password">{{ icon('eye') }}</button> <button class="btn sm icon" type="button" data-copy="pw" aria-label="Copy password">{{ icon('copy') }}</button></dd></dl>
+      <dt>Password</dt><dd><span class="secret" id="pw" data-value="{{ password }}" data-shown="0">••••••••</span> <button class="btn sm icon" type="button" data-reveal="pw" aria-label="Show password" title="Show password">{{ icon('eye') }}</button> <button class="btn sm icon" type="button" data-copy="pw" aria-label="Copy password">{{ icon('copy') }}</button></dd></dl>
     </div></section>
   <section class="panel kvc"><div class="panel-head"><h2>{{ icon('briefcase') }}Company Information</h2></div>
     <div class="kvc-body"><dl><dt>ISP</dt><dd>{{ x.isp_name }}</dd><dt>Area</dt><dd>{{ sub.area or '—' }}</dd><dt>Salesperson</dt><dd>{{ sub.created_by or '—' }}</dd><dt>Created At</dt><dd>{{ sub.created_at|dt }}</dd></dl></div></section>
@@ -214,7 +214,7 @@
 <dialog class="modal" id="renew-dlg" aria-labelledby="renew-title">
   <form method="post" action="{{ url_for('subscriber_renew', sid=sub.id) }}">
     {{ csrf_input() }}
-    <div class="modal-head"><h2 id="renew-title">Renew {{ sub.username }}</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="renew-title">Renew {{ sub.username }}</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body">
       <p class="muted">The package length is added to the current expiry, or to today if it has already passed (months and years are real calendar months and years). Change the days to add a custom period. The account is activated. The amount includes active taxes and extra fees.</p>
       <div class="grid-2">
@@ -234,7 +234,7 @@
 <dialog class="modal" id="grace-dlg" aria-labelledby="gr-title">
   <form method="post" action="{{ url_for('subscriber_grace', sid=sub.id) }}">
     {{ csrf_input() }}
-    <div class="modal-head"><h2 id="gr-title">Grace period</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="gr-title">Grace period</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack">
       <div class="field"><label class="lbl" for="gr-days">Extra days from today</label><input id="gr-days" name="days" type="number" min="0" max="90" value="{{ app_cfg.grace_days if app_cfg.grace_on == '1' else 3 }}" required><div class="help">The customer can keep logging in after the expiry date until then. Enter 0 to remove it.</div></div>
     </div>
@@ -244,7 +244,7 @@
 <dialog class="modal" id="mac-dlg" aria-labelledby="mac-title">
   <form method="post" action="{{ url_for('subscriber_mac', sid=sub.id) }}">
     {{ csrf_input() }}
-    <div class="modal-head"><h2 id="mac-title">MAC binding</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="mac-title">MAC binding</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack">
       <div class="field"><label class="lbl" for="mac-v">MAC address</label><input id="mac-v" name="mac" placeholder="AA:BB:CC:DD:EE:FF" maxlength="17"><div class="help">Login is refused from any other device. Leave empty to remove the binding. {% if sessions and sessions[0].callingstationid %}Current session: <span class="mono">{{ sessions[0].callingstationid }}</span>{% endif %}</div></div>
     </div>
@@ -258,17 +258,17 @@
 
 {% if edit %}
 <dialog class="modal" id="migrate-dlg" aria-labelledby="mg-title"><form method="post" action="{{ url_for('subscriber_migrate', sid=sub.id) }}">{{ csrf_input() }}
-  <div class="modal-head"><h2 id="mg-title">Migrate to another package</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+  <div class="modal-head"><h2 id="mg-title">Migrate to another package</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
   <div class="modal-body"><div class="field"><label class="lbl" for="mg-plan">New package</label><select id="mg-plan" name="plan_id">{% for p in plans %}<option value="{{ p.id }}" {{ 'selected' if p.id == sub.plan_id }}>{{ p.label }} ({{ currency }} {{ p.price|money }})</option>{% endfor %}</select><div class="help">The expiry date stays the same. The new speed applies at the customer's next login.</div></div></div>
   <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Migrate</button></div></form></dialog>
 <dialog class="modal" id="balance-dlg" aria-labelledby="bl-title"><form method="post" action="{{ url_for('subscriber_balance', sid=sub.id) }}">{{ csrf_input() }}
-  <div class="modal-head"><h2 id="bl-title">Add balance</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+  <div class="modal-head"><h2 id="bl-title">Add balance</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
   <div class="modal-body stack"><p class="muted">Current balance: {{ currency }} {{ '%.2f' % sub.balance|float }}</p>
     <div class="field"><label class="lbl" for="bl-amt">Amount ({{ currency }})</label><input id="bl-amt" name="amount" type="number" step="0.01" required><div class="help">Use a minus sign to take money off.{% if me.role in ('reseller', 'subreseller', 'retailer') %} The amount is taken from your own balance ({{ currency }} {{ '%.2f' % me.balance|float }}); taking money off returns it to you.{% endif %}</div></div>
     <div class="field"><label class="lbl" for="bl-note">Note</label><input id="bl-note" name="note" maxlength="255"></div></div>
   <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save</button></div></form></dialog>
 <dialog class="modal" id="svc-dlg" aria-labelledby="sv-title"><form method="post" action="{{ url_for('subscriber_settings', sid=sub.id) }}">{{ csrf_input() }}
-  <div class="modal-head"><h2 id="sv-title">Service settings</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+  <div class="modal-head"><h2 id="sv-title">Service settings</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
   <div class="modal-body stack">
     <label class="mod-row"><span>SMS messages<br><small class="muted">Automatic SMS to this customer</small></span><span class="switch"><input type="checkbox" name="sms_on" {{ 'checked' if sub.sms_on }}{{ ' disabled' if not can_fn('svc.sms') }}><i></i></span></label>
     <label class="mod-row"><span>Email messages<br><small class="muted">Automatic email to this customer</small></span><span class="switch"><input type="checkbox" name="email_on" {{ 'checked' if sub.email_on }}{{ ' disabled' if not can_fn('svc.email') }}><i></i></span></label>
@@ -276,17 +276,17 @@
     <label class="mod-row"><span>Auto renew<br><small class="muted">Renew from the balance when the package expires</small></span><span class="switch"><input type="checkbox" name="auto_renew" {{ 'checked' if sub.auto_renew }}{{ ' disabled' if not can_fn('svc.skip_renew') }}><i></i></span></label></div>
   <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save</button></div></form></dialog>
 <dialog class="modal" id="pw-dlg" aria-labelledby="pw-title"><form method="post" action="{{ url_for('subscriber_password', sid=sub.id) }}">{{ csrf_input() }}
-  <div class="modal-head"><h2 id="pw-title">Change password</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+  <div class="modal-head"><h2 id="pw-title">Change password</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
   <div class="modal-body"><div class="field"><label class="lbl" for="pw-new">New password</label><input id="pw-new" name="password" maxlength="64" autocomplete="off" spellcheck="false" required><div class="help">4 to 64 characters, no spaces. The customer's router must use the new one.</div></div></div>
   <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Change</button></div></form></dialog>
 <dialog class="modal" id="invoice-dlg" aria-labelledby="iv-title"><form method="post" action="{{ url_for('subscriber_invoice', sid=sub.id) }}">{{ csrf_input() }}
-  <div class="modal-head"><h2 id="iv-title">New invoice</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+  <div class="modal-head"><h2 id="iv-title">New invoice</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
   <div class="modal-body stack"><div class="field"><label class="lbl" for="iv-name">Name</label><input id="iv-name" name="name" maxlength="64" placeholder="Router, installation..." required></div>
     <div class="field"><label class="lbl" for="iv-amt">Amount ({{ currency }})</label><input id="iv-amt" name="amount" type="number" min="0.01" step="0.01" required></div>
     <div class="field"><label class="lbl" for="iv-note">Note</label><input id="iv-note" name="note" maxlength="255"></div></div>
   <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Add invoice</button></div></form></dialog>
 <dialog class="modal" id="photo-dlg" aria-labelledby="ph-title"><form method="post" action="{{ url_for('subscriber_photo_save', sid=sub.id) }}" enctype="multipart/form-data">{{ csrf_input() }}
-  <div class="modal-head"><h2 id="ph-title">Photo</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+  <div class="modal-head"><h2 id="ph-title">Photo</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
   <div class="modal-body"><div class="field"><label class="lbl" for="ph-file">PNG or JPG, up to 2 MB</label><input id="ph-file" type="file" name="file" accept="image/png,image/jpeg"></div></div>
   <div class="modal-foot">{% if x.photo %}<button class="btn danger" type="submit" name="remove" value="1">Remove photo</button>{% endif %}<span style="flex:1"></span><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Upload</button></div></form></dialog>
 {% endif %}

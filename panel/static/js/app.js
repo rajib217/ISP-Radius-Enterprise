@@ -83,10 +83,53 @@
     $$("[data-close]", d).forEach(function (b) { b.addEventListener("click", function () { d.close(); }); });
   });
 
-  /* confirm before destructive actions */
+  /* confirm before destructive actions: styled dialog, native confirm only as fallback */
+  var confirmDlg = document.getElementById("confirm-dlg"), pendingSubmit = null;
+  function openConfirm(msg, alertOnly) {
+    if (!confirmDlg) return false;
+    $("[data-confirm-msg]", confirmDlg).textContent = msg;
+    var cancel = $("[data-confirm-cancel]", confirmDlg), yes = $("[data-confirm-yes]", confirmDlg);
+    if (cancel) cancel.hidden = !!alertOnly;
+    if (yes) yes.textContent = alertOnly ? "OK" : "Confirm";
+    confirmDlg.showModal();
+    return true;
+  }
+  window.panelAlert = function (msg) { pendingSubmit = null; if (!openConfirm(msg, true)) window.alert(msg); };
+  /* Cancel, the X and Esc all close the dialog: forget the form, so a later "OK" can never submit it */
+  if (confirmDlg) confirmDlg.addEventListener("close", function () { pendingSubmit = null; });
+  if (confirmDlg) $("[data-confirm-yes]", confirmDlg).addEventListener("click", function () {
+    var p = pendingSubmit;
+    confirmDlg.close();
+    if (p) {
+      p.form.dataset.confirmed = "1";
+      if (p.form.requestSubmit) p.form.requestSubmit(p.submitter || undefined); else p.form.submit();
+    }
+  });
   document.addEventListener("submit", function (e) {
     var msg = e.target.dataset.confirm || (e.submitter && e.submitter.dataset.confirm);
-    if (msg && !window.confirm(msg)) e.preventDefault();
+    if (!msg || e.target.dataset.confirmed) { delete e.target.dataset.confirmed; return; }
+    e.preventDefault();
+    var opened = openConfirm(msg, false);
+    if (opened) pendingSubmit = { form: e.target, submitter: e.submitter };
+    else if (window.confirm(msg)) {
+      e.target.dataset.confirmed = "1";
+      if (e.target.requestSubmit) e.target.requestSubmit(e.submitter || undefined); else e.target.submit();
+    }
+  });
+
+  /* busy state: stop double-submits (Pay, Renew, Activate...) */
+  document.addEventListener("submit", function (e) {
+    if (e.defaultPrevented) return;
+    var b = e.submitter;
+    if (!b || b.disabled) return;
+    b.classList.add("busy"); b.setAttribute("aria-busy", "true");
+    /* disable only after the browser has read the form: a button disabled during "submit" drops its own
+       name=value (e.g. "Remove photo" would quietly become "Save"); .busy already blocks a second click */
+    setTimeout(function () { b.disabled = true; }, 0);
+    setTimeout(function () { b.classList.remove("busy"); b.disabled = false; b.removeAttribute("aria-busy"); }, 4000);
+  });
+  window.addEventListener("pageshow", function () {
+    $$("button.busy").forEach(function (b) { b.classList.remove("busy"); b.disabled = false; b.removeAttribute("aria-busy"); });
   });
 
   /* bulk selection */

@@ -1646,3 +1646,20 @@ html.side-off .side-toggle .i { transform: rotate(180deg); }
 @media (max-width: 1023px) { .side-toggle { display: none; } }
 
 @media print { .bottom-nav, .live-pill, .topbar-search, .topbar-theme, .who-chip { display: none !important; } }
+
+/* ---- UI/UX quick wins: confirm dialog, busy buttons, login ---- */
+dialog.modal.confirm-dlg { width: min(420px, calc(100vw - 24px)); }
+.btn.busy { pointer-events: none; opacity: .75; }
+.btn.busy::after { content: ""; width: 14px; height: 14px; margin-left: 8px; border-radius: 50%; border: 2px solid currentColor; border-top-color: transparent; animation: btn-spin .7s linear infinite; flex: none; }
+@keyframes btn-spin { to { transform: rotate(360deg); } }
+.pw-wrap { position: relative; }
+.pw-wrap input { padding-right: 44px; }
+.pw-eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; display: grid; place-items: center; background: none; border: 0; border-radius: var(--r-sm); color: var(--text-muted); cursor: pointer; }
+.pw-eye:hover { color: var(--text); background: var(--surface-2); }
+.login-theme { position: fixed; top: 14px; right: 14px; z-index: 5; }
+.login-art .rings .ra { stroke: var(--accent); }
+.login-art .rings .rb { stroke: var(--online); }
+.login-art .rings .rc { fill: var(--accent); }
+.login-mark .ring-outer { stroke: var(--accent); }
+.login-mark .ring-inner { stroke: var(--online); }
+.login-mark .ring-dot { fill: var(--accent); }

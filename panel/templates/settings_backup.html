@@ -100,7 +100,7 @@
       <td class="act">
         <button class="btn sm" type="button" data-open="rs-dlg" data-restore="{{ f.name }}" {{ 'disabled' if running }}>{{ icon('refresh') }}Restore</button>
         <a class="btn sm icon" href="{{ url_for('backup_download', name=f.name) }}" aria-label="Download {{ f.name }}" title="Download">{{ icon('download') }}</a>
-        <form method="post" action="{{ url_for('backup_delete', name=f.name) }}" data-confirm="Delete {{ f.name }} from this server?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ f.name }}" {{ 'disabled' if running }}>{{ icon('trash') }}</button></form>
+        <form method="post" action="{{ url_for('backup_delete', name=f.name) }}" data-confirm="Delete {{ f.name }} from this server?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ f.name }}" title="Delete {{ f.name }}" {{ 'disabled' if running }}>{{ icon('trash') }}</button></form>
       </td></tr>{% endfor %}</tbody>
   </table></div>
   {% else %}<div class="empty"><h3>No backups yet</h3><p>Press Back up now, or upload a backup file you downloaded earlier.</p></div>{% endif %}
@@ -109,7 +109,7 @@
 <dialog class="modal" id="up-dlg" aria-labelledby="up-title">
   <form method="post" action="{{ url_for('backup_upload') }}" enctype="multipart/form-data">
     {{ csrf_input() }}
-    <div class="modal-head"><h2 id="up-title">Upload a backup file</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="up-title">Upload a backup file</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack">
       <div class="field"><label class="lbl" for="up-file">Backup file (.sql.gz)</label><input id="up-file" name="file" type="file" accept=".gz,.sql.gz" required><div class="help">Only a file made by this panel. It is checked, then added to the list; nothing changes until you press Restore. For files over about 1 GB, copy them into the folder above with scp instead.</div></div>
     </div>
@@ -120,7 +120,7 @@
 <dialog class="modal" id="rs-dlg" aria-labelledby="rs-title">
   <form method="post" action="" id="rs-form">
     {{ csrf_input() }}
-    <div class="modal-head"><h2 id="rs-title">Restore this backup</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="rs-title">Restore this backup</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack">
       <div class="note-box" style="align-items:flex-start">{{ icon('alert') }}<span>This <b>replaces everything</b> in the database with the contents of <b class="mono" id="rs-name" style="word-break:break-all"></b>: subscribers, payments, packages, RADIUS users and settings. Anything entered after that backup is lost. The current data is saved first as a "Before a restore" backup. Customers cannot log in for the minute or two it takes, so do it at a quiet time.</span></div>
       <div class="field"><label class="lbl" for="rs-conf">Type RESTORE to confirm</label><input id="rs-conf" name="confirm" autocomplete="off" required></div>

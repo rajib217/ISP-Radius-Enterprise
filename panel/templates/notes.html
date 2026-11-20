@@ -26,7 +26,7 @@
     <div class="row-gap">
       <button class="btn sm" data-open="note-dlg" data-edit='{{ {"id": n.id, "title": n.title, "body": n.body, "color": n.color, "shared": 1 if n.shared else 0, "username": n.sub_username or ""}|tojson }}'>{{ icon('edit') }}Edit</button>
       <form method="post" action="{{ url_for('note_pin', nid=n.id) }}">{{ csrf_input() }}<button class="btn sm" type="submit">{{ 'Unpin' if n.pinned else 'Pin' }}</button></form>
-      <form method="post" action="{{ url_for('note_delete', nid=n.id) }}" data-confirm="Delete this note?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete note">{{ icon('trash') }}</button></form>
+      <form method="post" action="{{ url_for('note_delete', nid=n.id) }}" data-confirm="Delete this note?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete note" title="Delete note">{{ icon('trash') }}</button></form>
     </div>
     {% endif %}
   </article>
@@ -38,7 +38,7 @@
 <dialog class="modal" id="note-dlg" aria-labelledby="note-title">
   <form method="post" action="{{ url_for('note_save') }}">
     {{ csrf_input() }}<input type="hidden" name="id">
-    <div class="modal-head"><h2 id="note-title" data-title data-title-new="New note" data-title-edit="Edit note">New note</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="note-title" data-title data-title-new="New note" data-title-edit="Edit note">New note</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack">
       <div class="field"><label class="lbl" for="nt-title">Title</label><input id="nt-title" name="title" maxlength="120"></div>
       <div class="field"><label class="lbl" for="nt-body">Note</label><textarea id="nt-body" name="body" rows="5" maxlength="5000"></textarea></div>

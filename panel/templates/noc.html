@@ -54,7 +54,7 @@
 <dialog class="modal drawer" id="noc-set" aria-labelledby="noc-set-title">
   <form method="post" action="{{ url_for('noc_settings') }}">
     {{ csrf_input() }}
-    <div class="modal-head"><h2 id="noc-set-title">NOC settings</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="noc-set-title">NOC settings</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack">
       <div class="field"><label class="lbl" for="ns-c">Default SNMP community</label>
         <input id="ns-c" name="noc_snmp_community" class="mono" maxlength="64" value="{{ s.noc_snmp_community }}" autocomplete="off" spellcheck="false">

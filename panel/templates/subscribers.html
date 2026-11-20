@@ -35,7 +35,7 @@
   {% endif %}
   <button class="btn tb" type="button" data-open="filter-dlg">{{ icon('filter') }}Filter</button>
   <button class="btn tb" type="button" id="compactBtn" aria-pressed="false">{{ icon('table') }}Compact View</button>
-  <button class="btn sm icon info" type="button" data-open="legend-dlg" aria-label="What do the lists mean?">{{ icon('info') }}</button>
+  <button class="btn sm icon info" type="button" data-open="legend-dlg" aria-label="What do the lists mean?" title="What do the lists mean?">{{ icon('info') }}</button>
 </div>
 
 <section class="panel">
@@ -179,7 +179,7 @@
 <dialog class="modal" id="filter-dlg" aria-labelledby="filter-title">
   <form method="get" action="{{ url_for('subscribers') }}">
     <input type="hidden" name="per" value="{{ pg.per }}">
-    <div class="modal-head"><h2 id="filter-title">Filter</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="filter-title">Filter</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack">
       <div class="field"><label class="lbl" for="f-status">List</label>
         <select id="f-status" name="status">{% for k, l in labels.items() if k != 'expiring' %}<option value="{{ k }}" {{ 'selected' if status == k }}>{{ l }}</option>{% endfor %}</select></div>
@@ -217,7 +217,7 @@
   <form method="post" action="{{ url_for('subscribers_bulk') }}" id="massForm" autocomplete="off">
     {{ csrf_input() }}<input type="hidden" name="action" value="settings"><input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">
     <div id="massIdsBox"></div>
-    <div class="modal-head"><h2 id="mass-title">Mass Service Settings</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="mass-title">Mass Service Settings</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body mass-body">
       <div class="field"><label class="lbl">Selected Subscribers</label><input id="massIds" readonly></div>
       <div class="grid2">
@@ -263,7 +263,7 @@
 </dialog>
 
 <dialog class="modal" id="legend-dlg" aria-labelledby="leg-title">
-  <div class="modal-head"><h2 id="leg-title">What each list shows</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+  <div class="modal-head"><h2 id="leg-title">What each list shows</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
   <div class="modal-body">
     <dl class="facts">
       <dt>Online</dt><dd>Has a live session now.</dd>
@@ -288,7 +288,7 @@
 <dialog class="modal drawer" id="add-drawer" aria-labelledby="add-title">
   <form method="post" action="{{ url_for('subscriber_new') }}" autocomplete="off">
     {{ csrf_input() }}<input type="hidden" name="status" value="active">
-    <div class="modal-head"><h2 id="add-title">Add subscriber</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="add-title">Add subscriber</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack">
       <div class="grid2">
         <div class="field"><label class="lbl" for="d-user">PPPoE username <span class="req">*</span></label>
@@ -319,7 +319,7 @@
 <dialog class="modal drawer" id="renew-drawer" aria-labelledby="renew-title">
   <form method="post" action="" autocomplete="off">
     {{ csrf_input() }}<input type="hidden" name="next" value="">
-    <div class="modal-head"><h2 id="renew-title">Renew <span class="mono" data-label-slot></span></h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="renew-title">Renew <span class="mono" data-label-slot></span></h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack">
       <p class="help">The days are added to the current expiry, or to today if it has passed, and the account is activated.</p>
       <div class="grid2">

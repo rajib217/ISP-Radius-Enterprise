@@ -27,8 +27,8 @@
       <td>{% if d.last_status == 'up' %}<span class="dot up"></span>Reachable{% elif d.last_status == 'down' %}<span class="dot down"></span>Not answering{% else %}<span class="dot"></span>Not checked{% endif %}{% if d.last_checked %}<small class="muted" style="display:block">{{ d.last_checked|ago }}</small>{% endif %}</td>
       <td class="act">{% if can('network', 'edit') %}
         {% if d.ip %}<form method="post" action="{{ url_for('device_ping', did=d.id) }}">{{ csrf_input() }}<button class="btn sm" type="submit">Check</button></form>{% endif %}
-        <button class="btn sm icon" data-open="dev-dlg" data-edit='{{ {"id": d.id, "name": d.name, "kind": d.kind, "ip": d.ip, "location": d.location, "zone_id": d.zone_id or "", "notes": d.notes, "nas_id": d.nas_id or ""}|tojson }}' aria-label="Edit {{ d.name }}">{{ icon('edit') }}</button>
-        <form method="post" action="{{ url_for('device_delete', did=d.id) }}" data-confirm="Delete {{ d.name }}?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ d.name }}">{{ icon('trash') }}</button></form>{% endif %}</td>
+        <button class="btn sm icon" data-open="dev-dlg" data-edit='{{ {"id": d.id, "name": d.name, "kind": d.kind, "ip": d.ip, "location": d.location, "zone_id": d.zone_id or "", "notes": d.notes, "nas_id": d.nas_id or ""}|tojson }}' aria-label="Edit {{ d.name }}" title="Edit {{ d.name }}">{{ icon('edit') }}</button>
+        <form method="post" action="{{ url_for('device_delete', did=d.id) }}" data-confirm="Delete {{ d.name }}?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ d.name }}" title="Delete {{ d.name }}">{{ icon('trash') }}</button></form>{% endif %}</td>
     </tr>{% endfor %}</tbody>
   </table></div>
   {% else %}<div class="empty"><h3>No devices yet</h3><p>Add your OLTs, switches and radios to see at a glance which ones stopped answering.</p></div>{% endif %}
@@ -38,7 +38,7 @@
 <dialog class="modal" id="dev-dlg" aria-labelledby="dev-title">
   <form method="post" action="{{ url_for('device_save') }}">
     {{ csrf_input() }}<input type="hidden" name="id"><input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">
-    <div class="modal-head"><h2 id="dev-title" data-title data-title-new="New device" data-title-edit="Edit device">New device</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="dev-title" data-title data-title-new="New device" data-title-edit="Edit device">New device</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body"><div class="grid-2">
       <div class="field"><label class="lbl" for="dv-name">Name</label><input id="dv-name" name="name" maxlength="128" required></div>
       <div class="field"><label class="lbl" for="dv-kind">Type</label><select id="dv-kind" name="kind">{% for k, t in kinds %}<option value="{{ k }}" {{ 'selected' if k == kind }}>{{ t }}</option>{% endfor %}</select></div>

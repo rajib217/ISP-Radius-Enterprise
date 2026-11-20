@@ -19,7 +19,7 @@
     <td>{{ n.created_by }}</td>
     <td class="actions-cell">{% if can('notices', 'edit') %}
       <button class="btn sm" data-open="notice-dlg" data-edit='{{ {"id": n.id, "title": n.title, "body": n.body, "kind": n.kind, "active": 1 if n.active else 0, "starts": n.starts|string if n.starts else "", "ends": n.ends|string if n.ends else ""}|tojson }}'>{{ icon('edit') }}Edit</button>
-      <form method="post" action="{{ url_for('notice_delete', nid=n.id) }}" data-confirm="Delete this notice?" style="display:inline">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete notice">{{ icon('trash') }}</button></form>
+      <form method="post" action="{{ url_for('notice_delete', nid=n.id) }}" data-confirm="Delete this notice?" style="display:inline">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete notice" title="Delete notice">{{ icon('trash') }}</button></form>
     {% endif %}</td>
   </tr>
   {% endfor %}
@@ -32,7 +32,7 @@
 <dialog class="modal" id="notice-dlg" aria-labelledby="notice-title">
   <form method="post" action="{{ url_for('notice_save') }}">
     {{ csrf_input() }}<input type="hidden" name="id">
-    <div class="modal-head"><h2 id="notice-title" data-title data-title-new="New notice" data-title-edit="Edit notice">New notice</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="notice-title" data-title data-title-new="New notice" data-title-edit="Edit notice">New notice</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack">
       <div class="field"><label class="lbl" for="nc-title">Title</label><input id="nc-title" name="title" maxlength="160" required></div>
       <div class="field"><label class="lbl" for="nc-body">Message</label><textarea id="nc-body" name="body" rows="4" maxlength="5000"></textarea></div>

@@ -2,7 +2,7 @@
 <dialog class="modal" id="map-dlg" aria-labelledby="map-title">
   <form method="post" action="" id="map-form">
     {{ csrf_input() }}<input type="hidden" name="next" value="">
-    <div class="modal-head"><h2 id="map-title">Link ONU to subscriber</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="map-title">Link ONU to subscriber</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body"><div class="field"><label class="lbl" for="m-user">Subscriber username</label><input id="m-user" name="username" maxlength="64" spellcheck="false"><div class="help">Leave empty to unlink.</div></div></div>
     <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save</button></div>
   </form>

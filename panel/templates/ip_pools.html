@@ -13,8 +13,8 @@
   <div class="panel-head"><h2>{{ p.name }}</h2>{% if p.router %}<span class="badge mute">{{ p.router }}</span>{% endif %}
     <span class="aside">{{ '{:,}'.format(p.used) }} of {{ '{:,}'.format(p.size) }} in use · {{ p.plans }} plan{{ '' if p.plans == 1 else 's' }}</span>
     {% if can('network', 'edit') %}
-    <button class="btn sm icon" data-open="pool-dlg" data-edit='{{ {"id": p.id, "name": p.name, "ranges": p.ranges, "gateway": p.gateway, "nas_id": p.nas_id or "", "note": p.note}|tojson }}' aria-label="Edit {{ p.name }}">{{ icon('edit') }}</button>
-    <form method="post" action="{{ url_for('ip_pool_delete', pid=p.id) }}" data-confirm="Delete pool {{ p.name }}?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ p.name }}">{{ icon('trash') }}</button></form>{% endif %}</div>
+    <button class="btn sm icon" data-open="pool-dlg" data-edit='{{ {"id": p.id, "name": p.name, "ranges": p.ranges, "gateway": p.gateway, "nas_id": p.nas_id or "", "note": p.note}|tojson }}' aria-label="Edit {{ p.name }}" title="Edit {{ p.name }}">{{ icon('edit') }}</button>
+    <form method="post" action="{{ url_for('ip_pool_delete', pid=p.id) }}" data-confirm="Delete pool {{ p.name }}?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ p.name }}" title="Delete {{ p.name }}">{{ icon('trash') }}</button></form>{% endif %}</div>
   <div class="panel-body stack">
     <div class="bar {{ 'bad' if p.pct >= 90 else ('warn' if p.pct >= 75) }}" role="img" aria-label="{{ p.pct }}% used"><i style="width:{{ p.pct }}%"></i></div>
     <div class="muted">Ranges: <span class="mono">{{ p.ranges.replace('\n', ', ') }}</span>{% if p.gateway %} · Gateway <span class="mono">{{ p.gateway }}</span>{% endif %}{% if p.note %} · {{ p.note }}{% endif %}</div>
@@ -31,7 +31,7 @@
 <dialog class="modal" id="pool-dlg" aria-labelledby="pool-title">
   <form method="post" action="{{ url_for('ip_pool_save') }}">
     {{ csrf_input() }}<input type="hidden" name="id">
-    <div class="modal-head"><h2 id="pool-title" data-title data-title-new="New pool" data-title-edit="Edit pool">New pool</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="pool-title" data-title data-title-new="New pool" data-title-edit="Edit pool">New pool</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body"><div class="grid-2">
       <div class="field"><label class="lbl" for="po-name">Pool name</label><input id="po-name" name="name" pattern="[A-Za-z0-9_.\-]{2,64}" required spellcheck="false"><div class="help">Same name as on the router and in your plans.</div></div>
       <div class="field"><label class="lbl" for="po-gw">Gateway (local address)</label><input id="po-gw" name="gateway" spellcheck="false" placeholder="10.10.0.1"></div>

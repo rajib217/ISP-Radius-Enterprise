@@ -30,7 +30,7 @@
       <td class="hide-sm">{{ p.period_to|d if p.period_to else '—' }}</td>
       <td class="hide-sm">{{ p.received_by or '—' }}</td>
       <td class="act"><a class="btn sm icon" href="{{ url_for('receipt', pid=p.id) }}" aria-label="Receipt #{{ p.id }}" title="Receipt">{{ icon('printer') }}</a>
-        {% if me.role == 'admin' %}<form method="post" action="{{ url_for('payment_delete', pid=p.id) }}" data-confirm="Delete payment #{{ p.id }}? The customer's expiry date is not changed.">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete payment {{ p.id }}">{{ icon('trash') }}</button></form>{% endif %}</td>
+        {% if me.role == 'admin' %}<form method="post" action="{{ url_for('payment_delete', pid=p.id) }}" data-confirm="Delete payment #{{ p.id }}? The customer's expiry date is not changed.">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete payment {{ p.id }}" title="Delete payment {{ p.id }}">{{ icon('trash') }}</button></form>{% endif %}</td>
     </tr>{% endfor %}</tbody>
   </table></div>
   {{ pager(pg, keep, 'payments') }}
@@ -41,7 +41,7 @@
 <dialog class="modal" id="pay-dlg" aria-labelledby="pay-title">
   <form method="post" action="{{ url_for('payment_add') }}">
     {{ csrf_input() }}
-    <div class="modal-head"><h2 id="pay-title">Add other payment</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="pay-title">Add other payment</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack">
       <p class="muted" style="margin:0">For money that does not renew the connection: installation fee, device sale, old dues. To renew, use Receive payment.</p>
       <div class="grid-2">

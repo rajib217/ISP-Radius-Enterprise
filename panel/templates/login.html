@@ -9,11 +9,13 @@
   <link rel="stylesheet" href="{{ asset('css/app.css') }}">
 </head>
 <body>
+{% include "_icons.html" %}
+<button type="button" class="btn icon login-theme" id="loginTheme" aria-label="Switch light or dark theme" title="Theme">{{ icon('sun') }}</button>
 <div class="login">
   <section class="login-art" aria-hidden="true">
-    <svg class="rings" viewBox="0 0 620 620"><circle cx="310" cy="310" r="282" fill="none" stroke="#8f74ff" stroke-width="44"/><circle cx="310" cy="310" r="185" fill="none" stroke="#35d0dc" stroke-width="44"/><circle cx="310" cy="310" r="70" fill="#fff"/></svg>
+    <svg class="rings" viewBox="0 0 620 620"><circle class="ra" cx="310" cy="310" r="282" fill="none" stroke-width="44"/><circle class="rb" cx="310" cy="310" r="185" fill="none" stroke-width="44"/><circle class="rc" cx="310" cy="310" r="70"/></svg>
     <div style="position:relative;display:flex;align-items:center;gap:10px">
-      <svg viewBox="0 0 32 32" width="30" height="30"><circle cx="16" cy="16" r="13" fill="none" stroke="#8f74ff" stroke-width="3"/><circle cx="16" cy="16" r="7.6" fill="none" stroke="#35d0dc" stroke-width="3"/><circle cx="16" cy="16" r="2.4" fill="#fff"/></svg>
+      <svg class="login-mark" viewBox="0 0 32 32" width="30" height="30"><circle class="ring-outer" cx="16" cy="16" r="13" fill="none" stroke-width="3"/><circle class="ring-inner" cx="16" cy="16" r="7.6" fill="none" stroke-width="3"/><circle class="ring-dot" cx="16" cy="16" r="2.4"/></svg>
       <b style="font-size:16px">RADIUS Panel</b>
     </div>
     <div>
@@ -35,11 +37,33 @@
       </div>
       <div class="field">
         <label class="lbl" for="p">Password</label>
-        <input id="p" name="password" type="password" autocomplete="current-password" required>
+        <div class="pw-wrap">
+          <input id="p" name="password" type="password" autocomplete="current-password" required>
+          <button type="button" class="pw-eye" id="pwEye" aria-label="Show password" title="Show password">{{ icon('eye') }}</button>
+        </div>
       </div>
       <button class="btn primary" type="submit" style="height:42px">Sign in</button>
+      <p class="muted" style="margin:0">Forgot your password? Ask an administrator to reset it for you.</p>
     </form>
   </section>
 </div>
+<script>
+(function () {
+  var eye = document.getElementById("pwEye"), pw = document.getElementById("p");
+  if (eye && pw) eye.addEventListener("click", function () {
+    var show = pw.type === "password";
+    pw.type = show ? "text" : "password";
+    eye.setAttribute("aria-label", show ? "Hide password" : "Show password");
+    eye.title = show ? "Hide password" : "Show password";
+    pw.focus();
+  });
+  var th = document.getElementById("loginTheme");
+  if (th) th.addEventListener("click", function () {
+    var next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("isp-theme", next); } catch (e) {}
+  });
+})();
+</script>
 </body>
 </html>

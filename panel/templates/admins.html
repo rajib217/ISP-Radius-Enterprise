@@ -31,7 +31,7 @@
     <div class="row-gap"><label class="muted" for="uq">Search:</label><input id="uq" type="search" placeholder="Type & Search" class="w-220" data-filter="#uTbl"></div>
   </div>
   <div class="listbar"><span class="muted" id="uInfo"></span><span class="grow"></span><div class="pager" id="uPager"></div></div>
-  <div class="tbl-wrap"><table class="tbl xtable" id="uTbl">
+  {% if rows %}<div class="tbl-wrap"><table class="tbl xtable" id="uTbl">
     <thead><tr><th>ID</th><th class="no-x">Actions</th><th>Profile</th><th>Profile Type</th><th data-uc="balance">Balance</th><th data-uc="packages">Packages</th><th data-uc="subs">Subscribers</th><th data-uc="resellers">Resellers</th><th data-uc="role">Role &amp; Permission</th><th data-uc="admin">Admin</th><th data-uc="reseller">Reseller</th><th data-uc="subreseller">Subreseller</th><th data-uc="status">Status</th><th data-uc="login">Last sign-in</th></tr></thead>
     <tbody>
     {% for a in rows %}
@@ -65,12 +65,13 @@
     {% endfor %}
     </tbody>
   </table></div>
+  {% else %}<div class="empty"><h3>No users</h3><p>No user matches this filter. Clear the filter or add a user.</p></div>{% endif %}
 </section>
 
 <dialog class="modal" id="role-dlg" aria-labelledby="role-title">
   <form method="post" action="{{ url_for('admin_role') }}">
     {{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">
-    <div class="modal-head"><h2 id="role-title">Change role</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="role-title">Change role</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body"><div class="grid-2">
       <div class="field"><label class="lbl" for="cr-user">User</label><select id="cr-user" name="user_id" required>{% for u in all_users|sort(attribute='username') %}<option value="{{ u.id }}">{{ u.username }}</option>{% endfor %}</select></div>
       <div class="field"><label class="lbl" for="cr-role">New role</label><select id="cr-role" name="role">{% for k, label in role_opts %}<option value="{{ k }}">{{ label }}</option>{% endfor %}</select></div>

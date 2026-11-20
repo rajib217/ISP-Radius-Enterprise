@@ -1,7 +1,7 @@
 <dialog class="modal" id="bal-dlg" aria-labelledby="bal-title">
   <form method="post" action="{{ url_for('admin_balance') }}">
     {{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}"><input type="hidden" name="user_id" value="{{ bal_user.id if bal_user else '' }}">
-    <div class="modal-head"><h2 id="bal-title">Add Balance</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="bal-title">Add Balance</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack">
       <div class="field"><label class="lbl">User</label><input name="user_label" class="plainval" readonly value="{{ bal_user.username if bal_user else '' }}"></div>
       <div class="field"><label class="lbl" for="bal-method">Payment Method <b class="req">*</b></label><select id="bal-method" name="method" required><option value="">Select A Method</option>{% for v, l in methods %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>

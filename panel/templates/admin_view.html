@@ -96,7 +96,7 @@
 <dialog class="modal" id="role-dlg" aria-labelledby="role-title">
   <form method="post" action="{{ url_for('admin_role') }}">
     {{ csrf_input() }}<input type="hidden" name="next" value="{{ url_for('admin_view', aid=u.id) }}"><input type="hidden" name="user_id" value="{{ u.id }}">
-    <div class="modal-head"><h2 id="role-title">Change role for {{ u.username }}</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="role-title">Change role for {{ u.username }}</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body"><div class="field"><label class="lbl" for="cr-role">New role</label><select id="cr-role" name="role">{% for k, label in role_opts %}<option value="{{ k }}" {{ 'selected' if k == u.role }}>{{ label }}</option>{% endfor %}</select></div></div>
     <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Change role</button></div>
   </form>
@@ -105,7 +105,7 @@
 <dialog class="modal" id="ps-dlg" aria-labelledby="ps-title">
   <form method="post" action="{{ url_for('admin_profile_settings', aid=u.id) }}">
     {{ csrf_input() }}
-    <div class="modal-head"><h2 id="ps-title">Profile Settings</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="ps-title">Profile Settings</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack">
       <div class="field"><label class="lbl" for="ps-st">Profile status</label><select id="ps-st" name="status"><option value="active" {{ 'selected' if u.is_active }}>Active</option><option value="disabled" {{ 'selected' if not u.is_active }}>Disabled</option></select><div class="help">A disabled user cannot sign in.</div></div>
       <label class="mod-row"><span>SMS notifications<br><small class="muted">Allow SMS to this user</small></span><span class="switch"><input type="checkbox" name="sms_on" {{ 'checked' if u.sms_on }}><i></i></span></label>
@@ -117,7 +117,7 @@
 <dialog class="modal" id="ph-dlg" aria-labelledby="ph-title">
   <form method="post" action="{{ url_for('admin_photo_save', aid=u.id) }}" enctype="multipart/form-data">
     {{ csrf_input() }}
-    <div class="modal-head"><h2 id="ph-title">Photo</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="ph-title">Photo</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body"><div class="field"><label class="lbl" for="ph-file">PNG or JPG, up to 2 MB</label><input id="ph-file" type="file" name="file" accept="image/png,image/jpeg"></div></div>
     <div class="modal-foot">{% if u.photo %}<button class="btn danger" type="submit" name="remove" value="1" formnovalidate>Remove photo</button>{% endif %}<span style="flex:1"></span><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save</button></div>
   </form>
@@ -125,7 +125,7 @@
 <dialog class="modal" id="iv-dlg" aria-labelledby="iv-title">
   <form method="post" action="{{ url_for('admin_invoice_settings', aid=u.id) }}">
     {{ csrf_input() }}
-    <div class="modal-head"><h2 id="iv-title">Invoice Settings</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="iv-title">Invoice Settings</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack">
       <div class="field"><label class="lbl" for="iv-n">Business name</label><input id="iv-n" name="inv_name" maxlength="100" value="{{ u.inv_name }}" placeholder="{{ isp_name }}"></div>
       <div class="field"><label class="lbl" for="iv-a">Address</label><input id="iv-a" name="inv_address" maxlength="255" value="{{ u.inv_address }}"></div>
@@ -139,7 +139,7 @@
 <dialog class="modal" id="pw-dlg" aria-labelledby="pw-title">
   <form method="post" action="{{ url_for('admin_password', aid=u.id) }}" autocomplete="off">
     {{ csrf_input() }}
-    <div class="modal-head"><h2 id="pw-title">New password for {{ u.username }}</h2><button type="button" class="btn sm icon" data-close aria-label="Close">{{ icon('x') }}</button></div>
+    <div class="modal-head"><h2 id="pw-title">New password for {{ u.username }}</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body"><div class="field"><label class="lbl" for="pw-new">New password</label><input id="pw-new" name="password" type="password" minlength="8" required autocomplete="new-password"><div class="help">At least 8 characters.</div></div></div>
     <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Change password</button></div>
   </form>
