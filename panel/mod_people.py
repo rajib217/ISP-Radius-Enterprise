@@ -4,11 +4,14 @@ from datetime import date, timedelta
 from flask import send_file, session, abort, flash, g, redirect, render_template, request, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
+import json
 import os
 import re
 import secrets
 import core
+import db
 import permcatalog
+import totp
 from core import (EMAIL_RE, LEVELS, MODULES, PHONE_RE, ROLES, USERNAME_RE, admin_required, audit, commit,
                   get_db, insert, parse_date, q, route, x)
 
@@ -17,7 +20,41 @@ from core import (EMAIL_RE, LEVELS, MODULES, PHONE_RE, ROLES, USERNAME_RE, admin
 @route("/profile", methods=["GET", "POST"])
 def profile():
     if request.method == "POST":
-        if request.form.get("section") == "password":
+        if request.form.get("section") == "2fa_start":
+            session["totp_pending_secret"] = totp.new_secret()
+            flash("Add the key below to your authenticator app, then enter a code to switch two-factor on.", "success")
+        elif request.form.get("section") == "2fa_confirm":
+            secret = session.get("totp_pending_secret", "")
+            if not secret:
+                flash("Start again: press Set up two-factor first.", "error")
+            elif totp.match_step(secret, request.form.get("code", "")) is None:
+                flash("That code did not match. Check the app and try again.", "error")
+            else:
+                codes = totp.new_backup_codes()
+                step = totp.match_step(secret, request.form.get("code", ""))
+                x("UPDATE panel_admins SET totp_secret = %s, totp_enabled = 1, totp_backup_codes = %s, totp_last_step = %s "
+                  "WHERE id = %s",
+                  (db.encrypt_value(secret), json.dumps([totp.hash_backup_code(c) for c in codes]), step, g.me["id"]))
+                audit("2fa_enabled", g.me["username"])
+                commit()
+                session.pop("totp_pending_secret", None)
+                session["totp_new_backup"] = codes
+                flash("Two-factor is on. Save your backup codes below — they are shown only once.", "success")
+        elif request.form.get("section") == "2fa_disable":
+            row = q("SELECT password_hash, totp_secret FROM panel_admins WHERE id = %s", (g.me["id"],), one=True)
+            if not check_password_hash(row["password_hash"], request.form.get("current", "")):
+                flash("Current password is wrong.", "error")
+            elif not totp.verify(db.decrypt_value(row["totp_secret"] or ""), request.form.get("code", "")):
+                flash("The code from your authenticator app is wrong. Lost the app? Ask an administrator to reset two-factor.",
+                      "error")
+            else:
+                x("UPDATE panel_admins SET totp_secret = '', totp_enabled = 0, totp_backup_codes = NULL, totp_last_step = 0 "
+                  "WHERE id = %s",
+                  (g.me["id"],))
+                audit("2fa_disabled", g.me["username"])
+                commit()
+                flash("Two-factor is off.", "success")
+        elif request.form.get("section") == "password":
             row = q("SELECT password_hash FROM panel_admins WHERE id = %s", (g.me["id"],), one=True)
             new, again = request.form.get("new", ""), request.form.get("again", "")
             if not check_password_hash(row["password_hash"], request.form.get("current", "")):
@@ -60,7 +97,12 @@ def profile():
             (today, me["username"], today.replace(day=1)), one=True)
     activity = q("SELECT action, target, detail, created_at FROM audit_log WHERE admin = %s "
                  "ORDER BY id DESC LIMIT 12", (me["username"],))
-    return render_template("profile.html", u=me, mine=mine, pay=pay, activity=activity)
+    pending_secret = session.get("totp_pending_secret", "")
+    pending_uri = totp.otpauth_uri(pending_secret, me["username"],
+                                   core.cfg().get("isp_name") or "RADIUS Panel") if pending_secret else ""
+    return render_template("profile.html", u=me, mine=mine, pay=pay, activity=activity,
+                           totp_pending_secret=pending_secret, totp_pending_uri=pending_uri,
+                           totp_new_backup=session.pop("totp_new_backup", []))
 
 
 @route("/account")
@@ -551,6 +593,18 @@ def admin_password(aid):
         audit("admin_password_set", row["username"])
         commit()
         flash("Password changed for %s." % row["username"], "success")
+    return redirect(url_for("admin_view", aid=aid))
+
+
+@route("/admins/<int:aid>/reset-2fa", methods=["POST"])
+@admin_required
+def admin_reset_2fa(aid):
+    row = q("SELECT * FROM panel_admins WHERE id = %s", (aid,), one=True) or abort(404)
+    x("UPDATE panel_admins SET totp_secret = '', totp_enabled = 0, totp_backup_codes = NULL, totp_last_step = 0 WHERE id = %s",
+      (aid,))
+    audit("admin_2fa_reset", row["username"])
+    commit()
+    flash("Two-factor reset for %s. They sign in with password only until they set it up again." % row["username"], "success")
     return redirect(url_for("admin_view", aid=aid))
 
 

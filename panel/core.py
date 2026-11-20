@@ -571,6 +571,13 @@ def attention():
         c = q("SELECT COUNT(*) AS c FROM outbox WHERE status = 'failed' AND created_at >= NOW() - INTERVAL 1 DAY",
               one=True)["c"]
         rows.append({"label": "Failed messages, 24 h", "c": c, "endpoint": "messages", "args": {"status": "failed"}})
+    if g.me["role"] == "admin":
+        import db
+        enc = q("SELECT skey, svalue FROM settings WHERE svalue LIKE 'enc:v1:%%'")
+        bad = db.unreadable_secrets([(r["skey"], r["svalue"]) for r in enc])
+        if bad:
+            rows.append({"label": "Secret settings unreadable: check PANEL_SETTINGS_KEY in panel.env", "c": len(bad),
+                         "endpoint": "settings", "args": {}})
     return rows
 
 

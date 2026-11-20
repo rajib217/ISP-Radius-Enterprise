@@ -31,6 +31,37 @@
       <div><button class="btn primary" type="submit">Change password</button></div>
     </form>
   </section>
+  <section class="panel">
+    <div class="panel-head"><h2>Two-factor authentication</h2></div>
+    <div class="panel-body stack">
+      {% if totp_new_backup %}
+      <div class="note warn" role="alert">Save these backup codes now — each works once if you lose your authenticator, and they are shown only this once:<br><b class="mono">{{ totp_new_backup|join(' &nbsp; ') }}</b></div>
+      {% endif %}
+      {% if u.totp_enabled %}
+      <p class="muted" style="margin:0">Two-factor is <b>on</b> for your account. Signing in asks for a code from your authenticator app.</p>
+      <form method="post" autocomplete="off">
+        {{ csrf_input() }}<input type="hidden" name="section" value="2fa_disable">
+        <div class="field"><label class="lbl" for="tf-cur">Current password</label><input id="tf-cur" name="current" type="password" autocomplete="current-password" required><div class="help">Enter your password to switch two-factor off.</div></div>
+        <div class="field"><label class="lbl" for="tf-off-code">Code from the app</label><input id="tf-off-code" name="code" inputmode="numeric" autocomplete="one-time-code" required></div>
+        <div><button class="btn danger" type="submit">Switch two-factor off</button></div>
+      </form>
+      {% elif totp_pending_secret %}
+      <p class="muted" style="margin:0">Add this key to your authenticator app (Google Authenticator, Authy, …) as a manual entry, then enter the 6-digit code it shows.</p>
+      <div class="field"><label class="lbl" for="tf-key">Secret key</label><input id="tf-key" class="mono" value="{{ totp_pending_secret }}" readonly><div class="help">Or use this link in the app: <span class="mono">{{ totp_pending_uri }}</span></div></div>
+      <form method="post" autocomplete="off">
+        {{ csrf_input() }}<input type="hidden" name="section" value="2fa_confirm">
+        <div class="field"><label class="lbl" for="tf-code">Code from the app</label><input id="tf-code" name="code" inputmode="numeric" autocomplete="one-time-code" required></div>
+        <div><button class="btn primary" type="submit">Switch two-factor on</button></div>
+      </form>
+      {% else %}
+      <p class="muted" style="margin:0">Two-factor is <b>off</b>. With it on, signing in also asks for a 6-digit code from an authenticator app on your phone, so a stolen password alone is not enough.</p>
+      <form method="post">
+        {{ csrf_input() }}<input type="hidden" name="section" value="2fa_start">
+        <div><button class="btn primary" type="submit">Set up two-factor</button></div>
+      </form>
+      {% endif %}
+    </div>
+  </section>
 </div>
 
 <section class="panel" style="margin-top:16px">

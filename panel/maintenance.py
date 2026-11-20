@@ -469,6 +469,11 @@ def main():
             print("archived %d accounting rows" % archive_accounting(conn, cur, months))
         db.save_setting(cur, "last_daily", today)
         conn.commit()
+        # encrypt any secret settings still stored as plaintext (pre-encryption installs)
+        n_enc = db.encrypt_existing_secrets(cur)
+        if n_enc:
+            conn.commit()
+            print("encrypted %d secret settings" % n_enc)
     # expiry reminders once a day at the configured hour (the unique key stops duplicates if it runs again)
     cur.execute("SELECT svalue FROM settings WHERE skey = 'last_reminder'")
     rem = cur.fetchone()

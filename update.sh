@@ -41,6 +41,19 @@ die()    { printf '\033[1;31mUPDATE STOPPED:\033[0m %s\n' "$*" >&2; exit 1; }
 [[ -f "$SRC_DIR/panel/app.py" && -f "$SRC_DIR/sql/panel_schema.sql" ]] || die "Run this from the project folder (the one with update.sh, panel/ and sql/)."
 [[ -f "$ENV_FILE" && -d "$APP_DIR" ]] || die "The panel is not installed here yet. Run: sudo ./install.sh"
 
+# Settings encryption key: older installs do not have one yet. Generate and append it;
+# the panel encrypts secret settings (bKash/SMTP/Telegram/...) with it from now on.
+# Keep a copy of panel.env with your backups: without this key encrypted secrets cannot be read.
+if ! grep -q '^PANEL_SETTINGS_KEY=' "$ENV_FILE"; then
+  echo "PANEL_SETTINGS_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$ENV_FILE"
+  c_ok "Generated PANEL_SETTINGS_KEY in $ENV_FILE (settings encryption)"
+fi
+if ! python3 -c 'import cryptography.fernet' 2>/dev/null; then
+  c_ok "Installing python3-cryptography (settings encryption)"
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3-cryptography >/dev/null \
+    || c_warn "Could not install python3-cryptography: secret settings stay unencrypted until it is installed."
+fi
+
 exec 9>"${LOCK_FILE:-/run/isp-panel-update.lock}"
 flock -n 9 || die "Another update is running."
 
@@ -122,6 +135,32 @@ if [[ "$RC_COLL" =~ ^[a-z0-9_]+$ ]]; then
       mariadb "$DB_NAME" -e "ALTER TABLE \`$t\` CONVERT TO CHARACTER SET utf8mb4 COLLATE $RC_COLL" || c_warn "Could not convert $t to $RC_COLL"
     fi
   done
+fi
+
+# ------------------------------------------------------------ 3b. migrations
+# Versioned migrations in sql/migrations/NNNN_name.sql, applied once, in order.
+# panel_schema.sql stays the idempotent baseline; migrations record one-time changes.
+mariadb "$DB_NAME" -e "CREATE TABLE IF NOT EXISTS schema_migrations (version INT UNSIGNED NOT NULL PRIMARY KEY, name VARCHAR(128) NOT NULL DEFAULT '', applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+for f in "$SRC_DIR"/sql/migrations/[0-9]*.sql; do
+  [[ -e "$f" ]] || continue
+  base=$(basename "$f"); ver=$((10#${base%%_*}))
+  done_v=$(mariadb -N "$DB_NAME" -e "SELECT COUNT(*) FROM schema_migrations WHERE version = $ver")
+  if [[ "$done_v" == "0" ]]; then
+    c_ok "Applying migration $base"
+    if ! mariadb "$DB_NAME" < "$f" 2>/tmp/isp-panel-migration.log; then
+      tail -n 15 /tmp/isp-panel-migration.log
+      rm -rf "$NEW_DIR"
+      die "Migration $base failed (see above). The running panel was not touched. Backup: $FILE"
+    fi
+    mariadb "$DB_NAME" -e "INSERT INTO schema_migrations (version, name) VALUES ($ver, '${base%.sql}')"
+  fi
+done
+
+# The panel DB user should not hold ALL PRIVILEGES (install.sh grants least privilege).
+# Warn only: changing grants here could lock the running panel out of its database.
+PANEL_USER=$(grep -E '^DB_USER=' "$ENV_FILE" | tail -n 1 | cut -d= -f2-)
+if [[ -n "$PANEL_USER" ]] && mariadb -N -e "SHOW GRANTS FOR '$PANEL_USER'@'127.0.0.1'" 2>/dev/null | grep -q "ALL PRIVILEGES"; then
+  c_warn "Database user $PANEL_USER still has ALL PRIVILEGES. Re-run install.sh to apply least-privilege grants."
 fi
 
 # ------------------------------------------------------------ 4. swap and reload

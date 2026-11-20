@@ -137,6 +137,11 @@ ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS email         VARCHAR(128) NOT
 ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS department_id INT UNSIGNED NULL;
 ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS zone_id       INT UNSIGNED NULL;
 ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS parent_id     INT UNSIGNED NULL;
+-- Optional TOTP two-factor auth (migration 0001; also added here so test/demo databases have the columns)
+ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS totp_secret       VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS totp_enabled      TINYINT(1)   NOT NULL DEFAULT 0;
+ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS totp_backup_codes TEXT         NULL;
+ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS totp_last_step    BIGINT       NOT NULL DEFAULT 0;
 
 -- Changes to the built-in permissions of a role (module x none/view/edit)
 CREATE TABLE IF NOT EXISTS role_funcs (

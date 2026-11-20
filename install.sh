@@ -243,7 +243,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get install -y freeradius freeradius-mysql freeradius-utils \
   mariadb-server mariadb-client openssl sudo curl gnupg ca-certificates dnsutils ufw git \
-  python3 python3-flask python3-pymysql python3-werkzeug gunicorn iputils-ping
+  python3 python3-flask python3-pymysql python3-werkzeug python3-cryptography gunicorn iputils-ping
 if ! command -v caddy >/dev/null 2>&1; then
   c_ok "Installing Caddy (official Caddy apt repository)"
   apt-get install -y debian-keyring debian-archive-keyring apt-transport-https
@@ -336,6 +336,10 @@ if [[ -f "$ENV_FILE" ]]; then
   set -a; . "$ENV_FILE"; set +a
 fi
 PANEL_SECRET_KEY="${PANEL_SECRET_KEY:-$(rand)$(rand)}"
+# Fernet key for encrypting secret settings at rest (bKash/SMTP/Telegram/... in the settings table).
+# Stored only in panel.env, never in the database. Keep a copy of panel.env with your backups:
+# without this key the encrypted secrets cannot be read back.
+PANEL_SETTINGS_KEY="${PANEL_SETTINGS_KEY:-$(openssl rand -base64 32 | tr '+/' '-_')}"
 DB_PASS="${DB_PASS:-$(rand)}"
 FR_DB_PASS="${FR_DB_PASS:-$(rand)}"
 RADIUS_LOCAL_SECRET="${RADIUS_LOCAL_SECRET:-$(rand)}"
@@ -347,6 +351,7 @@ getent group freerad >/dev/null && usermod -aG freerad isp-panel || true
 umask 027
 cat > "$ENV_FILE" <<EOF
 PANEL_SECRET_KEY=$PANEL_SECRET_KEY
+PANEL_SETTINGS_KEY=$PANEL_SETTINGS_KEY
 PANEL_COOKIE_SECURE=$PANEL_COOKIE_SECURE
 DB_HOST=127.0.0.1
 DB_PORT=3306
@@ -392,10 +397,18 @@ CREATE USER IF NOT EXISTS '$DB_PANEL_USER'@'localhost' IDENTIFIED BY '$DB_PASS';
 CREATE USER IF NOT EXISTS '$DB_PANEL_USER'@'127.0.0.1' IDENTIFIED BY '$DB_PASS';
 ALTER USER '$DB_PANEL_USER'@'localhost' IDENTIFIED BY '$DB_PASS';
 ALTER USER '$DB_PANEL_USER'@'127.0.0.1' IDENTIFIED BY '$DB_PASS';
-GRANT ALL PRIVILEGES ON \`$DB_NAME\`.* TO '$DB_PANEL_USER'@'localhost';
-GRANT ALL PRIVILEGES ON \`$DB_NAME\`.* TO '$DB_PANEL_USER'@'127.0.0.1';
 FLUSH PRIVILEGES;
 SQL
+# Least privilege for the panel user: only this database, no GRANT OPTION, no server-wide rights.
+# Rows: SELECT/INSERT/UPDATE/DELETE. Backups: LOCK TABLES, SHOW VIEW, TRIGGER (mariadb-dump --routines --triggers).
+# Settings > Backup > Restore loads a dump that drops and recreates every table, so the panel user also
+# needs CREATE, DROP, ALTER, INDEX, REFERENCES and CREATE VIEW on this database (without them Restore fails).
+# Revoke first so upgrades from older installs lose the old GRANT ALL (best effort:
+# a fresh user has nothing to revoke).
+mariadb -e "REVOKE ALL PRIVILEGES, GRANT OPTION FROM '$DB_PANEL_USER'@'localhost'" 2>/dev/null || true
+mariadb -e "REVOKE ALL PRIVILEGES, GRANT OPTION FROM '$DB_PANEL_USER'@'127.0.0.1'" 2>/dev/null || true
+PANEL_PRIVS="SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, INDEX, REFERENCES, CREATE VIEW, SHOW VIEW, LOCK TABLES, TRIGGER"
+mariadb -e "GRANT $PANEL_PRIVS ON \`$DB_NAME\`.* TO '$DB_PANEL_USER'@'localhost'; GRANT $PANEL_PRIVS ON \`$DB_NAME\`.* TO '$DB_PANEL_USER'@'127.0.0.1'; FLUSH PRIVILEGES;"
 
 HAS_RADACCT=$(mariadb -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$DB_NAME' AND table_name='radacct'")
 if [[ "$HAS_RADACCT" == "0" ]]; then
@@ -404,6 +417,19 @@ if [[ "$HAS_RADACCT" == "0" ]]; then
 fi
 c_ok "Importing the panel schema and indexes"
 mariadb "$DB_NAME" < "$SRC_DIR/sql/panel_schema.sql"
+# Versioned migrations (sql/migrations/NNNN_name.sql), applied once, in order.
+# panel_schema.sql stays the idempotent baseline; migrations record one-time changes.
+mariadb "$DB_NAME" -e "CREATE TABLE IF NOT EXISTS schema_migrations (version INT UNSIGNED NOT NULL PRIMARY KEY, name VARCHAR(128) NOT NULL DEFAULT '', applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+for f in "$SRC_DIR"/sql/migrations/[0-9]*.sql; do
+  [[ -e "$f" ]] || continue
+  base=$(basename "$f"); ver=$((10#${base%%_*}))
+  done_v=$(mariadb -N "$DB_NAME" -e "SELECT COUNT(*) FROM schema_migrations WHERE version = $ver")
+  if [[ "$done_v" == "0" ]]; then
+    c_ok "Applying migration $base"
+    mariadb "$DB_NAME" < "$f"
+    mariadb "$DB_NAME" -e "INSERT INTO schema_migrations (version, name) VALUES ($ver, '${base%.sql}')"
+  fi
+done
 
 # The panel joins its tables to FreeRADIUS's tables on username. MariaDB refuses to
 # compare text across different collations, so make the panel tables match radcheck.

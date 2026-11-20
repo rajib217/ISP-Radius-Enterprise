@@ -54,7 +54,7 @@ jobs:
       - name: The app imports
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq python3-flask python3-pymysql python3-werkzeug >/dev/null
+          sudo apt-get install -y -qq python3-flask python3-pymysql python3-werkzeug python3-cryptography >/dev/null
           cd panel
           PANEL_SECRET_KEY=ci PANEL_DATA_DIR="$RUNNER_TEMP/panel-data" PYTHONDONTWRITEBYTECODE=1 python3 -c 'import app; print("routes:", len(list(app.app.url_map.iter_rules())))'
 
@@ -86,7 +86,7 @@ jobs:
       - name: Install the same packages as the server
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq python3-flask python3-pymysql python3-werkzeug mariadb-client >/dev/null
+          sudo apt-get install -y -qq python3-flask python3-pymysql python3-werkzeug python3-cryptography mariadb-client >/dev/null
 
       - name: Load the FreeRADIUS and panel schemas (as install.sh does)
         run: |

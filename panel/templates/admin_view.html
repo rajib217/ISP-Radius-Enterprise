@@ -14,6 +14,7 @@
   <button class="btn sm primary" data-open="iv-dlg">{{ icon('file') }}Invoice Settings</button>
   {% if can('notes') %}<a class="btn sm primary" href="{{ url_for('notes') }}">{{ icon('note') }}Add Note</a>{% endif %}
   <button class="btn sm primary" data-open="pw-dlg">{{ icon('user') }}Password</button>
+  {% if u.totp_enabled %}<form method="post" action="{{ url_for('admin_reset_2fa', aid=u.id) }}" data-confirm="Reset two-factor for {{ u.username }}? They will sign in with password only until they set it up again.">{{ csrf_input() }}<button class="btn sm primary" type="submit">{{ icon('shield') }}Reset 2FA</button></form>{% endif %}
   {% if u.id != me.id %}<form method="post" action="{{ url_for('admin_delete', aid=u.id) }}" data-confirm="Delete {{ u.username }}?">{{ csrf_input() }}<input type="hidden" name="next" value="{{ url_for('admins') }}"><button class="btn sm solid-danger" type="submit">{{ icon('trash') }}Delete Profile</button></form>
   {% if u.role != 'admin' and u.is_active %}<form method="post" action="{{ url_for('admin_switch', aid=u.id) }}" data-confirm="Sign in as {{ u.username }}? You can switch back from the yellow bar.">{{ csrf_input() }}<button class="btn sm primary" type="submit">{{ icon('swap') }}Switch Profile</button></form>{% endif %}{% endif %}
 </div>

@@ -499,6 +499,84 @@ def check_rules(flask_app, ids):
     finally:
         _bk.mark, _bk.core.audit, _bk.core.commit, _bk.call, _bk.token = _orig
 
+    # ---- TOTP two-factor (RFC 6238 test vector) and settings encryption
+    import totp as _totp
+    check(_totp._hotp("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", 1) == "287082",
+          "TOTP matches the RFC 6238 test vector (t=59)")
+    _sec = _totp.new_secret()
+    check(_totp.verify(_sec, _totp._hotp(_sec, int(time.time()) // 30))
+          and not _totp.verify(_sec, "000000" if _totp._hotp(_sec, int(time.time()) // 30) != "000000" else "111111"),
+          "a fresh TOTP secret verifies its own code and refuses a wrong one")
+    _codes = _totp.new_backup_codes()
+    check(len(_codes) == 8 and _totp.hash_backup_code(_codes[0]) != _codes[0]
+          and _totp.hash_backup_code(_codes[0].replace("-", "")) == _totp.hash_backup_code(_codes[0]),
+          "backup codes are generated and hashed (dashes ignored)")
+    try:
+        from cryptography.fernet import Fernet as _Fernet
+        os.environ["PANEL_SETTINGS_KEY"] = _Fernet.generate_key().decode()
+    except Exception:
+        os.environ["PANEL_SETTINGS_KEY"] = "not-a-real-key"
+    db._fernet, db._fernet_tried = None, False
+    if db._get_fernet() is not None:
+        _enc = db.encrypt_value("s3cret")
+        check(_enc.startswith("enc:v1:") and db.decrypt_value(_enc) == "s3cret"
+              and db.decrypt_value("plain") == "plain",
+              "secret settings encrypt/decrypt round-trip; plaintext passes through")
+    else:
+        check(db.encrypt_value("s3cret") == "s3cret",
+              "without cryptography the settings encryption falls back to plaintext")
+    os.environ.pop("PANEL_SETTINGS_KEY", None)
+    db._fernet, db._fernet_tried = None, False
+    check(adm.get("/login/2fa").status_code == 302,
+          "/login/2fa without a pending sign-in redirects to /login")
+    check("Two-factor authentication" in adm.get("/profile").get_data(as_text=True),
+          "profile page offers two-factor setup")
+    check(db.decrypt_value("enc:v1:gAAAAnot-readable") == "",
+          "an encrypted setting that cannot be read comes back empty, never as the ciphertext")
+    check(db.unreadable_secrets([("smtp_pass", "enc:v1:xyz"), ("isp_name", "Dhaka")]) == ["smtp_pass"],
+          "unreadable encrypted settings are listed for the dashboard")
+
+    # full sign-in with two-factor on: password -> code page -> dashboard; the same code cannot be used twice
+    _s2 = _totp.new_secret()
+    run("UPDATE panel_admins SET totp_secret = %s, totp_enabled = 1, totp_last_step = 0, totp_backup_codes = %s WHERE id = %s",
+        (_s2, json.dumps([_totp.hash_backup_code("1111-2222")]), ids["staff"]))
+    _uname = one("SELECT username FROM panel_admins WHERE id = %s", (ids["staff"],))["username"]
+
+    def _tf_login():
+        lc = flask_app.test_client()
+        with lc.session_transaction() as s:
+            s["csrf"] = "ci"
+        r1 = lc.post("/login", data={"_csrf": "ci", "username": _uname, "password": "Ci-Pages-123"})
+        with lc.session_transaction() as s:
+            tok = s.get("csrf", "ci")
+        return lc, r1, tok
+    lc, r1, tok = _tf_login()
+    page2 = lc.get("/login/2fa")
+    check(r1.headers.get("Location", "").endswith("/login/2fa") and page2.status_code == 200
+          and "Two-factor code" in page2.get_data(as_text=True),
+          "with two-factor on, the password leads to the code page (reachable before sign-in)")
+    wrong = lc.post("/login/2fa", data={"_csrf": tok, "code": "12345"})
+    check(wrong.status_code == 200 and "Wrong code" in wrong.get_data(as_text=True), "a wrong code is refused")
+    _code = _totp._hotp(_s2, int(time.time()) // 30)
+    good = lc.post("/login/2fa", data={"_csrf": tok, "code": _code})
+    check(good.status_code == 302 and "/login" not in good.headers.get("Location", "")
+          and lc.get("/profile").status_code == 200, "the right code signs in")
+    lc2, _, tok2 = _tf_login()
+    again = lc2.post("/login/2fa", data={"_csrf": tok2, "code": _code})
+    check(again.status_code == 200 and "Wrong code" in again.get_data(as_text=True), "the same code cannot be used twice")
+    lc3, _, tok3 = _tf_login()
+    bk1 = lc3.post("/login/2fa", data={"_csrf": tok3, "code": "1111-2222"})
+    lc4, _, tok4 = _tf_login()
+    bk2 = lc4.post("/login/2fa", data={"_csrf": tok4, "code": "1111-2222"})
+    check(bk1.status_code == 302 and bk2.status_code == 200, "a backup code works once")
+    st = client(ids["staff"])
+    off = st.post("/profile", data={"_csrf": "ci", "section": "2fa_disable", "current": "Ci-Pages-123", "code": "000000"})
+    check(one("SELECT totp_enabled FROM panel_admins WHERE id = %s", (ids["staff"],))["totp_enabled"] == 1,
+          "switching two-factor off needs a valid code, not only the password")
+    run("UPDATE panel_admins SET totp_secret = '', totp_enabled = 0, totp_backup_codes = NULL, totp_last_step = 0 WHERE id = %s",
+        (ids["staff"],))
+    run("DELETE FROM audit_log WHERE action = '2fa_failed'")
+
     # ---- customer portal pages (signed in as a customer) and the portal bottom nav
     pc = flask_app.test_client()
     with pc.session_transaction() as s:

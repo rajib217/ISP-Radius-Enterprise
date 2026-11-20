@@ -134,7 +134,7 @@ def call(step, body, flow="", ref=0, payment_id="", token=None):
 def _cache():
     row = core.q("SELECT svalue FROM settings WHERE skey = 'bkash_token_cache'", one=True)
     try:
-        return json.loads(row["svalue"]) if row else {}
+        return json.loads(db.decrypt_value(row["svalue"])) if row else {}
     except (ValueError, TypeError):
         return {}
 

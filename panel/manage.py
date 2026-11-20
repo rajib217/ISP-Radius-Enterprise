@@ -2,6 +2,7 @@
 
     python3 manage.py create-admin <username> <password> [admin|support]
     python3 manage.py reset-password <username> <new-password>
+    python3 manage.py reset-2fa <username>       (switch two-factor off for someone locked out)
     python3 manage.py seed-install          (used by install.sh; reads SEED_* environment variables)
 
 Needs the DB_* environment variables (see /etc/isp-panel/panel.env).
@@ -100,6 +101,13 @@ def main(argv):
                         (generate_password_hash(argv[3]), argv[2]))
             conn.commit()
             print("updated" if cur.rowcount else "no such user")
+            return 0 if cur.rowcount else 1
+        if cmd == "reset-2fa" and len(argv) >= 3:
+            # the way back in when the only admin lost their authenticator (and every backup code)
+            cur.execute("UPDATE panel_admins SET totp_secret = '', totp_enabled = 0, totp_backup_codes = NULL, "
+                        "totp_last_step = 0 WHERE username = %s", (argv[2],))
+            conn.commit()
+            print("two-factor off" if cur.rowcount else "no such user (or two-factor was already off)")
             return 0 if cur.rowcount else 1
         if cmd == "seed-install":
             print(seed_install(conn, cur, os.environ))

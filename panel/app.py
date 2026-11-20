@@ -1,6 +1,7 @@
 """ISP RADIUS Panel - web admin for FreeRADIUS + MariaDB (PPPoE subscribers)."""
 import csv
 import io
+import json
 import ipaddress
 import os
 import re
@@ -23,6 +24,7 @@ import db
 import nav
 import permcatalog
 import radius
+import totp
 from core import (BASE_FROM, EMAIL_RE, NAS_NAME_RE, PASSWORD_RE, PER_PAGE_CHOICES, PHONE_RE, PLAN_RE,  # noqa: F401
                   POOL_RE, RATE_RE, USERNAME_RE, admin_required, audit, cfg, commit, get_db, insert, n,
                   pager, parse_date, q, safe_next, service_state, sub_filters, x)
@@ -240,7 +242,7 @@ def gate():
         sent = request.form.get("_csrf") or request.headers.get("X-CSRF-Token", "")
         if not session.get("csrf") or not secrets.compare_digest(sent, session["csrf"]):
             abort(400, "Your session expired. Reload the page and try again.")
-    if request.endpoint in ("login", "branding", "healthz") or (request.endpoint or "").startswith("portal"):
+    if request.endpoint in ("login", "login_2fa", "branding", "healthz") or (request.endpoint or "").startswith("portal"):
         return None          # the customer portal has its own sign-in (mod_portal.py)
     uid = session.get("uid")
     if not uid:
@@ -322,6 +324,14 @@ def login():
                 error = "This account is switched off."
             elif user and user["is_active"] and check_password_hash(user["password_hash"],
                                                                     request.form.get("password", "")):
+                if user.get("totp_enabled"):
+                    # password OK; the one-time code is still required
+                    session.clear()
+                    session["pending_uid"] = user["id"]
+                    session["pending_since"] = int(datetime.now().timestamp())
+                    session["pending_next"] = safe_next(request.args.get("next")) or ""
+                    session["csrf"] = secrets.token_hex(16)
+                    return redirect(url_for("login_2fa"))
                 session.clear()
                 session["uid"] = user["id"]
                 session["csrf"] = secrets.token_hex(16)
@@ -334,6 +344,61 @@ def login():
             commit()
             error = "Wrong username or password."
     return render_template("login.html", error=error)
+
+
+@app.route("/login/2fa", methods=["GET", "POST"])
+def login_2fa():
+    """Second step of sign-in for admins with TOTP two-factor enabled."""
+    uid = session.get("pending_uid")
+    if not uid or int(datetime.now().timestamp()) - session.get("pending_since", 0) > 300:
+        session.pop("pending_uid", None)
+        return redirect(url_for("login"))
+    user = q("SELECT * FROM panel_admins WHERE id = %s", (uid,), one=True)
+    if not user or not user["is_active"] or not user.get("totp_enabled"):
+        session.clear()
+        return redirect(url_for("login"))
+    error = None
+    if request.method == "POST":
+        ip = request.remote_addr or ""
+        recent = q("SELECT COUNT(*) AS c FROM audit_log WHERE action = '2fa_failed' "
+                   "AND (ip = %s OR target = %s) AND created_at > NOW() - INTERVAL 10 MINUTE",
+                   (ip, user["username"]), one=True)["c"]
+        if recent >= 5:
+            session.clear()
+            return redirect(url_for("login"))
+        code = request.form.get("code", "").strip()
+        step = totp.match_step(db.decrypt_value(user.get("totp_secret") or ""), code)
+        ok = False
+        if step is not None and step > int(user.get("totp_last_step") or 0):
+            # the UPDATE only wins once per code, so two requests racing with the same code cannot both sign in
+            ok = x("UPDATE panel_admins SET totp_last_step = %s WHERE id = %s AND totp_last_step < %s",
+                   (step, user["id"], step)) == 1
+        if not ok and code and step is None:
+            # one-time backup code?
+            try:
+                hashes = json.loads(user.get("totp_backup_codes") or "[]")
+            except (ValueError, TypeError):
+                hashes = []
+            h = totp.hash_backup_code(code)
+            if h in hashes:
+                hashes.remove(h)
+                x("UPDATE panel_admins SET totp_backup_codes = %s WHERE id = %s",
+                  (json.dumps(hashes), user["id"]))
+                ok = True
+        if ok:
+            nxt = session.get("pending_next") or ""
+            session.clear()
+            session["uid"] = user["id"]
+            session["csrf"] = secrets.token_hex(16)
+            session.permanent = True
+            x("UPDATE panel_admins SET last_login = NOW() WHERE id = %s", (user["id"],))
+            audit("login", who=user["username"])
+            commit()
+            return redirect(nxt or url_for("dashboard"))
+        audit("2fa_failed", target=user["username"], who=user["username"])
+        commit()
+        error = "Wrong code. Check your authenticator app and try again."
+    return render_template("login_2fa.html", error=error)
 
 
 @app.route("/logout", methods=["POST"])

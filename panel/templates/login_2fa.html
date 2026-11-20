@@ -1,0 +1,54 @@
+{% from "_macros.html" import icon %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Two-factor code · RADIUS Panel</title>
+  {% if brand.favicon %}<link rel="icon" href="{{ brand.favicon }}">{% else %}<link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">{% endif %}
+  <script>try{var t=localStorage.getItem("isp-theme");if(!t&&window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches)t="dark";if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+</head>
+<body>
+{% include "_icons.html" %}
+<button type="button" class="btn icon login-theme" id="loginTheme" aria-label="Switch light or dark theme" title="Theme">{{ icon('sun') }}</button>
+<div class="login">
+  <section class="login-art" aria-hidden="true">
+    <svg class="rings" viewBox="0 0 620 620"><circle class="ra" cx="310" cy="310" r="282" fill="none" stroke-width="44"/><circle class="rb" cx="310" cy="310" r="185" fill="none" stroke-width="44"/><circle class="rc" cx="310" cy="310" r="70"/></svg>
+    <div style="position:relative;display:flex;align-items:center;gap:10px">
+      <svg class="login-mark" viewBox="0 0 32 32" width="30" height="30"><circle class="ring-outer" cx="16" cy="16" r="13" fill="none" stroke-width="3"/><circle class="ring-inner" cx="16" cy="16" r="7.6" fill="none" stroke-width="3"/><circle class="ring-dot" cx="16" cy="16" r="2.4"/></svg>
+      <b style="font-size:16px">RADIUS Panel</b>
+    </div>
+    <div>
+      <h2>Every customer, every session, one console.</h2>
+      <p>Manage PPPoE subscribers, plans and routers on your own FreeRADIUS server.</p>
+    </div>
+  </section>
+  <section class="login-form">
+    <form method="post" autocomplete="off">
+      {{ csrf_input() }}
+      <div>
+        <h1>Two-factor code</h1>
+        <p class="muted" style="margin-top:4px">Enter the 6-digit code from your authenticator app, or one of your backup codes.</p>
+      </div>
+      {% if error %}<div class="note warn" role="alert">{{ error }}</div>{% endif %}
+      <div class="field">
+        <label class="lbl" for="c">Code</label>
+        <input id="c" name="code" inputmode="numeric" autocomplete="one-time-code" autofocus required>
+      </div>
+      <button class="btn primary" type="submit" style="height:42px">Verify and sign in</button>
+      <p class="muted" style="margin:0">Lost your authenticator? Ask an administrator to reset two-factor for your account.</p>
+    </form>
+  </section>
+</div>
+<script>
+(function () {
+  var th = document.getElementById("loginTheme");
+  if (th) th.addEventListener("click", function () {
+    var d = document.documentElement, next = d.dataset.theme === "dark" ? "light" : "dark";
+    d.dataset.theme = next;
+    try { localStorage.setItem("isp-theme", next); } catch (e) {}
+  });
+})();
+</script>
+</body>
+</html>
