@@ -491,6 +491,13 @@ def check_rules(flask_app, ids):
     check(shop and shop["A"][0] == "Home" and shop["B"][0] == "Wired" and shop["D"][0] == "NOC" and shop["E"][0] == "Shared"
           and shop["I"][0] == "Chattogram" and shop["K"][0] == "Nabinagar" and shop["G"][0] == "20"
           and abs(float(shop["O"][0]) - shop_price) < 0.01, "row values: defaults, location, Mbps and the reseller's customer price")
+    shop_g = _re2.search(r'<c r="G\d+"[^>]*>.*?</c>', next((rx for rx in rows_x if ">uttara.shop<" in rx), ""), _re2.S)
+    check(shop_g and "inlineStr" not in shop_g.group(0), "bandwidth_allocation is a number cell, not text")
+    import mod_btrc as _mb
+    check([_mb.package_mbps(r) for r in ({"plan_name": "15mb", "download_mbps": 1}, {"plan_name": "Home 10 MB"},
+                                          {"plan_name": "gold", "plan_label": "512 Kbps"}, {"bandwidth_value": 1, "bandwidth_type": "Gbps"},
+                                          {"plan_name": "gold", "download_mbps": 8})] == [15, 10, 0.512, 1000, 8],
+          "bandwidth_allocation is the plain package speed (15mb -> 15)")
     check(shop and shop["F"][1] and 40000 < int(shop["F"][0]) < 60000, "activation_date is a real Excel date")
     check(shop and shop["H"][0].startswith("100.64."), "allocated_ip comes from the customer's latest session")
     check(len(by_user) >= 8, "everyone activated or renewed this month is in the sheet (%d)" % len(by_user))

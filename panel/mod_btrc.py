@@ -6,7 +6,8 @@ One row per customer who was activated or renewed in the chosen month, with exac
   client_type, connection_type, bandwidth_distribution_point, connectivity_type   one setting each for the whole ISP
   client_username                    the PPPoE username
   activation_date                    the customer's LAST activation / renewal in that month (an Excel date)
-  bandwidth_allocation               the package's download speed in Mbps
+  bandwidth_allocation               the package's speed as a plain number of Mbps (15, not "15mb"): the package's
+                                     Bandwidth field, else the number in its name / label, else its download Mbps
   allocated_ip                       the fixed IP, else the IP of the customer's latest session
   division, district, thana          one setting each for the whole ISP
   address                            the customer's address, else their area
@@ -51,10 +52,36 @@ def _settings():
     return {k: (s.get(k) or d) for k, _, d in SETTINGS}
 
 
+_UNIT = {"k": 0.001, "kbps": 0.001, "m": 1, "mb": 1, "mbps": 1, "g": 1000, "gb": 1000, "gbps": 1000}
+
+
+def _number(mbps):
+    mbps = round(float(mbps), 3)
+    return int(mbps) if mbps == int(mbps) else mbps
+
+
+def package_mbps(row):
+    """The package's speed in Mbps as a number: Bandwidth field, else the number in the name / label ("15mb" -> 15)."""
+    v = row.get("bandwidth_value")
+    if v not in (None, "", 0):
+        try:
+            return _number(float(v) * _UNIT.get((row.get("bandwidth_type") or "Mbps").lower(), 1))
+        except (TypeError, ValueError):
+            pass
+    texts = [t for t in (row.get("plan_name"), row.get("plan_label")) if t]
+    for pattern in (r"(\d+(?:\.\d+)?)\s*(kbps|mbps|gbps|kb|mb|gb|k|m|g)\b", r"(\d+(?:\.\d+)?)()"):  # "15mb" first, then a bare "15"
+        for text in texts:
+            m = re.search(pattern, text, re.I)
+            if m:
+                return _number(float(m.group(1)) * _UNIT.get((m.group(2) or "m").lower(), 1))
+    return _number(row.get("download_mbps") or 0)
+
+
 def rows_for(start, end):
     """The report rows (dicts keyed by COLUMNS) for customers activated / renewed in [start, end)."""
     subs = q("SELECT s.id, s.username, s.phone, s.email, s.address, s.area, s.static_ip, s.created_by, s.plan_id, "
-             "p.download_mbps, p.price, a.last_act FROM (SELECT subscriber_id, MAX(paid_at) AS last_act FROM payments "
+             "p.download_mbps, p.price, p.bandwidth_value, p.bandwidth_type, p.name AS plan_name, p.label AS plan_label, "
+             "a.last_act FROM (SELECT subscriber_id, MAX(paid_at) AS last_act FROM payments "
              "WHERE paid_at >= %s AND paid_at < %s AND days_added > 0 AND subscriber_id IS NOT NULL GROUP BY subscriber_id) a "
              "JOIN subscribers s ON s.id = a.subscriber_id LEFT JOIN plans p ON p.id = s.plan_id ORDER BY s.username",
              (start, end))
@@ -80,7 +107,7 @@ def rows_for(start, end):
             "client_type": st["btrc_client_type"], "connection_type": st["btrc_connection_type"],
             "client_username": s["username"], "bandwidth_distribution_point": st["btrc_distribution_point"],
             "connectivity_type": st["btrc_connectivity_type"], "activation_date": s["last_act"].date(),
-            "bandwidth_allocation": int(s["download_mbps"] or 0), "allocated_ip": s["static_ip"] or last_ip.get(s["username"], ""),
+            "bandwidth_allocation": package_mbps(s), "allocated_ip": s["static_ip"] or last_ip.get(s["username"], ""),
             "division": st["btrc_division"], "district": st["btrc_district"], "thana": st["btrc_thana"],
             "address": (s["address"] or "").strip() or (s["area"] or ""), "client_mobile": s["phone"] or "",
             "client_email": s["email"] or "", "selling_price_bdt_excluding_vat": round(price, 2),
