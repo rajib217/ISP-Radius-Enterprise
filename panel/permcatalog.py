@@ -121,7 +121,11 @@ TABS = [
            I("inv.reverse", "Reverse", "Reverse Invoice And Update All Related Profit Distributions"),
            I("inv.mark_paid", "Mark As Paid (Due Invoices Only)", "Bulk Mark Multiple Invoices As Paid", "n"),
            I("inv.export", "Export", "", "v")]),
-        G("Ledger Reports", "accounting", [I("led.module", "Module", "", "vg"), I("led.view", "View", "", "v"), I("led.export", "Export", "", "v")]),
+        # not tied to the Accounting module: ticking it opens only the ledger (never Payments, Dues or Expenses).
+        # Resellers / sub-resellers / retailers: off until ticked; they then see their own account, their downline and
+        # those customers. Staff with Accounting access always see the ledger.
+        G("Ledger Reports", None, [I("led.module", "Module", "Resellers / sub-resellers / retailers: their own and their downline's ledger. Staff with Accounting access always have it.", "vgno"),
+                                   I("led.export", "Export", "Excel and CSV download of the ledger", "vno")]),
         G("Payment Reports", "accounting", [I("pay.module", "Module", "", "vg"), I("pay.receipt", "View Receipt", "", "v"),
                                             I("pay.export", "Export", "", "v")]),
         G("Cashflow", "accounting", [I("cf.module", "Module", "", "vg"), I("cf.add", "Add"), I("cf.edit", "Edit"), I("cf.delete", "Delete"),
@@ -160,7 +164,6 @@ TABS = [
     ]},
     {"title": "Reports", "icon": "chart", "groups": [
         G("My Profit (Reseller)", None, [I("rep.myprofit", "Module", "Resellers / sub-resellers / retailers: see their own profit and that of the people below them", "vn")]),
-        G("Ledger (Reseller)", None, [I("led.mine", "Module", "Resellers / sub-resellers / retailers: Ledger Reports for their own account, the people below them and their customers (off until you tick it)", "vno")]),
         G("Reports", "reports", [I("rep.module", "Module", "", "vg"), I("rep.sales", "Sales Reports", "", "v"),
                                  I("rep.payment", "Payment Reports", "", "v"), I("rep.btrc", "BTRC Reports", "", "vn"),
                                  I("rep.bandwidth", "Bandwidth Usage Reports", "", "vn")]),
@@ -184,7 +187,6 @@ RANK = {"none": 0, "view": 1, "edit": 2}
 # page / action  ->  the key (or any one of several keys) a role needs ticked to use it
 ENDPOINT_FN = {
     "my_profit": "rep.myprofit", "my_profit_csv": "rep.myprofit",
-    "ledger": ("led.view", "led.mine"), "ledger_csv": ("led.export", "led.mine"), "ledger_xlsx": ("led.export", "led.mine"),
     "subscriber_new": "sub.add", "subscriber_edit": "sub.edit", "subscriber_delete": "sub.delete",
     "import_csv": "sub.import", "import_sample": "sub.import", "subscribers_export": "sub.export",
     "subscriber_renew": "sub.activation", "subscriber_activate": ("sub.activation", "sub.mass_activation"), "subscriber_activation": ("sub.activation", "sub.mass_activation"),

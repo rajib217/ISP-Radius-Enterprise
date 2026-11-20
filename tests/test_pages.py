@@ -410,7 +410,7 @@ def check_rules(flask_app, ids):
           "admin ledger shows invoices, profit, package cost and balance top-ups")
     check(res.get("/ledger").status_code == 403 and 'href="/ledger"' not in res.get("/").get_data(as_text=True),
           "reseller without the Ledger permission is refused and has no menu link")
-    run("INSERT INTO role_funcs (role, fkey, allowed) VALUES ('reseller', 'led.mine', 1) ON DUPLICATE KEY UPDATE allowed = 1")
+    run("INSERT INTO role_funcs (role, fkey, allowed) VALUES ('reseller', 'led.module', 1) ON DUPLICATE KEY UPDATE allowed = 1")
     res2 = client(ids["reseller"])
     r = res2.get("/ledger")
     page = r.get_data(as_text=True)
@@ -418,6 +418,11 @@ def check_rules(flask_app, ids):
     check("banani.cafe" in page and "led-type t-package-cost" in page and "uttara.salma" not in page,
           "reseller sees their own and their customers' entries, not the admin's customers")
     check(sub.get("/ledger").status_code == 403, "the sub-reseller role still needs its own permission")
+    check(res2.get("/payments").status_code == 403 and res2.get("/dues").status_code == 403,
+          "the Ledger tick does not open the rest of Accounting (Payments, Dues)")
+    check(res2.get("/ledger.csv").status_code == 403, "export needs the Export tick")
+    run("INSERT INTO role_funcs (role, fkey, allowed) VALUES ('reseller', 'led.export', 1) ON DUPLICATE KEY UPDATE allowed = 1")
+    res2 = client(ids["reseller"])
     prof = adm.get("/ledger?type=profit").get_data(as_text=True)
     check("led-type t-profit" in prof and "led-type t-package-cost" not in prof and "led-type t-invoice" not in prof,
           "type filter shows only that type")

@@ -6,9 +6,10 @@
   user_ledger  -> "Package Cost" / "Balance Topup" / "Balance Add" / "Balance Deduct"
                   (a reseller's / staff member's balance, with balance before and after)
 
-Staff see it with the Accounting > Ledger Reports permission (led.view, export: led.export).
-Resellers, sub-resellers and retailers see it only when the admin ticks "Ledger (Reseller)" (led.mine), and then only
-their own account, the people below them, and those people's customers.
+Permissions (Users > Roles > Accounting > Ledger Reports; not tied to the Accounting module level):
+  * staff with Accounting access see everything; Export needs the Export tick (or Accounting edit)
+  * resellers / sub-resellers / retailers see it only when "Module" is ticked for their role, and then only their own
+    account, the people below them and those people's customers; Export needs the Export tick.
 
 Nothing is written here: history from before this page existed shows too."""
 import csv
@@ -38,8 +39,14 @@ def _allowed():
     if me["role"] == "admin":
         return "all"
     if me["role"] in core.SELLER_ROLES:
-        return "mine" if core.can_fn("led.mine") else None
-    return "all" if core.can_fn("led.view") else None
+        return "mine" if core.can_fn("led.module") else None
+    return "all" if (core.can("accounting") or core.can_fn("led.module")) else None
+
+
+def _can_export(scope):
+    if g.me["role"] == "admin" or core.can_fn("led.export"):
+        return True
+    return scope == "all" and core.can("accounting", "edit")
 
 
 def _filters():
@@ -183,13 +190,13 @@ def ledger():
     pg = core.pager(_count(parts))
     rows = _finish(_page(parts, pg["per"], pg["offset"]))
     keep = {k: v for k, v in request.args.items() if k != "page"}
-    can_export = g.me["role"] == "admin" or core.can_fn("led.export") or scope == "mine"
+    can_export = _can_export(scope)
     return render_template("ledger.html", rows=rows, pg=pg, f=f, keep=keep, types=TYPES, scope=scope, can_export=can_export)
 
 
 def _export_rows():
     scope = _allowed() or abort(403)
-    if not (g.me["role"] == "admin" or core.can_fn("led.export") or scope == "mine"):
+    if not _can_export(scope):
         abort(403)
     f = _filters()
     rows = _finish(_page(_parts(f, scope), EXPORT_CAP, 0))
