@@ -122,7 +122,10 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq freeradius freeradius-mysql freeradius-utils mariadb-client >/dev/null
           sudo systemctl stop freeradius || true
-          sudo cat /etc/freeradius/*/mods-config/sql/main/mysql/schema.sql | mariadb -h 127.0.0.1 -uroot -pci-root radius
+          set -o pipefail
+          # the glob must expand as root: /etc/freeradius/3.0 is not readable for the runner user
+          sudo sh -c 'cat /etc/freeradius/*/mods-config/sql/main/mysql/schema.sql' | mariadb -h 127.0.0.1 -uroot -pci-root radius
+          mariadb -h 127.0.0.1 -uroot -pci-root -N -e "SELECT CONCAT('FreeRADIUS tables: ', COUNT(*)) FROM information_schema.tables WHERE table_schema = 'radius'"
 
       - name: Apply install.sh's FreeRADIUS edits and run FreeRADIUS's config check
         run: sudo bash tests/check_freeradius_config.sh
