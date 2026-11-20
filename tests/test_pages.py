@@ -438,6 +438,26 @@ def check_rules(flask_app, ids):
     cost_row = one("SELECT balance_after FROM user_ledger WHERE user_id = %s AND method = 'activation' ORDER BY id DESC LIMIT 1", (ids["reseller"],))
     check(cost_row is not None and ("{:,.2f}".format(float(cost_row["balance_after"]))) in page,
           "package cost row shows the reseller's balance after the charge")
+
+    # ---- bKash Payments (seed: one completed portal renewal TR0011CI, one pending reseller top-up TR0011CJ)
+    bk = adm.get("/bkash-payments").get_data(as_text=True)
+    check("TR0011CI" in bk and "TR0011CJ" in bk and "BKCI1" in bk and "Completed" in bk and "Pending" in bk,
+          "admin sees portal renewals and reseller top-ups with Trx ID and status")
+    bk = adm.get("/bkash-payments?status=completed").get_data(as_text=True)
+    check("TR0011CI" in bk and "TR0011CJ" not in bk, "status filter shows only completed payments")
+    run("DELETE FROM role_funcs WHERE role = 'reseller' AND fkey LIKE 'bkp.%%'")
+    res3 = client(ids["reseller"])
+    check(res3.get("/bkash-payments").status_code == 403 and 'href="/bkash-payments"' not in res3.get("/").get_data(as_text=True),
+          "reseller without the bKash Payments permission is refused and has no menu link")
+    run("INSERT INTO role_funcs (role, fkey, allowed) VALUES ('reseller', 'bkp.module', 1) ON DUPLICATE KEY UPDATE allowed = 1")
+    res3 = client(ids["reseller"])
+    bk = res3.get("/bkash-payments").get_data(as_text=True)
+    check("TR0011CJ" in bk and "TR0011CI" not in bk, "with the permission the reseller sees their own top-ups, not the admin's customers")
+    check(res3.get("/payments").status_code == 403 and res3.get("/bkash-payments.csv").status_code == 403,
+          "the bKash tick does not open Payments, and export needs its own tick")
+    c, x = adm.get("/bkash-payments.csv"), adm.get("/bkash-payments.xlsx")
+    check(c.status_code == 200 and "TR0011CI" in c.get_data(as_text=True) and x.status_code == 200 and x.data[:2] == b"PK",
+          "admin CSV and Excel exports work")
     return bad
 
 

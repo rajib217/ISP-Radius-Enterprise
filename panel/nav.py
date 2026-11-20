@@ -21,6 +21,8 @@ STRUCTURE = [
     _g("myusers", "My Users", "users", endpoint="my_users", match=["my_users", "user_transfer", "my_user_save", "my_user_packages", "my_user_delete"], sellers=True, fn="usr.module"),
     _g("myprofit", "My Profit", "chart", endpoint="my_profit", match=["my_profit", "my_profit_csv"], sellers=True, fn="rep.myprofit"),
     _g("myledger", "Ledger Reports", "file", endpoint="ledger", match=["ledger", "ledger_csv", "ledger_xlsx"], sellers=True, fn="led.module"),
+    _g("mybkash", "bKash Payments", "card", endpoint="bkash_payments",
+       match=["bkash_payments", "bkash_payments_csv", "bkash_payments_xlsx"], sellers=True, fn="bkp.module"),
     _g("users", "Users", "users", admin=True, items=[
         _i("Roles", "roles"),
         _i("Users", "admins", ["admins", "admin_save", "admin_toggle", "admin_delete"], none_of=["group"]),
@@ -66,6 +68,7 @@ STRUCTURE = [
         _i("Income & expense", "acct_summary"),
         _i("Dues", "dues"),
         _i("Ledger Reports", "ledger", ["ledger", "ledger_csv", "ledger_xlsx"]),
+        _i("bKash Payments", "bkash_payments", ["bkash_payments", "bkash_payments_csv", "bkash_payments_xlsx"]),
     ]),
     _g("inv", "Inventory", "archive", module="inventory", items=[
         _i("Items", "inventory", none_of=["low"]),

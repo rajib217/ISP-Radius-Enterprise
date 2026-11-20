@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, pager %}
+{% block title %}bKash Payments{% endblock %}
+{% set role_names = {'subscriber': 'Subscriber', 'admin': 'Admin', 'reseller': 'Reseller', 'subreseller': 'Sub-reseller', 'retailer': 'Retailer'} %}
+{% block content %}
+<div class="page-head">
+  <div><h1>bKash Payments</h1>
+    <p class="sub">{{ 'Your top-ups and those of the people below you' if scope == 'mine' else 'Every bKash checkout: customer renewals and reseller top-ups' }} · {{ f['from']|d }} to {{ f['to']|d }}</p></div>
+  <div class="actions">
+    {% if can_export %}
+    <a class="btn" href="{{ url_for('bkash_payments_xlsx', **keep) }}">{{ icon('download') }}Excel</a>
+    <a class="btn" href="{{ url_for('bkash_payments_csv', **keep) }}">{{ icon('file') }}CSV</a>
+    {% endif %}
+    <button class="btn" type="button" onclick="window.print()">{{ icon('printer') }}Print</button>
+  </div>
+</div>
+
+<section class="kpi-grid bkp-sum" aria-label="Totals for this period">
+  <div class="kcard"><span class="kcard-top"><span class="kcard-k">Completed</span></span><span class="kcard-v num">{{ currency }} {{ (sums.completed.amount + sums.completed.fee)|money }}</span>
+    <span class="kcard-s">{{ sums.completed.n }} payment{{ '' if sums.completed.n == 1 else 's' }} · fees {{ currency }} {{ sums.completed.fee|money }}</span></div>
+  <div class="kcard"><span class="kcard-top"><span class="kcard-k">Pending</span></span><span class="kcard-v num">{{ sums.pending.n }}</span>
+    <span class="kcard-s">{{ currency }} {{ (sums.pending.amount + sums.pending.fee)|money }} waiting for bKash</span></div>
+  <div class="kcard"><span class="kcard-top"><span class="kcard-k">Failed</span></span><span class="kcard-v num">{{ sums.failed.n }}</span><span class="kcard-s">nothing was charged</span></div>
+  <div class="kcard"><span class="kcard-top"><span class="kcard-k">Cancelled</span></span><span class="kcard-v num">{{ sums.cancelled.n }}</span><span class="kcard-s">by the payer</span></div>
+</section>
+
+<section class="panel">
+  <form class="filters panel-body" method="get" style="padding-bottom:0">
+    <div class="search">{{ icon('search') }}<input type="search" name="q" value="{{ f.q }}" placeholder="Username, Trx ID or Payment ID" aria-label="Search"></div>
+    <select name="status" aria-label="Status"><option value="">All statuses</option>
+      {% for k, label in statuses %}<option value="{{ k }}" {{ 'selected' if f.status == k }}>{{ label }}</option>{% endfor %}</select>
+    <select name="kind" aria-label="Type"><option value="">All types</option>
+      {% for k, label in kinds %}<option value="{{ k }}" {{ 'selected' if f.kind == k }}>{{ label }}</option>{% endfor %}</select>
+    <input type="date" name="from" value="{{ f['from'].isoformat() }}" aria-label="From">
+    <input type="date" name="to" value="{{ f['to'].isoformat() }}" aria-label="To">
+    <select name="per" aria-label="Rows per page">{% for n in (25, 50, 100, 200) %}<option {{ 'selected' if pg.per == n }}>{{ n }}</option>{% endfor %}</select>
+    <button class="btn" type="submit">{{ icon('filter') }}Filter</button>
+  </form>
+
+  {% if rows %}
+  <div class="listbar"><span class="muted">Showing {{ pg.first }} to {{ pg.last }} of {{ '{:,}'.format(pg.total) }} records</span>{{ pager(pg, keep, 'bkash_payments') }}</div>
+  <div class="tbl-wrap"><table class="tbl led-tbl">
+    <thead><tr><th>ID</th><th>Type</th><th>Account</th><th class="num">Amount</th><th class="num">bKash fee</th><th class="num">Total</th>
+      <th>Status</th><th>bKash Trx ID</th><th>Payment ID</th><th>Created</th></tr></thead>
+    <tbody>{% for r in rows %}
+      <tr>
+        <td class="mono" data-label="ID">{% if r.receipt and scope == 'all' %}<a href="{{ url_for('receipt', pid=r.receipt) }}" title="Receipt #{{ r.receipt }}">{{ r.code }}</a>{% else %}{{ r.code }}{% endif %}</td>
+        <td data-label="Type" data-card="key"><span class="led-type t-{{ 'topup' if r.src == 'T' else 'invoice' }}">{{ r.kind }}</span></td>
+        <td data-label="Account" data-card="title"><span class="led-acct {{ 'sub' if r.role == 'subscriber' else '' }}">{{ r.account }} <small>({{ role_names.get(r.role, r.role|capitalize) }})</small></span></td>
+        <td class="num" data-label="Amount">{{ r.amount|money }}</td>
+        <td class="num" data-label="bKash fee">{{ r.fee|money }}</td>
+        <td class="num" data-label="Total" data-card="key"><b>{{ r.total|money }}</b></td>
+        <td data-label="Status" data-card="key"><span class="badge {{ {'completed': 'ok', 'pending': 'warn'}.get(r.status, 'bad') }}" {% if r.message %}title="{{ r.message }}"{% endif %}>{{ r.status|capitalize }}</span></td>
+        <td data-label="bKash Trx ID">{% if r.trx %}<span class="led-chip mono">{{ r.trx }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="mono" data-label="Payment ID"><small>{{ r.payment_id or '—' }}</small></td>
+        <td class="nowrap" data-label="Created"><span class="led-chip">{{ r.created.strftime('%Y-%m-%d %H:%M') }}</span></td>
+      </tr>{% endfor %}</tbody>
+  </table></div>
+  <div class="listbar"><span class="muted">Showing {{ pg.first }} to {{ pg.last }} of {{ '{:,}'.format(pg.total) }} records</span>{{ pager(pg, keep, 'bkash_payments') }}</div>
+  {% else %}<div class="empty"><h3>No bKash payments</h3><p>Nothing matches these filters between {{ f['from']|d }} and {{ f['to']|d }}. Try a longer date range.</p></div>{% endif %}
+</section>
+{% endblock %}

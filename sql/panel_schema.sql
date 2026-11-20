@@ -708,3 +708,7 @@ ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS expiry_time VARCHAR(5) NULL;
 -- Ledger Reports read these by date
 ALTER TABLE user_ledger ADD KEY IF NOT EXISTS idx_created (created_at);
 ALTER TABLE sub_ledger ADD KEY IF NOT EXISTS idx_created (created_at);
+
+-- bKash Payments report reads these by date
+ALTER TABLE topups ADD KEY IF NOT EXISTS idx_created (created_at);
+ALTER TABLE portal_payments ADD KEY IF NOT EXISTS idx_created (created_at);

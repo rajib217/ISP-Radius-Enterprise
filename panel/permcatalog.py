@@ -126,6 +126,8 @@ TABS = [
         # those customers. Staff with Accounting access always see the ledger.
         G("Ledger Reports", None, [I("led.module", "Module", "Resellers / sub-resellers / retailers: their own and their downline's ledger. Staff with Accounting access always have it.", "vgno"),
                                    I("led.export", "Export", "Excel and CSV download of the ledger", "vno")]),
+        G("bKash Payments", None, [I("bkp.module", "Module", "Resellers / sub-resellers / retailers: their own and their downline's bKash checkouts. Staff with Accounting access always have it.", "vgno"),
+                                   I("bkp.export", "Export", "Excel and CSV download of bKash payments", "vno")]),
         G("Payment Reports", "accounting", [I("pay.module", "Module", "", "vg"), I("pay.receipt", "View Receipt", "", "v"),
                                             I("pay.export", "Export", "", "v")]),
         G("Cashflow", "accounting", [I("cf.module", "Module", "", "vg"), I("cf.add", "Add"), I("cf.edit", "Edit"), I("cf.delete", "Delete"),
