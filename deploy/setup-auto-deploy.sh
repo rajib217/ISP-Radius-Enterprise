@@ -51,9 +51,14 @@ fi
 
 # ------------------------------------------------------------- 1. clone
 if [[ -d "$DIR/.git" ]]; then
-  c_ok "Using the existing clone in $DIR"
+  c_ok "Using the existing clone in $DIR (bringing it up to date)"
   chown -R root:root "$DIR"
   git -C "$DIR" fetch --quiet origin main
+  git -C "$DIR" checkout --quiet main 2>/dev/null || git -C "$DIR" checkout --quiet -B main origin/main
+  # fast-forward only: files changed by hand in the clone are never overwritten
+  git -C "$DIR" merge --quiet --ff-only origin/main \
+    || die "$DIR has changes made on the server, so it cannot be updated. See: git -C $DIR status"
+  echo "   now at $(git -C "$DIR" rev-parse --short=12 HEAD): $(git -C "$DIR" log -1 --format=%s)"
 elif [[ -e "$DIR" && -n "$(ls -A "$DIR" 2>/dev/null)" ]]; then
   die "$DIR exists and is not a git clone (perhaps the copied install files). Use another folder:  --dir /opt/isp-panel/repo"
 else
