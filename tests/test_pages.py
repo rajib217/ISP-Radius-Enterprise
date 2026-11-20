@@ -253,6 +253,7 @@ def check_rules(flask_app, ids):
 
     names = {r: one("SELECT label FROM plans WHERE id = %s", (r,))["label"] for r in (1, 2, 3)}
     adm_pkgs = client(ids["admin"]).get("/my-packages").get_data(as_text=True)
+    adm_home = client(ids["admin"]).get("/").get_data(as_text=True)
     # ---- sellers: only allocated packages, no package pages
     res, sub = client(ids["reseller"]), client(ids["subreseller"])
     for url in ("/plans", "/plans/new", "/plans/1/edit", "/policy", "/allocation", "/fees", "/reports/plans"):
@@ -272,6 +273,17 @@ def check_rules(flask_app, ids):
     check(all(names[k] not in page for k in names), "sub-reseller with nothing allocated sees no package")
     info = res.get("/subscribers/charge-info?u=banani.cafe&plan=3").get_json()
     check(info.get("price") is None, "reseller gets no price for an unallocated package")
+
+    # ---- sellers' dashboard: their own customers expiring within 7 days
+    run("UPDATE subscribers SET expiry_date = CURDATE() + INTERVAL 3 DAY, status = 'active' WHERE username = 'uttara.shop'")
+    run("UPDATE subscribers SET expiry_date = CURDATE() + INTERVAL 1 DAY, status = 'active' WHERE username = 'badda.jewel'")
+    home = res.get("/").get_data(as_text=True)
+    check("Expiring soon subscribers" in home and "uttara.shop" in home and "badda.jewel" in home and "by karim_sub" in home,
+          "reseller dashboard lists their own and their sub-reseller's expiring customers")
+    check("gulshan.office" not in home, "reseller dashboard does not show the admin's expiring customer")
+    home = sub.get("/").get_data(as_text=True)
+    check("badda.jewel" in home and "uttara.shop" not in home, "sub-reseller dashboard lists only their own expiring customers")
+    check("Expiring soon subscribers" not in adm_home and "gulshan.office" in adm_home, "admin dashboard keeps its own Expiring soon list")
 
     # ---- activation money rules
     adm = client(ids["admin"])

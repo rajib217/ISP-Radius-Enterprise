@@ -369,8 +369,15 @@ def dashboard():
     tab = request.args.get("tab") if request.args.get("tab") in dict(tabs) else (tabs[0][0] if tabs else "")
     tabdata = dash.load(tab) if tab else None
     if seller:
+        # a seller's own customers (and their downline's) whose package ends within 7 days
+        names = core.my_downline()
+        my_expiring = q("SELECT s.id, s.username, s.full_name, s.phone, s.expiry_date, s.created_by, "
+                        "COALESCE(p.label, p.name) AS plan_label FROM subscribers s LEFT JOIN plans p ON p.id = s.plan_id "
+                        "WHERE s.status = 'active' AND s.expiry_date BETWEEN CURDATE() AND CURDATE() + INTERVAL 7 DAY "
+                        "AND s.created_by IN (" + ",".join(["%s"] * len(names)) + ") "
+                        "ORDER BY s.expiry_date, s.username LIMIT 20", list(names)) if names else []
         return render_template("dashboard.html", seller=True, tabs=tabs, tab=tab, td=tabdata, attention=core.attention(),
-                               notices=_notices())
+                               notices=_notices(), my_expiring=my_expiring, today=date.today())
     st = q("SELECT COUNT(*) AS total, "
            "SUM(status = 'suspended') AS suspended, "
            "SUM(status = 'active' AND expiry_date IS NOT NULL AND expiry_date < CURDATE()) AS expired, "
