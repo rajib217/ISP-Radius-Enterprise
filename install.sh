@@ -489,16 +489,26 @@ link = fr + "/mods-enabled/sql"
 if not os.path.lexists(link): os.symlink("../mods-available/sql", link)
 
 # 2. do not store attempted passwords in radpostauth
-p = fr + "/mods-config/sql/main/mysql/queries.conf"; backup(p); s = rd(p)
+#    Always start from the original file kept in isp-backups: every change to queries.conf is made here, so a re-run
+#    also repairs a copy that an older version of this installer edited wrongly.
+p = fr + "/mods-config/sql/main/mysql/queries.conf"; backup(p)
+s = rd(os.path.join(BK, os.path.relpath(p, fr).replace(os.sep, "__") + ".orig"))
 s = re.sub(r"'%\{%\{User-Password\}:-[^']*'", "''", s)
 
 # 2b. the post-auth log also keeps why a login was refused, the router and the device MAC
 #     (columns reason / nas_ip / mac, added by panel_schema.sql; shown on Logs & System Health).
-def block_span(text, header):
-    """(start, end) of the body of `header { ... }`, skipping braces inside quoted strings."""
-    m = re.search(r"^[ \t]*" + header + r"[ \t]*\{[ \t]*$", text, re.M)
-    if not m:
-        return None
+def block_span(text, header, must_contain=None):
+    """(start, end) of the body of the first `header { ... }` whose body contains `must_contain`, skipping braces
+    inside quoted strings. queries.conf has two post-auth blocks: one inside the accounting queries (session start)
+    and the real authentication log, which is the one that writes to ${..postauth_table}."""
+    for m in re.finditer(r"^[ \t]*" + header + r"[ \t]*\{[ \t]*$", text, re.M):
+        span = _body(text, m)
+        if span and (must_contain is None or must_contain in text[span[0]:span[1]]):
+            return span
+    return None
+
+
+def _body(text, m):
     i, depth, quote = m.end(), 1, False
     while i < len(text):
         ch = text[i]
@@ -524,16 +534,17 @@ def block_span(text, header):
 
 POSTAUTH_QUERY = r'''	query =	"\
 		INSERT INTO ${..postauth_table} \
-			(username, pass, reply, authdate, reason, nas_ip, mac) \
+			(username, pass, reply, authdate, reason, nas_ip, mac ${..class.column_name}) \
 		VALUES ( \
 			'%{SQL-User-Name}', \
 			'', \
 			'%{reply:Packet-Type}', \
-			'%S', \
+			'%S.%M', \
 			'%{%{Module-Failure-Message}:-%{reply:Reply-Message}}', \
 			'%{NAS-IP-Address}', \
-			'%{Calling-Station-Id}')"'''
-span = block_span(s, "post-auth")
+			'%{Calling-Station-Id}' \
+			${..class.reply_xlat})"'''
+span = block_span(s, "post-auth", must_contain="postauth_table")
 if span and "(username, pass, reply, authdate, reason, nas_ip, mac)" not in s[span[0]:span[1]]:
     body = s[span[0]:span[1]]
     q = re.search(r'^[ \t]*query[ \t]*=[ \t]*"(?:[^"\\]|\\.)*"', body, re.M | re.S)
