@@ -858,10 +858,14 @@ systemctl restart isp-panel.service isp-panel-sender.service isp-panel-noc.servi
 # ------------------------------------------------------------------ firewall
 c_ok "Configuring the firewall (UFW)"
 SSH_PORTS="$( { sshd -T 2>/dev/null | awk '$1 == "port" {print $2}'; ss -Htlnp 2>/dev/null | awk '/"sshd"/ {n = split($4, a, ":"); print a[n]}'; } | sort -un)"
-for p in ${SSH_PORTS:-22}; do ufw allow "$p/tcp" comment "ssh" >/dev/null; done   # first, so enabling never locks you out
-ufw allow 80/tcp  comment "http (Let's Encrypt + redirect)" >/dev/null
+# UFW refuses a comment with an apostrophe ("Invalid syntax"): keep comments to letters, digits, spaces and hyphens
+for p in ${SSH_PORTS:-22}; do
+  [[ "$p" =~ ^[0-9]{1,5}$ ]] || continue
+  ufw allow "$p/tcp" comment "ssh" >/dev/null                 # first, so enabling never locks you out
+done
+ufw allow 80/tcp  comment "http - lets encrypt and redirect" >/dev/null
 ufw allow 443/tcp comment "https" >/dev/null
-ufw allow 443/udp comment "https (HTTP/3)" >/dev/null
+ufw allow 443/udp comment "https - http3" >/dev/null
 # the older installer opened RADIUS to the whole internet; now only the routers in the panel may reach it
 ufw delete allow 1812/udp >/dev/null 2>&1 || true
 ufw delete allow 1813/udp >/dev/null 2>&1 || true

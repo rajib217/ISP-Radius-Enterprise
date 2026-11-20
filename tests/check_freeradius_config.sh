@@ -28,7 +28,9 @@ awk '/^post-auth \{/{f=1} f' "$Q" | grep -q 'reason, nas_ip, mac' \
 chgrp -R freerad "$FR_DIR" 2>/dev/null || true
 if ! freeradius -Cx -lstdout -d "$FR_DIR" > /tmp/freeradius-check.log 2>&1; then
   tail -n 40 /tmp/freeradius-check.log
-  echo "::error file=install.sh::FreeRADIUS rejects the configuration written by install.sh (log above)"
+  # the last lines as an annotation too, so they can be read on the Actions page without signing in
+  msg="$(grep -v '^\s*$' /tmp/freeradius-check.log | tail -n 15 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+  echo "::error file=install.sh::FreeRADIUS rejects the configuration written by install.sh:%0A${msg}"
   exit 1
 fi
 grep -q "Configuration appears to be OK" /tmp/freeradius-check.log && echo "FreeRADIUS: Configuration appears to be OK"
