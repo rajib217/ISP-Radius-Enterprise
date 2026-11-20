@@ -6,14 +6,16 @@
 <section class="panel">
   {% if rows %}
   <div class="tbl-wrap"><table class="tbl">
-    <thead><tr><th>Package</th><th class="num">Speed</th><th class="num">Price</th><th class="num">Valid for</th><th class="num">All customers</th><th class="num">Added by me</th><th class="num">My payments (month)</th><th class="num">My collection (month)</th></tr></thead>
+    <thead><tr><th>Package</th><th class="num">Speed</th>{% if seller %}<th class="num">My cost</th><th class="num">Customer price</th>{% else %}<th class="num">Price</th>{% endif %}<th class="num">Valid for</th>{% if not seller %}<th class="num">All customers</th>{% endif %}<th class="num">{{ 'My customers' if seller else 'Added by me' }}</th><th class="num">My payments (month)</th><th class="num">My collection (month)</th></tr></thead>
     <tbody>{% for p in rows %}
       <tr>
         <td class="who-cell"><b>{{ p.label }}</b><small class="mono">{{ p.name }}</small></td>
         <td class="num">{{ p.rate }}</td>
-        <td class="num">{{ currency }} {{ p.price|money }}</td>
+        {% if seller %}<td class="num">{{ (currency ~ ' ' ~ (p.my_cost|money)) if p.my_cost is not none else '—' }}</td>
+        <td class="num">{{ (currency ~ ' ' ~ (p.customer_price|money)) if p.customer_price is not none else '—' }}</td>
+        {% else %}<td class="num">{{ currency }} {{ p.price|money }}</td>{% endif %}
         <td class="num">{{ p.duration or p.validity_days }} {{ p.duration_type or "day" }}{{ "" if (p.duration or p.validity_days) == 1 else "s" }}</td>
-        <td class="num">{{ '{:,}'.format(p.total) }}</td>
+        {% if not seller %}<td class="num">{{ '{:,}'.format(p.total) }}</td>{% endif %}
         <td class="num">{{ '{:,}'.format(p.mine) }}</td>
         <td class="num">{{ p.month.payments }}</td>
         <td class="num"><b>{{ p.month.amount|money }}</b></td>

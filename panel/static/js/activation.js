@@ -4,7 +4,7 @@
   if (!form) return;
   var $ = function (id) { return document.getElementById(id); };
   var user = $("act-user"), plan = $("act-plan"), list = $("act-subs"), amt = $("act-amt");
-  var chosen = null, timer = null, seq = 0;
+  var chosen = null, timer = null, seq = 0, quote = null;   // quote: {price, balance} for the chosen customer + package
   var cur = form.dataset.currency || "";
 
   function money(n) { return Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
@@ -17,7 +17,32 @@
     $("act-exp").disabled = !custom; $("act-exp").required = custom;
     $("act-pay").hidden = !paying;
     ["act-method", "act-amt", "act-note"].forEach(function (i) { $(i).disabled = !paying; });
-    amt.required = paying;
+    var fromBal = fromBalance();
+    amt.disabled = !paying || fromBal;            // paid from the balance: nothing is received
+    amt.required = paying && !fromBal;
+    showMoney();
+  }
+  function fromBalance() { return !$("act-paytog").checked || $("act-method").value === "balance"; }
+
+  // --- what the customer pays and how their balance changes (server rules: mod_subs.subscriber_activate)
+  function showMoney() {
+    var box = $("act-money");
+    box.classList.remove("bad");
+    if (!quote || quote.price === null) { box.hidden = true; return; }
+    var p = Number(quote.price), b = Number(quote.balance), txt, after;
+    if (fromBalance()) {
+      after = b - p;
+      txt = "Package price " + cur + " " + money(p) + " is taken from the subscriber balance (" + cur + " " + money(b) + " → " + cur + " " + money(after) + ").";
+    } else {
+      var diff = Number(amt.value || 0) - p;
+      after = b + diff;
+      if (Math.abs(diff) < 0.005) txt = "Package price " + cur + " " + money(p) + ". Subscriber balance stays " + cur + " " + money(b) + ".";
+      else if (diff > 0) txt = "Package price " + cur + " " + money(p) + ". The extra " + cur + " " + money(diff) + " goes to the subscriber balance (" + cur + " " + money(b) + " → " + cur + " " + money(after) + ").";
+      else txt = "Package price " + cur + " " + money(p) + ". The missing " + cur + " " + money(-diff) + " is taken from the subscriber balance (" + cur + " " + money(b) + " → " + cur + " " + money(after) + ").";
+    }
+    if (after < -0.005) { txt += " The balance is too low: take more cash or add balance first."; box.classList.add("bad"); }
+    box.textContent = txt;
+    box.hidden = false;
   }
   if ($("act-custom")) $("act-custom").addEventListener("change", syncToggles);
   $("act-paytog").addEventListener("change", syncToggles);
@@ -53,17 +78,26 @@
     else dur = plural(days, "Day");
     $("pk-dur").textContent = dur;
     $("pk-time").textContent = plural(days, "Day") + " " + plural(days * 24, "Hour");
-    if (!amt.disabled) amt.value = o.dataset.price || 0;
+    if (!amt.disabled && !quote) amt.value = o.dataset.price || 0;
   }
   function showCharge() {
     var box = $("act-charge");
     box.hidden = true; box.classList.remove("bad");
+    quote = null; showMoney();
     if (!chosen || !plan.value) return;
     var my = ++seq;
-    fetch(form.dataset.charge + "?u=" + encodeURIComponent(chosen.username) + "&plan=" + encodeURIComponent(plan.value), { credentials: "same-origin" })
+    var custom = $("act-custom") && $("act-custom").checked && $("act-exp").value;
+    fetch(form.dataset.charge + "?u=" + encodeURIComponent(chosen.username) + "&plan=" + encodeURIComponent(plan.value) +
+          (custom ? "&exp=" + encodeURIComponent($("act-exp").value) : ""), { credentials: "same-origin" })
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        if (my !== seq || !d.charge) return;
+        if (my !== seq) return;
+        if (d.price !== null && d.price !== undefined) {
+          quote = { price: d.price, balance: d.balance || 0 };
+          if (!amt.disabled) amt.value = Number(d.price).toFixed(2);
+          showMoney();
+        }
+        if (!d.charge) return;
         var c = d.charge;
         box.textContent = (c.mine ? "Takes " : c.who + " pays ") + cur + " " + money(c.cost) + (c.mine ? " from your balance" : " from their balance") +
           " (balance " + cur + " " + money(c.balance) + ")." + (c.low ? " Balance is too low." : "");
@@ -166,7 +200,11 @@
       if (!needPackage()) send();
     }).catch(function () { user.setCustomValidity("Could not check the username. Reload the page and try again."); user.reportValidity(); });
   });
-  $("act-paytog").addEventListener("change", function () { if (this.checked) showPackage(); });
+  $("act-paytog").addEventListener("change", function () { if (this.checked) showPackage(); showMoney(); });
+  $("act-method").addEventListener("change", syncToggles);
+  amt.addEventListener("input", showMoney);
+  $("act-exp").addEventListener("change", showCharge);
+  if ($("act-custom")) $("act-custom").addEventListener("change", showCharge);
 
   syncToggles();
   if (user.value) {

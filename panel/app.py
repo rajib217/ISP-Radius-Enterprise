@@ -241,6 +241,10 @@ def gate():
         need = core.ENDPOINT_NEED.get(request.endpoint) or ("view" if request.method in ("GET", "HEAD") else "edit")
         if not core.can(mods, need):
             abort(403)
+        # sellers never open the package pages (list, add / edit, policy, allocation, fees, package report), whatever
+        # their role permissions say: they see only their allocated packages, under My Packages
+        if me["role"] in core.SELLER_ROLES and "plans" in ((mods,) if isinstance(mods, str) else mods):
+            abort(403)
     fn = permcatalog.ENDPOINT_FN.get(request.endpoint)
     if fn and me["role"] != "admin" and not any(core.can_fn(k) for k in ((fn,) if isinstance(fn, str) else fn)):
         abort(403)
@@ -502,7 +506,7 @@ def subscribers():
             r["live_nas"] = a["nasipaddress"] if a else ""
             t = rates.get(r["username"]) if a else None
             r["rx_bps"], r["tx_bps"] = (float(t["down"] or 0), float(t["up"] or 0)) if t else (None, None)
-    plans = q("SELECT id, label FROM plans ORDER BY download_mbps, label")
+    plans = core.filter_plans(q("SELECT id, label FROM plans ORDER BY download_mbps, label"))
     areas = [r["area"] for r in q("SELECT DISTINCT area FROM subscribers WHERE area <> '' ORDER BY area")]
     sellers = q("SELECT username, full_name, role FROM panel_admins ORDER BY username") if core.my_downline() is None else []
     dl = core.my_downline()
@@ -738,7 +742,7 @@ def subscriber_view(sid):
                         {"name": "Upload", "values": [n(daily.get(d, {}).get("up")) for d in days]}]}
     auth = q("SELECT reply, authdate FROM radpostauth WHERE username = %s ORDER BY id DESC LIMIT 6", (user,))
     pays = q("SELECT * FROM payments WHERE subscriber_id = %s ORDER BY id DESC LIMIT 10", (sid,))
-    plans = q("SELECT id, label, price, validity_days FROM plans ORDER BY download_mbps")
+    plans = core.filter_plans(q("SELECT id, label, price, validity_days FROM plans ORDER BY download_mbps"))
     tickets = q("SELECT id, subject, status, priority, updated_at FROM tickets WHERE subscriber_id = %s "
                 "ORDER BY id DESC LIMIT 5", (sid,))
     docs = q("SELECT id, title, category, created_at FROM documents WHERE subscriber_id = %s "

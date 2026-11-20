@@ -185,7 +185,7 @@ def _visible_subs(where, args):
     if names is not None:
         where += " AND created_by IN (" + ",".join(["%s"] * len(names)) + ")"
         args = list(args) + list(names)
-    return q("SELECT id, username, full_name, phone, status, plan_id, expiry_date, created_by FROM subscribers WHERE " + where +
+    return q("SELECT id, username, full_name, phone, status, plan_id, expiry_date, created_by, balance FROM subscribers WHERE " + where +
              " ORDER BY username LIMIT 15", args)
 
 
@@ -217,13 +217,43 @@ def subscriber_lookup():
     return jsonify({"items": [_sub_json(r) for r in rows]})
 
 
+PAY_METHODS = ("cash", "bKash", "Nagad", "bank", "other", "balance")
+
+
+def customer_price(sub, plan, days=None):
+    """What the customer pays for this package: their seller's price (with the subscriber profit) for a seller's
+    customer, otherwise the package price; plus the package's taxes / fees. Other than the package's own number of
+    days (custom expiry) is charged pro rata."""
+    import mod_policy
+    base = mod_policy.seller_price(dict(sub, plan_id=plan["id"])) or float(plan["price"] or 0)
+    price = mod_policy.fee_total(base, plan["id"])
+    full = int(plan["validity_days"] or 30)
+    if days and days != full:
+        price = price * days / full
+    return round(price, 2)
+
+
+def _custom_days(sub, expiry_text):
+    base = max(sub["expiry_date"] or date.today(), date.today())
+    try:
+        days = (date.fromisoformat(expiry_text or "") - base).days
+    except ValueError:
+        return None
+    return days if 1 <= days <= 3650 else None
+
+
 @route("/subscribers/charge-info", module="subscribers", need="edit")
 def subscriber_charge_info():
+    """For the Activation window: what the seller pays, what the customer pays, and the customer's balance."""
     rows = _visible_subs("username = %s", (request.args.get("u", "").strip(),))
     plan_id = request.args.get("plan", type=int)
-    if not rows or not plan_id or not core.plan_allowed(plan_id, rows[0]["plan_id"]):
-        return jsonify({"charge": None})
-    return jsonify({"charge": charge_info(dict(rows[0], plan_id=plan_id))})
+    plan = _plan(plan_id) if plan_id else None
+    if not rows or not plan or not core.plan_allowed(plan_id, rows[0]["plan_id"]):
+        return jsonify({"charge": None, "price": None})
+    sub = rows[0]
+    days = _custom_days(sub, request.args.get("exp")) if request.args.get("exp") else None
+    return jsonify({"charge": charge_info(dict(sub, plan_id=plan_id)), "price": customer_price(sub, plan, days),
+                    "balance": round(float(sub["balance"] or 0), 2)})
 
 
 @route("/subscribers/activate", module="subscribers", methods=["POST"])
@@ -251,20 +281,31 @@ def subscriber_activate():
     if custom and not core.can_fn("sub.custom_expiry"):
         flash("You do not have permission to set a custom expiry date. Ask the administrator to allow Custom Expiry.", "error")
         return redirect(back)
+    method = f.get("method") if f.get("method") in PAY_METHODS else "cash"
+    from_balance = not paying or method == "balance"      # Payment off = the package is paid from the customer's balance
     try:
         if custom:
-            days = (date.fromisoformat(f.get("expiry", "")) - base).days
-            if not 1 <= days <= 3650:
+            days = _custom_days(sub, f.get("expiry"))
+            if days is None:
                 raise ValueError
         else:
             days = int(plan["validity_days"] or 30)
-        amount = round(float(f.get("amount") or 0), 2) if paying else 0.0
-        assert 0 <= amount < 10 ** 8
+        received = 0.0 if from_balance else round(float(f.get("amount") or 0), 2)
+        assert 0 <= received < 10 ** 8
     except (ValueError, AssertionError):
         flash("Pick an expiry date after %s (within 10 years) and enter a valid amount." % base.strftime("%d %b %Y"), "error")
         return redirect(back)
-    method = f.get("method", "cash") if f.get("method") in ("cash", "bKash", "Nagad", "bank", "other") else "cash"
-    note = (f.get("note", "") if paying else (f.get("note", "") or "Activated without payment")).strip()
+    price = customer_price(sub, plan, days)
+    have = round(float(sub["balance"] or 0), 2)
+    # what the customer's balance changes by: the whole price when paid from the balance; otherwise money received
+    # beyond the price is added to it, and a shortfall is taken from it
+    change = -price if from_balance else round(received - price, 2)
+    if change < 0 and have + change < -0.001:
+        flash("Not activated: %s's balance (%.2f) is lower than the %.2f needed%s. Add balance to the customer, or take "
+              "the payment in cash. Nothing was changed." % (sub["username"], have, -change,
+                                                           "" if from_balance else " besides the %.2f received" % received), "error")
+        return redirect(back)
+    user_note = f.get("note", "").strip()
     sub2 = dict(sub, plan_id=plan_id)
     why = charge_me(sub2, "Activation %s +%d days" % (sub["username"], days))
     if why:
@@ -272,9 +313,38 @@ def subscriber_activate():
         return redirect(back)
     if plan_id != sub["plan_id"]:
         x("UPDATE subscribers SET plan_id = %s WHERE id = %s", (plan_id, sub["id"]))
-    new_expiry = do_renew(sub2, days, amount, method if paying else "none", note, notify=paying, exact=custom)
-    audit("activated", sub["username"], "%s, +%d days, %s%s" % (plan["label"] or plan["name"], days, amount,
-                                                                "" if paying else " (no payment)"))
+    if change:
+        with get_db().cursor() as cur:
+            # locked, conditional update: two activations at once can never take the balance below zero
+            cur.execute("UPDATE subscribers SET balance = balance + %s WHERE id = %s AND balance + %s >= 0",
+                        (change, sub["id"], change))
+            if cur.rowcount != 1:
+                get_db().rollback()
+                flash("Not activated: the customer's balance changed meanwhile. Try again. Nothing was changed.", "error")
+                return redirect(back)
+            cur.execute("SELECT balance FROM subscribers WHERE id = %s", (sub["id"],))
+            after = float(cur.fetchone()["balance"])
+            if from_balance:
+                text = "Activation +%d days (%s)" % (days, plan["label"] or plan["name"])
+            elif change > 0:
+                text = "Extra from activation payment (received %.2f, package %.2f)" % (received, price)
+            else:
+                text = "Rest of activation from balance (received %.2f, package %.2f)" % (received, price)
+            cur.execute("INSERT INTO sub_ledger (subscriber_id, amount, balance_after, note, created_by) VALUES (%s, %s, %s, %s, %s)",
+                        (sub["id"], change, after, text[:255], g.me["username"]))
+    if from_balance:
+        pay_method, auto = "balance", "Paid from the customer's balance"
+    elif change > 0:
+        pay_method, auto = method, "Received %.2f, %.2f added to the balance" % (received, change)
+    elif change < 0:
+        pay_method, auto = method + "+balance", "Received %.2f, %.2f taken from the balance" % (received, -change)
+    else:
+        pay_method, auto = method, ""
+    note = "; ".join(t for t in (user_note, auto) if t)
+    # the payment row is the package price (revenue); extra money waits in the balance until it is used
+    new_expiry = do_renew(sub2, days, price, pay_method[:32], note, notify=price > 0, exact=custom)
+    audit("activated", sub["username"], "%s, +%d days, %.2f via %s%s" % (plan["label"] or plan["name"], days, price, pay_method,
+                                                                     (", balance %+.2f" % change) if change else ""))
     commit()
     flash("%s is active until %s." % (sub["username"], new_expiry.strftime("%d %b %Y")), "success")
     if f.get("print") and g.get("last_payment"):

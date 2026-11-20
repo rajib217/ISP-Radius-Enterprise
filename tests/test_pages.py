@@ -83,8 +83,8 @@ def seed(conn):
                 "VALUES ('admin', 'Rafiqul Islam', %s, 'admin', '01700000001', 'admin@example.com', 'Dhaka Fiber Net')", (pw,))
     reseller = ins("INSERT INTO panel_admins (username, full_name, password_hash, role, phone, balance, parent_id, created_by) "
                    "VALUES ('karim', 'Karim Telecom', %s, 'reseller', '01700000002', 5000, %s, 'admin')", (pw, admin))
-    ins("INSERT INTO panel_admins (username, full_name, password_hash, role, balance, parent_id, created_by) "
-        "VALUES ('karim_sub', 'Karim Sub', %s, 'subreseller', 800, %s, 'karim')", (pw, reseller))
+    subres = ins("INSERT INTO panel_admins (username, full_name, password_hash, role, balance, parent_id, created_by) "
+                 "VALUES ('karim_sub', 'Karim Sub', %s, 'subreseller', 800, %s, 'karim')", (pw, reseller))
     staff = ins("INSERT INTO panel_admins (username, full_name, password_hash, role) VALUES ('nadia', 'Nadia Staff', %s, 'support')", (pw,))
 
     plans = []
@@ -96,7 +96,8 @@ def seed(conn):
         plan = cur.fetchone()
         radius.sync_plan(cur, plan, "300")
         plans.append(plan)
-        cur.execute("INSERT INTO user_plans (user_id, plan_id, price) VALUES (%s, %s, %s)", (reseller, pid, price - 100))
+        if len(plans) <= 2:          # the reseller is allocated 10 and 20 Mbps only; the sub-reseller nothing
+            cur.execute("INSERT INTO user_plans (user_id, plan_id, price) VALUES (%s, %s, %s)", (reseller, pid, price - 100))
 
     group = ins("INSERT INTO nas_groups (name, note) VALUES ('Dhaka North', 'Mirpur and Uttara')")
     for ip, short in (("10.10.0.1", "MT-Mirpur"), ("10.20.0.1", "MT-Uttara")):
@@ -160,10 +161,15 @@ def seed(conn):
     ins("INSERT INTO gateway_logs (flow, ref_id, payment_id, step, http_status, ms, ok, request, response) "
         "VALUES ('portal', 1, 'TR0011CI', 'execute', 200, 640, 1, '{}', '{\"transactionStatus\": \"Completed\"}')")
     ins("INSERT INTO audit_log (admin, action, target, detail, ip) VALUES ('admin', 'renewed', 'mirpur.rahim', '+30 days', '127.0.0.1')")
+    try:
+        fee = ins("INSERT INTO fees (name, mode, value, active) VALUES ('VAT', 'percent', 5, 1)")
+        ins("INSERT INTO plan_fees (plan_id, fee_id) VALUES (%s, %s)", (plans[1]["id"], fee))
+    except Exception as exc:
+        print("  (fees not seeded: %s)" % exc)
     conn.commit()
     autofill(conn, cur)
     conn.commit()
-    return {"admin": admin, "reseller": reseller, "staff": staff, "portal_sub": subs[0][0]}
+    return {"admin": admin, "reseller": reseller, "subreseller": subres, "staff": staff, "portal_sub": subs[0][0]}
 
 
 def autofill(conn, cur):
@@ -207,6 +213,121 @@ def autofill(conn, cur):
                 print("  (autofill skipped %s: %s)" % (t, str(exc)[:80]))
                 conn.rollback()
                 break
+
+
+# ===================================================================== business rules
+def one(sql, args=()):
+    conn = db.connect()        # a fresh connection sees what the app committed
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, args)
+            return cur.fetchone()
+    finally:
+        conn.close()
+
+
+def run(sql, args=()):
+    conn = db.connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, args)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def check_rules(flask_app, ids):
+    """Package limits for sellers and the money rules of Activation. Returns a list of failure sentences."""
+    bad = []
+
+    def check(ok, what):
+        print("  %s %s" % ("ok  " if ok else "FAIL", what))
+        if not ok:
+            bad.append(what)
+
+    def client(uid):
+        c = flask_app.test_client()
+        with c.session_transaction() as s:
+            s["csrf"] = "ci"; s["uid"] = uid
+        return c
+
+    names = {r: one("SELECT label FROM plans WHERE id = %s", (r,))["label"] for r in (1, 2, 3)}
+    adm_pkgs = client(ids["admin"]).get("/my-packages").get_data(as_text=True)
+    # ---- sellers: only allocated packages, no package pages
+    res, sub = client(ids["reseller"]), client(ids["subreseller"])
+    for url in ("/plans", "/plans/new", "/plans/1/edit", "/policy", "/allocation", "/fees", "/reports/plans"):
+        check(res.get(url).status_code == 403, "reseller is refused %s" % url)
+    check(res.post("/plans/save", data={"_csrf": "ci", "name": "x"}).status_code == 403, "reseller cannot save a package")
+    page = res.get("/my-packages").get_data(as_text=True)
+    check(names[1] in page and names[2] in page and names[3] not in page, "reseller's My Packages shows only the 2 allocated")
+    cost1 = float(one("SELECT price FROM user_plans WHERE user_id = %s AND plan_id = 1", (ids["reseller"],))["price"])
+    shown = ("BDT %s" % "{:,.0f}".format(cost1)) in page or ("%.2f" % cost1) in page   # money shows 400 or 400.00
+    check("All customers" not in page and "My cost" in page and shown,
+          "reseller's My Packages shows their own cost (%.2f), not the ISP-wide customer count" % cost1)
+    check("All customers" in adm_pkgs, "admin's My Packages still shows the ISP-wide customer count")
+    act = res.get("/subscribers/activation").get_data(as_text=True)
+    check(names[1] in act and names[3] not in act, "reseller's Activation lists only allocated packages")
+    check('href="/plans"' not in res.get("/").get_data(as_text=True), "reseller's menu has no Package group")
+    page = sub.get("/my-packages").get_data(as_text=True)
+    check(all(names[k] not in page for k in names), "sub-reseller with nothing allocated sees no package")
+    info = res.get("/subscribers/charge-info?u=banani.cafe&plan=3").get_json()
+    check(info.get("price") is None, "reseller gets no price for an unallocated package")
+
+    # ---- activation money rules
+    adm = client(ids["admin"])
+
+    def activate(c, user, plan_id, **form):
+        data = {"_csrf": "ci", "username": user, "plan_id": str(plan_id)}
+        data.update(form)
+        return c.post("/subscribers/activate", data=data)
+
+    def state(user):
+        r = one("SELECT id, balance, expiry_date FROM subscribers WHERE username = %s", (user,))
+        p = one("SELECT amount, method, note FROM payments WHERE subscriber_id = %s ORDER BY id DESC LIMIT 1", (r["id"],))
+        n = one("SELECT COUNT(*) AS c FROM payments WHERE subscriber_id = %s", (r["id"],))["c"]
+        return float(r["balance"]), r["expiry_date"], p, n
+
+    u = "uttara.salma"                                   # admin's customer, package 2 (800 + its taxes / fees)
+    price = float(adm.get("/subscribers/charge-info?u=%s&plan=2" % u).get_json()["price"])
+    plain = float(one("SELECT price FROM plans WHERE id = 2")["price"])
+    check(price >= plain, "customer price %.2f includes the package price %.2f and its fees" % (price, plain))
+    run("UPDATE subscribers SET balance = 1000 WHERE username = %s", (u,))
+    b0, e0, _, n0 = state(u)
+    activate(adm, u, 2)                                   # Payment switch off
+    b1, e1, p1, n1 = state(u)
+    check(abs(b1 - (1000 - price)) < 0.01 and e1 > e0 and n1 == n0 + 1 and p1["method"] == "balance" and abs(float(p1["amount"]) - price) < 0.01,
+          "Payment off: package price taken from the subscriber balance (1000 -> %.2f)" % b1)
+    activate(adm, u, 2, payment="on", method="cash", amount=str(price + 200))
+    b2, e2, p2, _ = state(u)
+    check(abs(b2 - (b1 + 200)) < 0.01 and e2 > e1 and p2["method"] == "cash" and abs(float(p2["amount"]) - price) < 0.01,
+          "cash above the price: the extra 200 goes to the balance (%.2f -> %.2f)" % (b1, b2))
+    activate(adm, u, 2, payment="on", method="cash", amount=str(price - 100))
+    b3, e3, p3, _ = state(u)
+    check(abs(b3 - (b2 - 100)) < 0.01 and e3 > e2 and p3["method"] == "cash+balance",
+          "cash below the price: the missing 100 comes from the balance (%.2f -> %.2f)" % (b2, b3))
+    run("UPDATE subscribers SET balance = 50 WHERE username = %s", (u,))
+    b4, e4, _, n4 = state(u)
+    activate(adm, u, 2, payment="on", method="balance")
+    b5, e5, _, n5 = state(u)
+    check(b5 == b4 and e5 == e4 and n5 == n4, "balance too low: refused, nothing changed")
+    activate(adm, u, 2, payment="on", method="cash", amount="100")
+    b6, e6, _, n6 = state(u)
+    check(b6 == b4 and e6 == e4 and n6 == n4, "cash plus balance still short: refused, nothing changed")
+
+    r = "banani.cafe"                                    # the reseller's customer
+    run("UPDATE subscribers SET plan_id = 1, balance = 0 WHERE username = %s", (r,))
+    cost = float(one("SELECT price FROM user_plans WHERE user_id = %s AND plan_id = 1", (ids["reseller"],))["price"])
+    rb0 = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
+    info = res.get("/subscribers/charge-info?u=%s&plan=1" % r).get_json()
+    activate(res, r, 1, payment="on", method="cash", amount=str(info["price"] + 50))
+    sb, _, sp, _ = state(r)
+    rb1 = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
+    check(abs(rb1 - (rb0 - cost)) < 0.01 and abs(sb - 50) < 0.01,
+          "reseller activation: reseller pays %.2f, the customer's extra 50 goes to their balance" % cost)
+    activate(res, r, 3, payment="on", method="cash", amount="9999")
+    check(abs(float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"]) - rb1) < 0.01,
+          "reseller cannot activate an unallocated package")
+    return bad
 
 
 # ===================================================================== page walk
@@ -280,7 +401,13 @@ def main():
             f, _, line = where.partition(":")
             print("::error file=%s,line=%s::%s %s (as %s): %s" % (f, line or 1, ep, url, role, msg.replace("\n", " ")))
     print("== %d page(s) failed" % len(failures) if failures else "== all pages answered without errors")
-    return 1 if failures else 0
+    print("== business rules")
+    broken = check_rules(flask_app, ids)
+    for b in broken:
+        if GH:
+            print("::error file=tests/test_pages.py,line=1::Rule failed: %s" % b)
+    print("== %d rule(s) failed" % len(broken) if broken else "== all rules hold")
+    return 1 if failures or broken else 0
 
 
 if __name__ == "__main__":

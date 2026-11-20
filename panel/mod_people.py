@@ -83,10 +83,18 @@ def my_packages():
         "FROM payments pay JOIN subscribers s ON s.id = pay.subscriber_id "
         "WHERE pay.received_by = %s AND pay.paid_at >= %s GROUP BY s.plan_id",
         (me, date.today().replace(day=1)))}
+    seller = g.me["role"] in core.SELLER_ROLES
+    prices = {r["plan_id"]: r for r in q("SELECT plan_id, price, sub_profit FROM user_plans WHERE user_id = %s", (g.me["id"],))} if seller else {}
     for r in rows:
         r["month"] = month.get(r["id"]) or {"payments": 0, "amount": 0}
         r["rate"] = core.bw_text(r)
-    return render_template("my_packages.html", rows=rows, restricted=allowed is not None)
+        if seller:
+            # a seller sees what they pay and what their customers pay, never the ISP-wide customer count
+            up = prices.get(r["id"]) or {}
+            r["my_cost"] = float(up["price"]) if up.get("price") is not None else None
+            r["customer_price"] = (r["my_cost"] + float(up.get("sub_profit") or 0)) if r["my_cost"] is not None else None
+            r.pop("total", None)
+    return render_template("my_packages.html", rows=rows, restricted=allowed is not None, seller=seller)
 
 
 # ===================================================================== My Users (a seller's own downline)

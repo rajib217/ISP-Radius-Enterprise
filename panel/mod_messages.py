@@ -116,7 +116,7 @@ def _compose(channel):
         for e in errors:
             flash(e, "error")
     return render_template("compose.html", channel=channel, form=form, errors=errors, tpls=_templates(channel),
-                           plans=q("SELECT id, label FROM plans ORDER BY download_mbps, label"),
+                           plans=core.filter_plans(q("SELECT id, label FROM plans ORDER BY download_mbps, label")),
                            areas=core.area_names(), variables=msglib.VARIABLES, ready=_gateway_ready(channel, s),
                            sender=core.service_state("isp-panel-sender"))
 

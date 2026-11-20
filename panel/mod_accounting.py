@@ -305,6 +305,6 @@ def dues():
              "DATEDIFF(CURDATE(), s.expiry_date) AS days_over FROM subscribers s LEFT JOIN plans p "
              "ON p.id = s.plan_id" + cond + " ORDER BY s.expiry_date ASC, s.username LIMIT %s OFFSET %s",
              params + [pg["per"], pg["offset"]])
-    plans = q("SELECT id, label FROM plans ORDER BY download_mbps, label")
+    plans = core.filter_plans(q("SELECT id, label FROM plans ORDER BY download_mbps, label"))
     keep = {k: v for k, v in request.args.items() if k != "page"}
     return render_template("dues.html", rows=rows, tot=tot, pg=pg, plans=plans, areas=core.area_names(), keep=keep)

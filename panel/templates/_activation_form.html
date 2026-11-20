@@ -9,7 +9,8 @@
 
     <div class="actbox acttoggles">
       {% if can_fn('sub.custom_expiry') %}<div class="field"><label class="lbl" for="act-custom">Custom Expiry</label><span class="switch"><input id="act-custom" type="checkbox" name="custom"><i></i></span></div>{% endif %}
-      <div class="field"><label class="lbl" for="act-paytog">Payment</label><span class="switch"><input id="act-paytog" type="checkbox" name="payment" checked><i></i></span></div>
+      <div class="field"><label class="lbl" for="act-paytog">Payment</label><span class="switch"><input id="act-paytog" type="checkbox" name="payment" checked aria-describedby="act-paytog-help"><i></i></span>
+        <div class="help" id="act-paytog-help">Off: the package is paid from the subscriber's balance.</div></div>
     </div>
 
     <div class="actbox grid2">
@@ -24,7 +25,8 @@
           <option value="">Select A Package</option>
           {% for p in (act_plans|default(plans)) %}<option value="{{ p.id }}" data-name="{{ p.label or p.name }}" data-days="{{ p.validity_days }}" data-price="{{ p.price }}" data-dtype="{{ p.duration_type or '' }}" data-dur="{{ p.duration or '' }}" {{ 'selected' if pre and pre.plan_id == p.id }}>{{ p.label or p.name }}</option>{% endfor %}
         </select>
-        <div class="help" id="act-charge" hidden></div></div>
+        <div class="help" id="act-charge" hidden></div>
+        <div class="help" id="act-money" hidden aria-live="polite"></div></div>
     </div>
 
     <div class="actbox" id="act-exp-box" hidden>
@@ -37,7 +39,7 @@
     <header class="acthead"><div><h2>Payment</h2><p>Payment Details</p></div><span class="acttile">{{ icon('card') }}</span></header>
     <div class="actbox actpay">
       <div class="field"><label class="lbl" for="act-method">Payment Method <b class="req">*</b></label>
-        <select id="act-method" name="method"><option>cash</option><option>bKash</option><option>Nagad</option><option>bank</option><option>other</option></select></div>
+        <select id="act-method" name="method"><option>cash</option><option>bKash</option><option>Nagad</option><option>bank</option><option>other</option><option value="balance">Subscriber balance</option></select></div>
       <div class="field"><label class="lbl" for="act-amt">Amount received <b class="req">*</b></label><input id="act-amt" name="amount" type="number" min="0" step="0.01" value="0" required></div>
       <div class="field"><label class="lbl" for="act-note">Payment Note</label><textarea id="act-note" name="note" rows="1" maxlength="255" placeholder="Enter Note"></textarea></div>
     </div>

@@ -137,6 +137,8 @@ def build():
             continue
         if grp["module"] and not core.can(grp["module"]):
             continue
+        if grp["module"] == "plans" and g.me["role"] in core.SELLER_ROLES:
+            continue                      # sellers see their packages under My Packages only
         node = {"key": grp["key"], "label": grp["label"], "icon": grp["icon"]}
         if grp["items"] is not None:
             kids = []

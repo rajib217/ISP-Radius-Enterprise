@@ -481,7 +481,9 @@ def allowed_plan_ids():
             g.allowed_plans = None
         else:
             ids = {r["plan_id"] for r in q("SELECT plan_id FROM user_plans WHERE user_id = %s", (g.me["id"],))}
-            g.allowed_plans = ids or None
+            # resellers, sub-resellers and retailers sell ONLY what the admin allocated to them (none allocated = none);
+            # staff with no allocation keep seeing every package
+            g.allowed_plans = ids if g.me["role"] in SELLER_ROLES else (ids or None)
     return g.allowed_plans
 
 
@@ -491,8 +493,12 @@ def filter_plans(plans):
 
 
 def plan_allowed(plan_id, current=None):
+    """May the signed-in user give this package? Staff may also keep a customer's current package; sellers may not
+    (an unallocated package has no seller price, so renewing it would cost them nothing)."""
     ids = allowed_plan_ids()
-    return ids is None or plan_id in ids or (current is not None and plan_id == current)
+    if ids is None or plan_id in ids:
+        return True
+    return current is not None and plan_id == current and g.me["role"] not in SELLER_ROLES
 
 
 # ===================================================================== areas
