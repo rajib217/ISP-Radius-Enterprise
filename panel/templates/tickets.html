@@ -28,12 +28,12 @@
     <thead><tr><th>#</th><th>Ticket</th><th>Customer</th><th>Priority</th><th>Status</th><th class="hide-sm">Assigned to</th><th>Updated</th></tr></thead>
     <tbody>{% for t in rows %}<tr>
       <td class="mono"><a href="{{ url_for('ticket_view', tid=t.id) }}">#{{ t.id }}</a></td>
-      <td class="who-cell"><a href="{{ url_for('ticket_view', tid=t.id) }}"><b>{{ t.subject }}</b></a><small>{% for k, n in categories %}{% if k == t.category %}{{ n }}{% endif %}{% endfor %}{% if t.dept_name %} · {{ t.dept_name }}{% endif %}</small></td>
-      <td>{% if t.sid %}<a class="mono" href="{{ url_for('subscriber_view', sid=t.sid) }}">{{ t.username }}</a>{% else %}<span class="muted">General</span>{% endif %}</td>
-      <td><span class="pri-{{ t.priority }}">{{ t.priority|capitalize }}</span></td>
-      <td><span class="badge {{ {'open': 'warn', 'pending': 'info', 'resolved': 'ok', 'closed': 'mute'}.get(t.status, 'mute') }}">{{ t.status|capitalize }}</span></td>
+      <td class="who-cell" data-card="title"><a href="{{ url_for('ticket_view', tid=t.id) }}"><b>{{ t.subject }}</b></a><small>{% for k, n in categories %}{% if k == t.category %}{{ n }}{% endif %}{% endfor %}{% if t.dept_name %} · {{ t.dept_name }}{% endif %}</small></td>
+      <td data-card="key">{% if t.sid %}<a class="mono" href="{{ url_for('subscriber_view', sid=t.sid) }}">{{ t.username }}</a>{% else %}<span class="muted">General</span>{% endif %}</td>
+      <td data-card="key"><span class="pri-{{ t.priority }}">{{ t.priority|capitalize }}</span></td>
+      <td data-card="key"><span class="badge {{ {'open': 'warn', 'pending': 'info', 'resolved': 'ok', 'closed': 'mute'}.get(t.status, 'mute') }}">{{ t.status|capitalize }}</span></td>
       <td class="hide-sm">{{ t.assignee or '—' }}</td>
-      <td class="nowrap">{{ t.updated_at|ago }}</td>
+      <td class="nowrap" data-card="key">{{ t.updated_at|ago }}</td>
     </tr>{% endfor %}</tbody>
   </table></div>
   {{ pager(pg, keep, 'tickets') }}

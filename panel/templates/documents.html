@@ -16,10 +16,10 @@
   <div class="tbl-wrap"><table class="tbl">
     <thead><tr><th>Document</th><th>Category</th><th>Customer</th><th class="num hide-sm">Size</th><th class="hide-sm">Uploaded</th><th></th></tr></thead>
     <tbody>{% for d in rows %}<tr>
-      <td class="who-cell"><b>{{ d.title }}</b><small>{{ d.filename }}</small></td><td>{{ d.category }}</td>
-      <td>{% if d.sid %}<a class="mono" href="{{ url_for('subscriber_view', sid=d.sid) }}">{{ d.sub_username }}</a>{% else %}—{% endif %}</td>
+      <td class="who-cell" data-card="title"><b>{{ d.title }}</b><small>{{ d.filename }}</small></td><td data-card="key">{{ d.category }}</td>
+      <td data-card="key">{% if d.sid %}<a class="mono" href="{{ url_for('subscriber_view', sid=d.sid) }}">{{ d.sub_username }}</a>{% else %}—{% endif %}</td>
       <td class="num hide-sm">{{ d.size|bytes }}</td><td class="hide-sm nowrap">{{ d.created_at|dt }}<small class="muted" style="display:block">{{ d.uploaded_by }}</small></td>
-      <td class="act">
+      <td class="act" data-card="actions">
         {% if d.inline %}<a class="btn sm icon" href="{{ url_for('document_download', did=d.id, inline=1) }}" target="_blank" rel="noopener" aria-label="View {{ d.title }}" title="View">{{ icon('eye') }}</a>{% endif %}
         <a class="btn sm icon" href="{{ url_for('document_download', did=d.id) }}" aria-label="Download {{ d.title }}" title="Download">{{ icon('download') }}</a>
         {% if can('documents', 'edit') and (me.role in ('admin', 'manager') or d.uploaded_by == me.username) %}<form method="post" action="{{ url_for('document_delete', did=d.id) }}" data-confirm="Delete {{ d.title }}?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ d.title }}" title="Delete {{ d.title }}">{{ icon('trash') }}</button></form>{% endif %}</td>

@@ -18,10 +18,10 @@
   <div class="tbl-wrap"><table class="tbl">
     <thead><tr><th>Date</th><th>Category</th><th>Paid to</th><th class="num">Amount</th><th class="hide-sm">Method</th><th></th></tr></thead>
     <tbody>{% for e in rows %}<tr>
-      <td class="nowrap">{{ e.spent_on|d }}</td><td>{{ e.category }}</td>
-      <td class="who-cell">{{ e.paid_to or '—' }}{% if e.note %}<small>{{ e.note }}</small>{% endif %}</td>
-      <td class="num"><b>{{ e.amount|money }}</b></td><td class="hide-sm">{{ e.method }}</td>
-      <td class="act">{% if can('accounting', 'edit') %}
+      <td class="nowrap" data-card="key">{{ e.spent_on|d }}</td><td data-card="key">{{ e.category }}</td>
+      <td class="who-cell" data-card="title">{{ e.paid_to or '—' }}{% if e.note %}<small>{{ e.note }}</small>{% endif %}</td>
+      <td class="num" data-card="key"><b>{{ e.amount|money }}</b></td><td class="hide-sm">{{ e.method }}</td>
+      <td class="act" data-card="actions">{% if can('accounting', 'edit') %}
         <button class="btn sm icon" data-open="exp-dlg" data-edit='{{ {"id": e.id, "spent_on": e.spent_on.isoformat(), "category": e.category, "amount": e.amount|string, "paid_to": e.paid_to, "method": e.method, "note": e.note}|tojson }}' aria-label="Edit expense {{ e.id }}" title="Edit expense {{ e.id }}">{{ icon('edit') }}</button>
         <form method="post" action="{{ url_for('expense_delete', eid=e.id) }}" data-confirm="Delete this expense?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete expense {{ e.id }}" title="Delete expense {{ e.id }}">{{ icon('trash') }}</button></form>{% endif %}</td>
     </tr>{% endfor %}</tbody>
@@ -45,7 +45,7 @@
       <div class="grid-2">
         <div class="field"><label class="lbl" for="ex-date">Date</label><input id="ex-date" name="spent_on" type="date" required></div>
         <div class="field"><label class="lbl" for="ex-cat">Category</label><input id="ex-cat" name="category" list="ex-cats" maxlength="64" required><datalist id="ex-cats">{% for c in cats %}<option value="{{ c }}">{% endfor %}</datalist></div>
-        <div class="field"><label class="lbl" for="ex-amount">Amount ({{ currency }})</label><input id="ex-amount" name="amount" type="number" step="0.01" min="0.01" required></div>
+        <div class="field"><label class="lbl" for="ex-amount">Amount ({{ currency }})</label><input id="ex-amount" name="amount" type="number" inputmode="decimal" step="0.01" min="0.01" required></div>
         <div class="field"><label class="lbl" for="ex-method">Method</label><select id="ex-method" name="method">{% for m in methods %}<option>{{ m }}</option>{% endfor %}</select></div>
         <div class="field"><label class="lbl" for="ex-to">Paid to</label><input id="ex-to" name="paid_to" maxlength="128"></div>
         <div class="field"><label class="lbl" for="ex-note">Note</label><input id="ex-note" name="note" maxlength="255"></div>

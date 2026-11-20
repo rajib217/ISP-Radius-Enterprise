@@ -9,26 +9,26 @@
 
 {% if edit %}
 <div class="sv-actions">
-  <a class="pbtn" href="{{ url_for('subscriber_activation', username=sub.username, next=url_for('subscriber_view', sid=sub.id)) }}">{{ icon('refresh') }}Activation</a>
-  <button class="pbtn" data-open="migrate-dlg" data-fill='{{ {"plan_id": sub.plan_id or ""}|tojson }}'>{{ icon('layers') }}Migration</button>
-  <button class="pbtn" data-open="balance-dlg">{{ icon('wallet') }}Add Balance</button>
-  <a class="pbtn" href="{{ url_for('subscriber_edit', sid=sub.id) }}">{{ icon('edit') }}Edit Profile</a>
-  <button class="pbtn" data-open="svc-dlg">{{ icon('sliders') }}Service Settings</button>
-  {% if online %}<form method="post" action="{{ url_for('subscriber_kick', sid=sub.id) }}" data-confirm="Disconnect {{ sub.username }} now? The router will reconnect them automatically.">{{ csrf_input() }}<button class="pbtn red" type="submit">{{ icon('power') }}Disconnect</button></form>{% endif %}
-  <form method="post" action="{{ url_for('subscriber_toggle', sid=sub.id) }}" {% if sub.status == 'active' %}data-confirm="Disable the profile of {{ sub.username }}? They will be disconnected and cannot log in until you enable it."{% endif %}>{{ csrf_input() }}<button class="pbtn red" type="submit">{{ icon('pause' if sub.status == 'active' else 'play') }}{{ 'Profile Disable' if sub.status == 'active' else 'Profile Enable' }}</button></form>
-  <form method="post" action="{{ url_for('subscriber_net', sid=sub.id) }}" {% if not sub.net_disabled %}data-confirm="Disable the internet of {{ sub.username }}? Login is refused until you enable it again."{% endif %}>{{ csrf_input() }}<button class="pbtn red" type="submit">{{ icon('shield') }}{{ 'Enable Net' if sub.net_disabled else 'Disable Net' }}</button></form>
-  <form method="post" action="{{ url_for('subscriber_sync', sid=sub.id) }}">{{ csrf_input() }}<button class="pbtn" type="submit">{{ icon('refresh') }}Sync</button></form>
-  <a class="pbtn" href="{{ url_for('diagnose_page', user=sub.username) }}">{{ icon('search') }}Why Refused?</a>
-  <a class="pbtn" href="#reports" data-tab-link="reports">{{ icon('chart') }}Usage Graph</a>
-  <button class="pbtn" data-open="invoice-dlg">{{ icon('file') }}New Invoice</button>
-  <button class="pbtn" data-open="photo-dlg">{{ icon('upload') }}Photo</button>
-  <button class="pbtn" data-open="pw-dlg">{{ icon('user') }}Password</button>
-  <button class="pbtn" type="button" data-reveal="pw" data-reveal-label>{{ icon('eye') }}Toggle Password</button>
-  {% if can('documents') %}<a class="pbtn" href="#documents" data-tab-link="documents">{{ icon('folder') }}Document</a>{% endif %}
-  <a class="pbtn" href="#attributes" data-tab-link="attributes">{{ icon('grid') }}Attributes</a>
-  {% if can('notes') %}<a class="pbtn" href="{{ url_for('notes', sub=sub.id) }}">{{ icon('note') }}Note</a>{% endif %}
-  <button class="pbtn" data-open="grace-dlg">{{ icon('pin') }}Grace Period</button>
-  <form method="post" action="{{ url_for('subscriber_reset_mac', sid=sub.id) }}" data-confirm="Clear the MAC binding of {{ sub.username }}?">{{ csrf_input() }}<button class="pbtn" type="submit">{{ icon('refresh') }}Reset MAC Address</button></form>
+  <a class="btn sm primary" href="{{ url_for('subscriber_activation', username=sub.username, next=url_for('subscriber_view', sid=sub.id)) }}">{{ icon('refresh') }}Activation</a>
+  <button class="btn sm primary" data-open="migrate-dlg" data-fill='{{ {"plan_id": sub.plan_id or ""}|tojson }}'>{{ icon('layers') }}Migration</button>
+  <button class="btn sm primary" data-open="balance-dlg">{{ icon('wallet') }}Add Balance</button>
+  <a class="btn sm primary" href="{{ url_for('subscriber_edit', sid=sub.id) }}">{{ icon('edit') }}Edit Profile</a>
+  <button class="btn sm primary" data-open="svc-dlg">{{ icon('sliders') }}Service Settings</button>
+  {% if online %}<form method="post" action="{{ url_for('subscriber_kick', sid=sub.id) }}" data-confirm="Disconnect {{ sub.username }} now? The router will reconnect them automatically.">{{ csrf_input() }}<button class="btn sm solid-danger" type="submit">{{ icon('power') }}Disconnect</button></form>{% endif %}
+  <form method="post" action="{{ url_for('subscriber_toggle', sid=sub.id) }}" {% if sub.status == 'active' %}data-confirm="Disable the profile of {{ sub.username }}? They will be disconnected and cannot log in until you enable it."{% endif %}>{{ csrf_input() }}<button class="btn sm solid-danger" type="submit">{{ icon('pause' if sub.status == 'active' else 'play') }}{{ 'Profile Disable' if sub.status == 'active' else 'Profile Enable' }}</button></form>
+  <form method="post" action="{{ url_for('subscriber_net', sid=sub.id) }}" {% if not sub.net_disabled %}data-confirm="Disable the internet of {{ sub.username }}? Login is refused until you enable it again."{% endif %}>{{ csrf_input() }}<button class="btn sm solid-danger" type="submit">{{ icon('shield') }}{{ 'Enable Net' if sub.net_disabled else 'Disable Net' }}</button></form>
+  <form method="post" action="{{ url_for('subscriber_sync', sid=sub.id) }}">{{ csrf_input() }}<button class="btn sm primary" type="submit">{{ icon('refresh') }}Sync</button></form>
+  <a class="btn sm primary" href="{{ url_for('diagnose_page', user=sub.username) }}">{{ icon('search') }}Why Refused?</a>
+  <a class="btn sm primary" href="#reports" data-tab-link="reports">{{ icon('chart') }}Usage Graph</a>
+  <button class="btn sm primary" data-open="invoice-dlg">{{ icon('file') }}New Invoice</button>
+  <button class="btn sm primary" data-open="photo-dlg">{{ icon('upload') }}Photo</button>
+  <button class="btn sm primary" data-open="pw-dlg">{{ icon('user') }}Password</button>
+  <button class="btn sm primary" type="button" data-reveal="pw" data-reveal-label>{{ icon('eye') }}Toggle Password</button>
+  {% if can('documents') %}<a class="btn sm primary" href="#documents" data-tab-link="documents">{{ icon('folder') }}Document</a>{% endif %}
+  <a class="btn sm primary" href="#attributes" data-tab-link="attributes">{{ icon('grid') }}Attributes</a>
+  {% if can('notes') %}<a class="btn sm primary" href="{{ url_for('notes', sub=sub.id) }}">{{ icon('note') }}Note</a>{% endif %}
+  <button class="btn sm primary" data-open="grace-dlg">{{ icon('pin') }}Grace Period</button>
+  <form method="post" action="{{ url_for('subscriber_reset_mac', sid=sub.id) }}" data-confirm="Clear the MAC binding of {{ sub.username }}?">{{ csrf_input() }}<button class="btn sm primary" type="submit">{{ icon('refresh') }}Reset MAC Address</button></form>
 </div>
 {% endif %}
 
@@ -43,7 +43,7 @@
       <h2>{{ sub.full_name or sub.username }}{% if sub.full_name %} <small>({{ sub.username }})</small>{% endif %}</h2>
       <div class="chips"><span class="chip blue">{{ icon('user') }}Subscriber</span>{% if sub.created_by %}<span class="chip violet">{{ icon('user') }}{{ sub.created_by }}</span>{% endif %}<span class="chip {{ 'green' if online else 'gray' }}">{{ 'Online' if online else 'Offline' }}</span>{{ state_badge(sub.state) }}</div>
     </div>
-    <details class="dd sv-more"><summary class="pbtn">Actions &#9662;</summary>
+    <details class="dd sv-more"><summary class="btn sm primary">Actions &#9662;</summary>
       <div class="dd-menu">
         {% if edit %}<a href="{{ url_for('subscriber_edit', sid=sub.id) }}">Edit profile</a>{% endif %}
         {% if can('tickets', 'edit') %}<a href="{{ url_for('ticket_new', sub=sub.id) }}">New ticket</a>{% endif %}
@@ -219,7 +219,7 @@
       <p class="muted">The package length is added to the current expiry, or to today if it has already passed (months and years are real calendar months and years). Change the days to add a custom period. The account is activated. The amount includes active taxes and extra fees.</p>
       <div class="grid-2">
         <div class="field"><label class="lbl" for="r-days">Days to add</label><input id="r-days" name="days" type="number" min="1" max="3650" value="{{ sub.validity_days or 30 }}" required></div>
-        <div class="field"><label class="lbl" for="r-amount">Amount received ({{ currency }})</label><input id="r-amount" name="amount" type="number" min="0" step="0.01" value="{{ renew_amount }}" required></div>
+        <div class="field"><label class="lbl" for="r-amount">Amount received ({{ currency }})</label><input id="r-amount" name="amount" type="number" inputmode="decimal" min="0" step="0.01" value="{{ renew_amount }}" required></div>
         <div class="field"><label class="lbl" for="r-method">Paid by</label>
           <select id="r-method" name="method"><option value="cash">Cash</option><option value="bkash">bKash</option><option value="nagad">Nagad</option><option value="rocket">Rocket</option><option value="bank">Bank</option><option value="other">Other</option></select></div>
         <div class="field"><label class="lbl" for="r-note">Note</label><input id="r-note" name="note" maxlength="255"></div>
@@ -264,7 +264,7 @@
 <dialog class="modal" id="balance-dlg" aria-labelledby="bl-title"><form method="post" action="{{ url_for('subscriber_balance', sid=sub.id) }}">{{ csrf_input() }}
   <div class="modal-head"><h2 id="bl-title">Add balance</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
   <div class="modal-body stack"><p class="muted">Current balance: {{ currency }} {{ '%.2f' % sub.balance|float }}</p>
-    <div class="field"><label class="lbl" for="bl-amt">Amount ({{ currency }})</label><input id="bl-amt" name="amount" type="number" step="0.01" required><div class="help">Use a minus sign to take money off.{% if me.role in ('reseller', 'subreseller', 'retailer') %} The amount is taken from your own balance ({{ currency }} {{ '%.2f' % me.balance|float }}); taking money off returns it to you.{% endif %}</div></div>
+    <div class="field"><label class="lbl" for="bl-amt">Amount ({{ currency }})</label><input id="bl-amt" name="amount" type="number" inputmode="decimal" step="0.01" required><div class="help">Use a minus sign to take money off.{% if me.role in ('reseller', 'subreseller', 'retailer') %} The amount is taken from your own balance ({{ currency }} {{ '%.2f' % me.balance|float }}); taking money off returns it to you.{% endif %}</div></div>
     <div class="field"><label class="lbl" for="bl-note">Note</label><input id="bl-note" name="note" maxlength="255"></div></div>
   <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save</button></div></form></dialog>
 <dialog class="modal" id="svc-dlg" aria-labelledby="sv-title"><form method="post" action="{{ url_for('subscriber_settings', sid=sub.id) }}">{{ csrf_input() }}
@@ -282,7 +282,7 @@
 <dialog class="modal" id="invoice-dlg" aria-labelledby="iv-title"><form method="post" action="{{ url_for('subscriber_invoice', sid=sub.id) }}">{{ csrf_input() }}
   <div class="modal-head"><h2 id="iv-title">New invoice</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
   <div class="modal-body stack"><div class="field"><label class="lbl" for="iv-name">Name</label><input id="iv-name" name="name" maxlength="64" placeholder="Router, installation..." required></div>
-    <div class="field"><label class="lbl" for="iv-amt">Amount ({{ currency }})</label><input id="iv-amt" name="amount" type="number" min="0.01" step="0.01" required></div>
+    <div class="field"><label class="lbl" for="iv-amt">Amount ({{ currency }})</label><input id="iv-amt" name="amount" type="number" inputmode="decimal" min="0.01" step="0.01" required></div>
     <div class="field"><label class="lbl" for="iv-note">Note</label><input id="iv-note" name="note" maxlength="255"></div></div>
   <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Add invoice</button></div></form></dialog>
 <dialog class="modal" id="photo-dlg" aria-labelledby="ph-title"><form method="post" action="{{ url_for('subscriber_photo_save', sid=sub.id) }}" enctype="multipart/form-data">{{ csrf_input() }}

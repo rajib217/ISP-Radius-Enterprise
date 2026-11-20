@@ -20,12 +20,12 @@
   <div class="tbl-wrap"><table class="tbl">
     <thead><tr><th>Device</th><th>Type</th><th>Router</th>{% if kind == 'olt' %}<th class="num">ONUs</th>{% endif %}<th>Address</th><th class="hide-sm">Location</th><th>Status</th><th></th></tr></thead>
     <tbody>{% for d in rows %}<tr>
-      <td class="who-cell"><b>{{ d.name }}</b>{% if d.notes %}<small>{{ d.notes }}</small>{% endif %}</td>
-      <td>{% for k, t in kinds %}{% if k == d.kind %}{{ t }}{% endif %}{% endfor %}</td>
-      <td>{{ d.router or '—' }}</td>{% if kind == 'olt' %}<td class="num"><a href="{{ url_for('onus', olt=d.id) }}">{{ d.onus }}</a></td>{% endif %}<td class="mono">{{ d.ip or '—' }}</td>
+      <td class="who-cell" data-card="title"><b>{{ d.name }}</b>{% if d.notes %}<small>{{ d.notes }}</small>{% endif %}</td>
+      <td data-card="key">{% for k, t in kinds %}{% if k == d.kind %}{{ t }}{% endif %}{% endfor %}</td>
+      <td>{{ d.router or '—' }}</td>{% if kind == 'olt' %}<td class="num"><a href="{{ url_for('onus', olt=d.id) }}">{{ d.onus }}</a></td>{% endif %}<td class="mono" data-card="key">{{ d.ip or '—' }}</td>
       <td class="hide-sm">{{ d.location or '—' }}{% if d.zone_name %}<small class="muted" style="display:block">{{ d.zone_name }}</small>{% endif %}</td>
-      <td>{% if d.last_status == 'up' %}<span class="dot up"></span>Reachable{% elif d.last_status == 'down' %}<span class="dot down"></span>Not answering{% else %}<span class="dot"></span>Not checked{% endif %}{% if d.last_checked %}<small class="muted" style="display:block">{{ d.last_checked|ago }}</small>{% endif %}</td>
-      <td class="act">{% if can('network', 'edit') %}
+      <td data-card="key">{% if d.last_status == 'up' %}<span class="dot up"></span>Reachable{% elif d.last_status == 'down' %}<span class="dot down"></span>Not answering{% else %}<span class="dot"></span>Not checked{% endif %}{% if d.last_checked %}<small class="muted" style="display:block">{{ d.last_checked|ago }}</small>{% endif %}</td>
+      <td class="act" data-card="actions">{% if can('network', 'edit') %}
         {% if d.ip %}<form method="post" action="{{ url_for('device_ping', did=d.id) }}">{{ csrf_input() }}<button class="btn sm" type="submit">Check</button></form>{% endif %}
         <button class="btn sm icon" data-open="dev-dlg" data-edit='{{ {"id": d.id, "name": d.name, "kind": d.kind, "ip": d.ip, "location": d.location, "zone_id": d.zone_id or "", "notes": d.notes, "nas_id": d.nas_id or ""}|tojson }}' aria-label="Edit {{ d.name }}" title="Edit {{ d.name }}">{{ icon('edit') }}</button>
         <form method="post" action="{{ url_for('device_delete', did=d.id) }}" data-confirm="Delete {{ d.name }}?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ d.name }}" title="Delete {{ d.name }}">{{ icon('trash') }}</button></form>{% endif %}</td>

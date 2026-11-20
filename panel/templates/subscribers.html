@@ -27,7 +27,7 @@
   {% if can_fn('sub.import') %}<a class="btn tb" href="{{ url_for('import_csv') }}">{{ icon('upload') }}Import</a>{% endif %}
   {% endif %}
   {% if can_fn('sub.export') %}<a class="btn tb" href="{{ url_for('subscribers_export', **keep) }}">{{ icon('download') }}Export</a>
-  <a class="btn tb green" href="{{ url_for('subscribers_export', **dict(keep, passwords='1' if me.role == 'admin' else '0')) }}">{{ icon('download') }}Download Subscribers Export</a>{% endif %}
+  <a class="btn tb green" href="{{ url_for('subscribers_export', **dict(keep, passwords='1' if me.role == 'admin' else '0')) }}">{{ icon('download') }}{{ 'Export with passwords' if me.role == 'admin' else 'Download export' }}</a>{% endif %}
   {% if can('subscribers', 'edit') %}
   <button class="btn tb" type="button" data-mass="renew">{{ icon('card') }}Mass Payment</button>
   {% if me.role == 'admin' %}<button class="btn tb red" type="button" data-mass="delete">{{ icon('trash') }}Mass Delete</button>{% endif %}
@@ -236,15 +236,15 @@
       </div>
       <hr class="mass-hr">
       <div class="grid2">
-        <div class="field"><label class="lbl" for="m-vt">Total Volume (GB)</label><input id="m-vt" name="vol_total" type="number" min="0" step="0.01" placeholder="Total Volume"></div>
-        <div class="field"><label class="lbl" for="m-vu">Used Volume (GB)</label><input id="m-vu" name="vol_used" type="number" min="0" step="0.01" placeholder="Used Volume"></div>
+        <div class="field"><label class="lbl" for="m-vt">Total Volume (GB)</label><input id="m-vt" name="vol_total" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Total Volume"></div>
+        <div class="field"><label class="lbl" for="m-vu">Used Volume (GB)</label><input id="m-vu" name="vol_used" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Used Volume"></div>
         <div class="field"><label class="lbl" for="m-stt">Total Session (Min)</label><input id="m-stt" name="sess_total" type="number" min="0" placeholder="Total Session (Min)"></div>
         <div class="field"><label class="lbl" for="m-su">Used Session (Min)</label><input id="m-su" name="sess_used" type="number" min="0" placeholder="Used Session (Min)"></div>
       </div>
       <hr class="mass-hr">
       <div class="grid2">
         <div class="field"><label class="lbl" for="m-dt">Discount Amount Type</label><select id="m-dt" name="disc_type"><option value="">Select A Type</option><option value="fixed">Fixed</option><option value="percent">Percentage</option></select></div>
-        <div class="field"><label class="lbl" for="m-dv">Discount</label><input id="m-dv" name="discount" type="number" min="0" step="0.01" placeholder="Billing Discount"></div>
+        <div class="field"><label class="lbl" for="m-dv">Discount</label><input id="m-dv" name="discount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Billing Discount"></div>
       </div>
       <hr class="mass-hr">
       <div class="grid2">
@@ -298,7 +298,7 @@
       </div>
       <div class="grid2">
         <div class="field"><label class="lbl" for="d-name">Full name</label><input id="d-name" name="full_name" maxlength="128"></div>
-        <div class="field"><label class="lbl" for="d-phone">Mobile</label><input id="d-phone" name="phone" type="tel" inputmode="tel" maxlength="32" placeholder="01XXXXXXXXX"></div>
+        <div class="field"><label class="lbl" for="d-phone">Mobile</label><input id="d-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="32" placeholder="01XXXXXXXXX"></div>
       </div>
       <div class="field"><label class="lbl" for="d-plan">Package</label>
         <select id="d-plan" name="plan_id"><option value="">No package yet</option>{% for p in act_plans %}<option value="{{ p.id }}">{{ p.label }}{% if p.price %} · {{ currency }} {{ p.price|money }}{% endif %}</option>{% endfor %}</select></div>
@@ -324,7 +324,7 @@
       <p class="help">The days are added to the current expiry, or to today if it has passed, and the account is activated.</p>
       <div class="grid2">
         <div class="field"><label class="lbl" for="rd-days">Days to add</label><input id="rd-days" name="days" type="number" min="1" max="3650" value="30" required></div>
-        <div class="field"><label class="lbl" for="rd-amount">Amount received ({{ currency }})</label><input id="rd-amount" name="amount" class="mono" type="number" min="0" step="0.01" value="0" required><div class="help">Filled with the package price. Taxes and extra fees are not included here.</div></div>
+        <div class="field"><label class="lbl" for="rd-amount">Amount received ({{ currency }})</label><input id="rd-amount" name="amount" class="mono" type="number" inputmode="decimal" min="0" step="0.01" value="0" required><div class="help">Filled with the package price. Taxes and extra fees are not included here.</div></div>
       </div>
       <div class="field"><label class="lbl">Paid by</label>
         <div class="seg-choice" role="radiogroup">{% for v, l in (('cash', 'Cash'), ('bkash', 'bKash'), ('nagad', 'Nagad'), ('rocket', 'Rocket'), ('bank', 'Bank')) %}<label><input type="radio" name="method" value="{{ v }}" {{ 'checked' if v == 'cash' }}><span>{{ l }}</span></label>{% endfor %}</div></div>

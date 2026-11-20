@@ -26,9 +26,9 @@
       <div></div>
       <div class="field"><label class="lbl" for="pk-desc">Description <b class="req">*</b></label><input id="pk-desc" name="description" value="{{ p.description or '' }}" maxlength="255" required placeholder="Enter Description"></div>
       <div class="field"><label class="lbl" for="pk-inv">Invoice Description</label><input id="pk-inv" name="invoice_desc" value="{{ p.invoice_desc or '' }}" maxlength="255" placeholder="Enter Invoice Description"></div>
-      <div class="field"><label class="lbl" for="pk-bw">Bandwidth</label><input id="pk-bw" name="bandwidth_value" type="number" min="0" step="any" value="{% set bwv = p.get('bandwidth_value') %}{{ ('%g' % bwv) if bwv else '' }}" placeholder="Bandwidth"></div>
+      <div class="field"><label class="lbl" for="pk-bw">Bandwidth</label><input id="pk-bw" name="bandwidth_value" type="number" inputmode="decimal" min="0" step="any" value="{% set bwv = p.get('bandwidth_value') %}{{ ('%g' % bwv) if bwv else '' }}" placeholder="Bandwidth"></div>
       <div class="field"><label class="lbl" for="pk-bwt">Bandwidth Type</label><select id="pk-bwt" name="bandwidth_type"><option value="">Select A Type</option>{% for t in ('Kbps','Mbps','Gbps') %}<option {{ 'selected' if p.bandwidth_type == t }}>{{ t }}</option>{% endfor %}</select><div class="help">Shown on lists and receipts. The speed limit itself comes from the Policy below.</div></div>
-      <div class="field"><label class="lbl" for="pk-price">Price ({{ currency }})</label><input id="pk-price" name="price" type="number" min="0" step="0.01" value="{{ p.price if editing else 0 }}"></div>
+      <div class="field"><label class="lbl" for="pk-price">Price ({{ currency }})</label><input id="pk-price" name="price" type="number" inputmode="decimal" min="0" step="0.01" value="{{ p.price if editing else 0 }}"></div>
       <div class="field"><label class="lbl" for="pl-pool">IP pool name on router</label><input id="pl-pool" name="pool_name" value="{{ p.pool_name or '' }}" placeholder="pppoe-pool" spellcheck="false"></div>
       <div class="field"><label class="lbl" for="pl-sim">Devices at once</label><input id="pl-sim" name="simultaneous_use" type="number" min="1" max="10" value="{{ p.simultaneous_use or 1 }}"></div>
     </div>
@@ -70,7 +70,7 @@
     {% for kind, label, ph in (('total', 'Data Quota (GB)', 'Volume Ex: 300 GB'), ('daily', 'Daily Data Quota', 'Ex: 10 GB'), ('weekly', 'Weekly Data Quota', 'Ex: 100 GB')) %}
     <div class="quota">
       <label class="lbl" for="quota_{{ kind }}_gb">{{ label }}</label>
-      <input id="quota_{{ kind }}_gb" name="quota_{{ kind }}_gb" type="number" min="0" step="0.01" value="{{ p['quota_%s_gb' % kind] or '' }}" placeholder="{{ ph }}">
+      <input id="quota_{{ kind }}_gb" name="quota_{{ kind }}_gb" type="number" inputmode="decimal" min="0" step="0.01" value="{{ p['quota_%s_gb' % kind] or '' }}" placeholder="{{ ph }}">
       <select name="quota_{{ kind }}_action" data-action-for="{{ kind }}" aria-label="{{ label }} action">{% for v, l in actions %}<option value="{{ v }}" {{ 'selected' if p['quota_%s_action' % kind] == v }}>{{ l }}</option>{% endfor %}</select>
       {% call policy_select('quota_%s_policy' % kind, p['quota_%s_policy' % kind], 'Search Group Name Here...') %}data-policy-for="{{ kind }}"{% endcall %}
     </div>

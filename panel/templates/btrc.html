@@ -41,7 +41,7 @@
   <div class="panel-head"><h2>{{ '{:,}'.format(total) }} customer{{ '' if total == 1 else 's' }} activated or renewed in {{ start.strftime('%B %Y') }}</h2>
     <span class="aside">{% if total > rows|length %}First {{ rows|length }} shown · the Excel file has all {{ '{:,}'.format(total) }}{% else %}All shown{% endif %}</span></div>
   {% if rows %}
-  <div class="tbl-wrap"><table class="tbl">
+  <div class="tbl-wrap"><table class="tbl" data-cards="off">
     <thead><tr>{% for c in columns %}<th>{{ c }}</th>{% endfor %}</tr></thead>
     <tbody>{% for r in rows %}<tr>
       {% for c in columns %}<td class="{{ 'mono' if c in ('client_username', 'allocated_ip') else '' }} {{ 'num' if c in ('bandwidth_allocation', 'selling_price_bdt_excluding_vat') else '' }} nowrap">{{ r[c].strftime('%m/%d/%Y') if c == 'activation_date' else (r[c] if r[c] not in (none, '') else '') }}</td>{% endfor %}

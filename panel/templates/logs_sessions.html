@@ -15,9 +15,9 @@
   <div class="tbl-wrap"><table class="tbl">
     <thead><tr><th>Username</th><th>Started</th><th>Ended</th><th class="num">Duration</th><th class="num">Down</th><th class="num">Up</th><th class="hide-sm">IP</th><th class="hide-sm">MAC</th><th class="hide-sm">Reason</th></tr></thead>
     <tbody>{% for r in rows %}<tr>
-      <td class="mono">{{ r.username }}</td><td class="nowrap">{{ r.acctstarttime|dt }}</td>
-      <td class="nowrap">{% if r.acctstoptime %}{{ r.acctstoptime|dt }}{% else %}<span class="badge ok">Online</span>{% endif %}</td>
-      <td class="num">{{ r.acctsessiontime|dur }}</td><td class="num">{{ r.acctoutputoctets|bytes }}</td><td class="num">{{ r.acctinputoctets|bytes }}</td>
+      <td class="mono" data-card="title">{{ r.username }}</td><td class="nowrap" data-card="key">{{ r.acctstarttime|dt }}</td>
+      <td class="nowrap" data-card="key">{% if r.acctstoptime %}{{ r.acctstoptime|dt }}{% else %}<span class="badge ok">Online</span>{% endif %}</td>
+      <td class="num" data-card="key">{{ r.acctsessiontime|dur }}</td><td class="num" data-card="key">{{ r.acctoutputoctets|bytes }}</td><td class="num">{{ r.acctinputoctets|bytes }}</td>
       <td class="hide-sm mono">{{ r.framedipaddress or '—' }}</td><td class="hide-sm mono">{{ r.callingstationid or '—' }}</td><td class="hide-sm muted">{{ r.acctterminatecause or '' }}</td>
     </tr>{% endfor %}</tbody>
   </table></div>

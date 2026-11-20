@@ -6,16 +6,16 @@
 <div class="page-head"><div><h1>Users</h1><p class="sub"><a href="{{ url_for('dashboard') }}">Home</a> &middot; <a href="{{ url_for('admins') }}">All Users</a> &middot; {{ u.username }}</p></div></div>
 
 <div class="sv-actions">
-  <button class="pbtn" data-open="admin-dlg" data-edit='{{ {"id": u.id, "username": u.username, "full_name": u.full_name, "role": u.role, "phone": u.phone, "email": u.email, "is_active": 1 if u.is_active else 0, "sms_on": 1 if u.sms_on else 0, "email_on": 1 if u.email_on else 0, "identity": u.identity, "country": u.country, "province": u.province, "city": u.city, "address": u.address, "department_id": u.department_id or "", "zone_id": u.zone_id or "", "parent_id": u.parent_id or "", "max_children": u.max_children if u.max_children is not none else "", "plans": allowed}|tojson }}'>{{ icon('edit') }}Edit Profile</button>
-  <button class="pbtn" data-open="ps-dlg">{{ icon('sliders') }}Profile Settings</button>
-  {% if u.role != 'admin' %}<a class="pbtn" href="{{ url_for('admin_packages', aid=u.id) }}">{{ icon('package') }}Assign Packages</a>{% endif %}
-  <button class="pbtn" data-open="bal-dlg">{{ icon('wallet') }}Add Balance</button>
-  <button class="pbtn" data-open="ph-dlg">{{ icon('camera') }}Photo</button>
-  <button class="pbtn" data-open="iv-dlg">{{ icon('file') }}Invoice Settings</button>
-  {% if can('notes') %}<a class="pbtn" href="{{ url_for('notes') }}">{{ icon('note') }}Add Note</a>{% endif %}
-  <button class="pbtn" data-open="pw-dlg">{{ icon('user') }}Password</button>
-  {% if u.id != me.id %}<form method="post" action="{{ url_for('admin_delete', aid=u.id) }}" data-confirm="Delete {{ u.username }}?">{{ csrf_input() }}<input type="hidden" name="next" value="{{ url_for('admins') }}"><button class="pbtn red" type="submit">{{ icon('trash') }}Delete Profile</button></form>
-  {% if u.role != 'admin' and u.is_active %}<form method="post" action="{{ url_for('admin_switch', aid=u.id) }}" data-confirm="Sign in as {{ u.username }}? You can switch back from the yellow bar.">{{ csrf_input() }}<button class="pbtn" type="submit">{{ icon('swap') }}Switch Profile</button></form>{% endif %}{% endif %}
+  <button class="btn sm primary" data-open="admin-dlg" data-edit='{{ {"id": u.id, "username": u.username, "full_name": u.full_name, "role": u.role, "phone": u.phone, "email": u.email, "is_active": 1 if u.is_active else 0, "sms_on": 1 if u.sms_on else 0, "email_on": 1 if u.email_on else 0, "identity": u.identity, "country": u.country, "province": u.province, "city": u.city, "address": u.address, "department_id": u.department_id or "", "zone_id": u.zone_id or "", "parent_id": u.parent_id or "", "max_children": u.max_children if u.max_children is not none else "", "plans": allowed}|tojson }}'>{{ icon('edit') }}Edit Profile</button>
+  <button class="btn sm primary" data-open="ps-dlg">{{ icon('sliders') }}Profile Settings</button>
+  {% if u.role != 'admin' %}<a class="btn sm primary" href="{{ url_for('admin_packages', aid=u.id) }}">{{ icon('package') }}Assign Packages</a>{% endif %}
+  <button class="btn sm primary" data-open="bal-dlg">{{ icon('wallet') }}Add Balance</button>
+  <button class="btn sm primary" data-open="ph-dlg">{{ icon('camera') }}Photo</button>
+  <button class="btn sm primary" data-open="iv-dlg">{{ icon('file') }}Invoice Settings</button>
+  {% if can('notes') %}<a class="btn sm primary" href="{{ url_for('notes') }}">{{ icon('note') }}Add Note</a>{% endif %}
+  <button class="btn sm primary" data-open="pw-dlg">{{ icon('user') }}Password</button>
+  {% if u.id != me.id %}<form method="post" action="{{ url_for('admin_delete', aid=u.id) }}" data-confirm="Delete {{ u.username }}?">{{ csrf_input() }}<input type="hidden" name="next" value="{{ url_for('admins') }}"><button class="btn sm solid-danger" type="submit">{{ icon('trash') }}Delete Profile</button></form>
+  {% if u.role != 'admin' and u.is_active %}<form method="post" action="{{ url_for('admin_switch', aid=u.id) }}" data-confirm="Sign in as {{ u.username }}? You can switch back from the yellow bar.">{{ csrf_input() }}<button class="btn sm primary" type="submit">{{ icon('swap') }}Switch Profile</button></form>{% endif %}{% endif %}
 </div>
 
 <section class="panel sv-head">
@@ -25,7 +25,7 @@
       <h2>{{ u.full_name or u.username }} <span class="pill pt-{{ u.ptype|lower }}">{{ u.ptype }}</span></h2>
       <div class="chips"><span class="chip blue">{{ icon('user') }}{{ u.role_label }}</span>{% if u.parent_name %}<span class="chip violet">{{ icon('user') }}{{ u.parent_name }}</span>{% endif %}<span class="chip {{ 'green' if u.is_active else 'gray' }}">{{ 'Active' if u.is_active else 'Disabled' }}</span></div>
     </div>
-    <details class="dd sv-more"><summary class="pbtn">Actions &#9662;</summary>
+    <details class="dd sv-more"><summary class="btn sm primary">Actions &#9662;</summary>
       <div class="dd-menu"><span class="menu-title muted" style="display:block;padding:6px 12px;font-size:12px">MENUS</span>
         <button type="button" data-open="role-dlg">Change Profile Type</button>
         <button type="button" data-open="role-dlg">Change Role</button>
@@ -129,7 +129,7 @@
     <div class="modal-body stack">
       <div class="field"><label class="lbl" for="iv-n">Business name</label><input id="iv-n" name="inv_name" maxlength="100" value="{{ u.inv_name }}" placeholder="{{ isp_name }}"></div>
       <div class="field"><label class="lbl" for="iv-a">Address</label><input id="iv-a" name="inv_address" maxlength="255" value="{{ u.inv_address }}"></div>
-      <div class="field"><label class="lbl" for="iv-p">Phone</label><input id="iv-p" name="inv_phone" maxlength="40" value="{{ u.inv_phone }}"></div>
+      <div class="field"><label class="lbl" for="iv-p">Phone</label><input id="iv-p" name="inv_phone" type="tel" autocomplete="tel" maxlength="40" value="{{ u.inv_phone }}"></div>
       <div class="field"><label class="lbl" for="iv-f">Footer note</label><input id="iv-f" name="inv_footer" maxlength="255" value="{{ u.inv_footer }}" placeholder="Thank you for your payment."></div>
       <div class="help">Shown at the top and bottom of payment receipts for this user's subscribers. Empty fields use the main ISP name.</div>
     </div>

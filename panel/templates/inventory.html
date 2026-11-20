@@ -19,11 +19,11 @@
   <div class="tbl-wrap"><table class="tbl">
     <thead><tr><th>Item</th><th>Category</th><th class="num">In stock</th><th class="num hide-sm">Minimum</th><th class="num hide-sm">Unit cost</th><th class="hide-sm">Location</th><th></th></tr></thead>
     <tbody>{% for i in rows %}{% set is_low = i.min_qty > 0 and i.qty <= i.min_qty %}<tr>
-      <td class="who-cell"><b>{{ i.name }}</b>{% if i.sku %}<small class="mono">{{ i.sku }}</small>{% endif %}</td>
-      <td>{{ i.category }}</td>
-      <td class="num"><b class="{{ 'pri-urgent' if is_low }}">{{ '{:,}'.format(i.qty) }}</b> {{ i.unit }}{% if is_low %} <span class="badge warn">Low</span>{% endif %}</td>
+      <td class="who-cell" data-card="title"><b>{{ i.name }}</b>{% if i.sku %}<small class="mono">{{ i.sku }}</small>{% endif %}</td>
+      <td data-card="key">{{ i.category }}</td>
+      <td class="num" data-card="key"><b class="{{ 'pri-urgent' if is_low }}">{{ '{:,}'.format(i.qty) }}</b> {{ i.unit }}{% if is_low %} <span class="badge warn">Low</span>{% endif %}</td>
       <td class="num hide-sm">{{ i.min_qty or '—' }}</td><td class="num hide-sm">{{ i.unit_cost|money }}</td><td class="hide-sm">{{ i.location or '—' }}</td>
-      <td class="act"><a class="btn sm icon" href="{{ url_for('inventory_moves', item=i.id) }}" aria-label="History of {{ i.name }}" title="History">{{ icon('file') }}</a>
+      <td class="act" data-card="actions"><a class="btn sm icon" href="{{ url_for('inventory_moves', item=i.id) }}" aria-label="History of {{ i.name }}" title="History">{{ icon('file') }}</a>
         {% if can('inventory', 'edit') %}
         <button class="btn sm icon" data-open="move-dlg" data-new data-fill='{{ {"item_id": i.id}|tojson }}' aria-label="Move stock of {{ i.name }}" title="Move stock">{{ icon('refresh') }}</button>
         <button class="btn sm icon" data-open="item-dlg" data-edit='{{ {"id": i.id, "name": i.name, "category": i.category, "sku": i.sku, "unit": i.unit, "min_qty": i.min_qty, "unit_cost": i.unit_cost|string, "location": i.location, "note": i.note}|tojson }}' aria-label="Edit {{ i.name }}" title="Edit {{ i.name }}">{{ icon('edit') }}</button>
@@ -45,7 +45,7 @@
       <div class="field"><label class="lbl" for="it-cat">Category</label><input id="it-cat" name="category" list="it-cats" maxlength="64" value="Other"><datalist id="it-cats">{% for c in cats %}<option value="{{ c }}">{% endfor %}</datalist></div>
       <div class="field"><label class="lbl" for="it-sku">Code / model</label><input id="it-sku" name="sku" maxlength="64"></div>
       <div class="field"><label class="lbl" for="it-unit">Unit</label><input id="it-unit" name="unit" maxlength="16" value="pcs"></div>
-      <div class="field"><label class="lbl" for="it-cost">Unit cost ({{ currency }})</label><input id="it-cost" name="unit_cost" type="number" min="0" step="0.01" value="0"></div>
+      <div class="field"><label class="lbl" for="it-cost">Unit cost ({{ currency }})</label><input id="it-cost" name="unit_cost" type="number" inputmode="decimal" min="0" step="0.01" value="0"></div>
       <div class="field"><label class="lbl" for="it-min">Alert when stock is at or below</label><input id="it-min" name="min_qty" type="number" min="0" value="0"></div>
       <div class="field" data-new-only><label class="lbl" for="it-qty">Opening quantity</label><input id="it-qty" name="qty" type="number" min="0" value="0"></div>
       <div class="field"><label class="lbl" for="it-loc">Location</label><input id="it-loc" name="location" maxlength="128" placeholder="Main store"></div>

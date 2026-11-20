@@ -23,13 +23,13 @@
     <thead><tr><th>Receipt</th><th>Date</th><th>Customer</th><th class="num">Amount</th><th>Method</th><th class="hide-sm">Valid until</th><th class="hide-sm">Received by</th><th></th></tr></thead>
     <tbody>{% for p in rows %}<tr>
       <td class="mono"><a href="{{ url_for('receipt', pid=p.id) }}">#{{ p.id }}</a></td>
-      <td class="nowrap">{{ p.paid_at|dt }}</td>
-      <td class="who-cell">{% if p.sid %}<a href="{{ url_for('subscriber_view', sid=p.sid) }}"><b class="mono">{{ p.username }}</b></a>{% else %}<b class="mono">{{ p.username }}</b>{% endif %}<small>{{ p.full_name or '—' }}{% if p.note %} · {{ p.note }}{% endif %}</small></td>
-      <td class="num"><b>{{ p.amount|money }}</b></td>
-      <td>{{ p.method }}</td>
+      <td class="nowrap" data-card="key">{{ p.paid_at|dt }}</td>
+      <td class="who-cell" data-card="title">{% if p.sid %}<a href="{{ url_for('subscriber_view', sid=p.sid) }}"><b class="mono">{{ p.username }}</b></a>{% else %}<b class="mono">{{ p.username }}</b>{% endif %}<small>{{ p.full_name or '—' }}{% if p.note %} · {{ p.note }}{% endif %}</small></td>
+      <td class="num" data-card="key"><b>{{ p.amount|money }}</b></td>
+      <td data-card="key">{{ p.method }}</td>
       <td class="hide-sm">{{ p.period_to|d if p.period_to else '—' }}</td>
       <td class="hide-sm">{{ p.received_by or '—' }}</td>
-      <td class="act"><a class="btn sm icon" href="{{ url_for('receipt', pid=p.id) }}" aria-label="Receipt #{{ p.id }}" title="Receipt">{{ icon('printer') }}</a>
+      <td class="act" data-card="actions"><a class="btn sm icon" href="{{ url_for('receipt', pid=p.id) }}" aria-label="Receipt #{{ p.id }}" title="Receipt">{{ icon('printer') }}</a>
         {% if me.role == 'admin' %}<form method="post" action="{{ url_for('payment_delete', pid=p.id) }}" data-confirm="Delete payment #{{ p.id }}? The customer's expiry date is not changed.">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete payment {{ p.id }}" title="Delete payment {{ p.id }}">{{ icon('trash') }}</button></form>{% endif %}</td>
     </tr>{% endfor %}</tbody>
   </table></div>
@@ -46,7 +46,7 @@
       <p class="muted" style="margin:0">For money that does not renew the connection: installation fee, device sale, old dues. To renew, use Receive payment.</p>
       <div class="grid-2">
         <div class="field"><label class="lbl" for="pp-user">Username</label><input id="pp-user" name="username" required spellcheck="false"></div>
-        <div class="field"><label class="lbl" for="pp-amount">Amount ({{ currency }})</label><input id="pp-amount" name="amount" type="number" step="0.01" min="0.01" required></div>
+        <div class="field"><label class="lbl" for="pp-amount">Amount ({{ currency }})</label><input id="pp-amount" name="amount" type="number" inputmode="decimal" step="0.01" min="0.01" required></div>
         <div class="field"><label class="lbl" for="pp-method">Method</label><select id="pp-method" name="method">{% for m in method_list %}<option>{{ m }}</option>{% endfor %}</select></div>
         <div class="field"><label class="lbl" for="pp-note">Note</label><input id="pp-note" name="note" maxlength="255" placeholder="Installation fee"></div>
       </div>

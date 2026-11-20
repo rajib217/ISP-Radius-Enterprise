@@ -10,7 +10,7 @@
       {% if not ready %}<div class="notice warn" role="status">{{ icon('alert') }}<div><strong>bKash is not set up yet</strong><p>Ask your administrator to switch bKash on under Settings &gt; Payment Gateway.</p></div></div>{% endif %}
       <div class="pf-row"><label for="pm">Payment Method <b class="req">*</b></label><select id="pm" name="method" required><option value="">Select Method</option><option value="bkash">bKash</option></select></div>
       <div class="pf-row"><label for="pn">Note</label><input id="pn" name="note" maxlength="255" placeholder="Note"></div>
-      <div class="pf-row"><label for="pa">Amount <b class="req">*</b></label><input id="pa" name="amount" type="number" min="1" step="0.01" required placeholder="Amount"></div>
+      <div class="pf-row"><label for="pa">Amount <b class="req">*</b></label><input id="pa" name="amount" type="number" inputmode="decimal" min="1" step="0.01" required placeholder="Amount"></div>
       {% if s.bkash_fee and s.bkash_fee != '0' %}<p class="muted pf-help">bKash charges a fee of {{ s.bkash_fee }}{{ '%' if s.bkash_fee_type != 'fixed' else ' ' ~ currency }} on top. It is shown on the bKash page; only the amount you enter is added to your balance.</p>{% endif %}
     </div>
     <div class="pf-foot"><a class="btn" href="{{ url_for('dashboard') }}">Close</a><button class="btn primary" type="submit">Submit</button></div>

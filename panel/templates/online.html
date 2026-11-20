@@ -28,17 +28,17 @@
     <tbody>
     {% for r in rows %}
       <tr>
-        <td class="who-cell">
+        <td class="who-cell" data-card="title">
           {% if r.sid %}<a href="{{ url_for('subscriber_view', sid=r.sid) }}"><b class="mono">{{ r.username }}</b></a>{% else %}<b class="mono">{{ r.username }}</b>{% endif %}
           <small>{{ r.full_name or ('Not in the subscriber list' if not r.sid else '—') }}</small>
         </td>
-        <td class="mono">{{ r.framedipaddress or '—' }}</td>
+        <td class="mono" data-card="key">{{ r.framedipaddress or '—' }}</td>
         <td class="mono hide-sm">{{ r.callingstationid or '—' }}</td>
-        <td>{{ r.nas_name }}</td>
-        <td class="nowrap" title="Since {{ r.acctstarttime|dt }}">{{ r.uptime|dur }}</td>
-        <td class="num">{{ r.acctoutputoctets|bytes }}</td>
+        <td data-card="key">{{ r.nas_name }}</td>
+        <td class="nowrap" data-card="key" title="Since {{ r.acctstarttime|dt }}">{{ r.uptime|dur }}</td>
+        <td class="num" data-card="key">{{ r.acctoutputoctets|bytes }}</td>
         <td class="num">{{ r.acctinputoctets|bytes }}</td>
-        <td class="act">
+        <td class="act" data-card="actions">
           <form method="post" action="{{ url_for('online_disconnect') }}" data-confirm="Disconnect {{ r.username }}?">
             {{ csrf_input() }}<input type="hidden" name="id" value="{{ r.radacctid }}"><input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">
             <button class="btn sm" type="submit">{{ icon('power') }}Disconnect</button>

@@ -10,7 +10,7 @@
       <div class="field"><label class="lbl" for="o-serial">Serial</label><input id="o-serial" name="serial" maxlength="64" spellcheck="false"></div>
       <div class="field"><label class="lbl" for="o-mac">MAC</label><input id="o-mac" name="mac" maxlength="17" placeholder="AA:BB:CC:DD:EE:FF" spellcheck="false"></div>
       <div class="field"><label class="lbl" for="o-user">Customer username</label><input id="o-user" name="username" maxlength="64"></div>
-      <div class="field"><label class="lbl" for="o-rx">Rx power (dBm)</label><input id="o-rx" name="rx_dbm" type="number" step="0.01" min="-60" max="10" placeholder="-22.5"></div>
+      <div class="field"><label class="lbl" for="o-rx">Rx power (dBm)</label><input id="o-rx" name="rx_dbm" type="number" inputmode="decimal" step="0.01" min="-60" max="10" placeholder="-22.5"></div>
       <div class="field"><label class="lbl" for="o-status">Status</label><select id="o-status" name="status">{% for v, l in statuses %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
       <div class="field span-2"><label class="lbl" for="o-note">Note</label><input id="o-note" name="note" maxlength="255"></div>
     </div></div>

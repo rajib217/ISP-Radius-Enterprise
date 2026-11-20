@@ -5,7 +5,7 @@
     <div class="modal-body stack">
       <div class="field"><label class="lbl">User</label><input name="user_label" class="plainval" readonly value="{{ bal_user.username if bal_user else '' }}"></div>
       <div class="field"><label class="lbl" for="bal-method">Payment Method <b class="req">*</b></label><select id="bal-method" name="method" required><option value="">Select A Method</option>{% for v, l in methods %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
-      <div class="field"><label class="lbl" for="bal-amt">Amount <b class="req">*</b></label><input id="bal-amt" name="amount" type="number" step="0.01" placeholder="Enter Amount" required><div class="help">Use a minus sign to take balance away. As admin you add money to their balance; it is used when they activate customers.</div></div>
+      <div class="field"><label class="lbl" for="bal-amt">Amount <b class="req">*</b></label><input id="bal-amt" name="amount" type="number" inputmode="decimal" step="0.01" placeholder="Enter Amount" required><div class="help">Use a minus sign to take balance away. As admin you add money to their balance; it is used when they activate customers.</div></div>
       <div class="field"><label class="lbl" for="bal-note">Note</label><textarea id="bal-note" name="note" rows="3" maxlength="255"></textarea></div>
     </div>
     <div class="modal-foot"><button type="button" class="btn" data-close>Close</button><button class="btn primary" type="submit">Submit</button></div>

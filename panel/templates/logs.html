@@ -21,10 +21,10 @@
   <div class="tbl-wrap"><table class="tbl">
     {% if tab == 'auth' %}
     <thead><tr><th>Time</th><th>Username</th><th>Result</th></tr></thead>
-    <tbody>{% for r in rows %}<tr><td class="nowrap">{{ r.authdate|dt('%d %b %Y, %H:%M:%S') }}</td><td class="mono">{{ r.username or '(empty)' }}</td><td><span class="badge {{ 'ok' if r.reply == 'Access-Accept' else 'bad' }}">{{ 'Accepted' if r.reply == 'Access-Accept' else 'Refused' }}</span>{% if r.reply != 'Access-Accept' and r.username %} <a class="btn sm" href="{{ url_for('diagnose_page', user=r.username) }}">Why?</a>{% endif %}</td></tr>{% endfor %}</tbody>
+    <tbody>{% for r in rows %}<tr><td class="nowrap" data-card="key">{{ r.authdate|dt('%d %b %Y, %H:%M:%S') }}</td><td class="mono" data-card="title">{{ r.username or '(empty)' }}</td><td data-card="key"><span class="badge {{ 'ok' if r.reply == 'Access-Accept' else 'bad' }}">{{ 'Accepted' if r.reply == 'Access-Accept' else 'Refused' }}</span>{% if r.reply != 'Access-Accept' and r.username %} <a class="btn sm" href="{{ url_for('diagnose_page', user=r.username) }}">Why?</a>{% endif %}</td></tr>{% endfor %}</tbody>
     {% else %}
     <thead><tr><th>Time</th><th>Who</th><th>Action</th><th>Target</th><th class="hide-sm">Details</th><th class="hide-sm">From</th></tr></thead>
-    <tbody>{% for r in rows %}<tr><td class="nowrap">{{ r.created_at|dt('%d %b %Y, %H:%M:%S') }}</td><td>{{ r.admin or '—' }}</td><td>{{ r.action|replace('_', ' ') }}</td><td class="mono">{{ r.target or '—' }}</td><td class="hide-sm muted">{{ r.detail or '' }}</td><td class="hide-sm mono muted">{{ r.ip }}</td></tr>{% endfor %}</tbody>
+    <tbody>{% for r in rows %}<tr><td class="nowrap" data-card="key">{{ r.created_at|dt('%d %b %Y, %H:%M:%S') }}</td><td data-card="key">{{ r.admin or '—' }}</td><td data-card="title">{{ r.action|replace('_', ' ') }}</td><td class="mono" data-card="key">{{ r.target or '—' }}</td><td class="hide-sm muted">{{ r.detail or '' }}</td><td class="hide-sm mono muted">{{ r.ip }}</td></tr>{% endfor %}</tbody>
     {% endif %}
   </table></div>
   {{ simple_pager(page, has_next, keep, 'logs') }}

@@ -32,23 +32,23 @@
     <thead><tr><th>ID</th><th>MAC Address</th><th>OLT Name</th><th>Slot/Card</th><th>PON : ONT</th><th>Status</th><th>Signal</th><th>RX Power</th><th>TX Power</th><th>Temp</th><th>Subscriber</th><th>Last Seen</th><th class="no-x"></th></tr></thead>
     <tbody>{% for o in rows %}<tr>
       <td class="muted">{{ o.id }}</td>
-      <td><span class="chip violet mono">{{ o.mac or o.serial or o.name or '—' }}</span></td>
+      <td data-card="title"><span class="chip violet mono">{{ o.mac or o.serial or o.name or '—' }}</span></td>
       <td><span class="chip violet">{{ o.olt_name or '—' }}</span></td>
       <td>{% if o.slot %}<span class="chip blue">Slot {{ o.slot }}</span>{% else %}—{% endif %}</td>
       <td>{% if o.ont %}<span class="chip violet">PON {{ o.pon }} : ONT {{ o.ont }}</span>{% else %}{{ o.pon or '—' }}{% endif %}</td>
-      <td><span class="pill {{ 'ok' if o.status == 'online' else ('bad' if o.status == 'los' else 'gray') }}">{% for v, l in statuses %}{% if v == o.status %}{{ l.split(' (')[0] }}{% endif %}{% endfor %}</span></td>
-      <td>{% if o.sig %}<span class="pill {{ o.sig[2] }}">{{ o.sig[1] }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
-      <td class="muted">{{ ('%.2f dBm' % o.rx_dbm|float) if o.rx_dbm is not none else '—' }}</td>
+      <td data-card="key"><span class="pill {{ 'ok' if o.status == 'online' else ('bad' if o.status == 'los' else 'gray') }}">{% for v, l in statuses %}{% if v == o.status %}{{ l.split(' (')[0] }}{% endif %}{% endfor %}</span></td>
+      <td data-card="key">{% if o.sig %}<span class="pill {{ o.sig[2] }}">{{ o.sig[1] }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td class="muted" data-card="key">{{ ('%.2f dBm' % o.rx_dbm|float) if o.rx_dbm is not none else '—' }}</td>
       <td class="muted">{{ ('%.2f dBm' % o.tx_dbm|float) if o.tx_dbm is not none else '—' }}</td>
       <td class="muted">{{ ('%.1f °C' % o.temp_c|float) if o.temp_c is not none else '—' }}</td>
-      <td>{% if o.username %}{% if o.sid %}<a class="pill ok" href="{{ url_for('subscriber_view', sid=o.sid) }}">{{ o.username }}</a>{% else %}<span class="pill ok">{{ o.username }}</span>{% endif %}{% else %}<span class="pill warn">Unmapped</span>{% endif %}</td>
+      <td data-card="key">{% if o.username %}{% if o.sid %}<a class="pill ok" href="{{ url_for('subscriber_view', sid=o.sid) }}">{{ o.username }}</a>{% else %}<span class="pill ok">{{ o.username }}</span>{% endif %}{% else %}<span class="pill warn">Unmapped</span>{% endif %}</td>
       <td class="muted">{{ (o.last_seen|ago) if o.last_seen else ('manual' if o.source != 'snmp' else '—') }}</td>
-      <td class="act no-x"><div class="btngroup">
-        <a class="ab blue" href="{{ url_for('onu_view', oid=o.id) }}" title="View details" aria-label="View ONU">{{ icon('eye') }}</a>
+      <td class="act no-x" data-card="actions"><div class="btngroup">
+        <a class="btn sm icon" href="{{ url_for('onu_view', oid=o.id) }}" title="View details" aria-label="View ONU">{{ icon('eye') }}</a>
         {% if can('network', 'edit') %}
-        {% if o.olt_id %}<form method="post" action="{{ url_for('olt_sync', did=o.olt_id) }}">{{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}"><button class="ab green" type="submit" title="Refresh from OLT" aria-label="Refresh from OLT">{{ icon('refresh') }}</button></form>{% endif %}
-        <button class="ab violet" data-open="map-dlg" data-fill='{{ {"username": o.username, "action": url_for("onu_map", oid=o.id), "next": request.full_path.rstrip("?")}|tojson }}' title="Link to subscriber" aria-label="Link to subscriber">{{ icon('link') }}</button>
-        <form method="post" action="{{ url_for('onu_delete', oid=o.id) }}" data-confirm="Delete this ONU?">{{ csrf_input() }}<button class="ab red" type="submit" title="Delete" aria-label="Delete ONU">{{ icon('trash') }}</button></form>{% endif %}
+        {% if o.olt_id %}<form method="post" action="{{ url_for('olt_sync', did=o.olt_id) }}">{{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}"><button class="btn sm icon" type="submit" title="Refresh from OLT" aria-label="Refresh from OLT">{{ icon('refresh') }}</button></form>{% endif %}
+        <button class="btn sm icon" data-open="map-dlg" data-fill='{{ {"username": o.username, "action": url_for("onu_map", oid=o.id), "next": request.full_path.rstrip("?")}|tojson }}' title="Link to subscriber" aria-label="Link to subscriber">{{ icon('link') }}</button>
+        <form method="post" action="{{ url_for('onu_delete', oid=o.id) }}" data-confirm="Delete this ONU?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" title="Delete" aria-label="Delete ONU">{{ icon('trash') }}</button></form>{% endif %}
       </div></td>
     </tr>{% endfor %}</tbody>
   </table></div>

@@ -487,6 +487,16 @@ def check_rules(flask_app, ids):
     finally:
         _bk.mark, _bk.core.audit, _bk.core.commit, _bk.call, _bk.token = _orig
 
+    # ---- customer portal pages (signed in as a customer) and the portal bottom nav
+    pc = flask_app.test_client()
+    with pc.session_transaction() as s:
+        s["csrf"] = "ci"; s["cid"] = one("SELECT id FROM subscribers WHERE username = 'uttara.shop'")["id"]
+    p_home, p_pay = pc.get("/portal"), pc.get("/portal/pay")
+    p_html = p_home.get_data(as_text=True)
+    check(p_home.status_code == 200 and p_pay.status_code in (200, 302) and 'class="pt-bottom-nav"' in p_html
+          and 'href="/portal#invoices"' in p_html and 'id="invoices"' in p_html and 'id="usage"' in p_html,
+          "customer portal and pay page open, with the bottom nav and its #usage / #invoices targets")
+
     # ---- Phase 2 shell: the topbar "online" pill is ISP-wide, so never for sellers
     import re as _re3
     a_html = adm.get("/subscribers").get_data(as_text=True)
