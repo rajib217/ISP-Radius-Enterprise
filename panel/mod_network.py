@@ -190,7 +190,7 @@ def device_delete(did):
 def ping(ip):
     """True if the host answers one ICMP echo within a second. None if ping is not installed."""
     try:
-        r = subprocess.run(["ping", "-c", "1", "-W", "1", ip], capture_output=True, timeout=5)
+        r = subprocess.run(["ping", "-c", "1", "-W", "1", "--", ip], capture_output=True, timeout=5)
     except FileNotFoundError:
         return None
     except subprocess.TimeoutExpired:

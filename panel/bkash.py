@@ -206,8 +206,11 @@ def confirm(payment_id, flow="", ref=0):
     answer, lost = None, False
     try:
         answer = call("execute", {"paymentID": payment_id}, flow=flow, ref=ref, token=token())
-        if str(answer.get("statusCode")) == "0000" and str(answer.get("transactionStatus", "")) == "Completed":
+        if str(answer.get("statusCode")) == "0000" and str(answer.get("transactionStatus", "")) == "Completed" \
+                and _paid(answer) > 0:
             return "completed", answer
+        # Completed but without an amount: fall through and ask for the status (which carries the
+        # amount) instead of crediting a payment whose amount was never verified.
     except BkashError:
         lost = True          # timeout or HTTP error: execute may or may not have gone through
     # already executed, refused, or the answer was lost: ask bKash what state the payment is in
@@ -230,7 +233,7 @@ def confirm(payment_id, flow="", ref=0):
 # ===================================================================== crediting (once)
 def _paid(data):
     try:
-        return float(data.get("amount") or 0)
+        return float((data or {}).get("amount") or 0)
     except (TypeError, ValueError):
         return 0.0
 
@@ -243,9 +246,17 @@ def mark(flow, row_id, status, message):
 
 
 def _amount_ok(flow, row, data):
+    """True only when bKash reports paying exactly amount + fee. Fails closed: a missing, unreadable
+    or zero amount marks the row failed for a manual check instead of crediting an unverified payment."""
     want = float(row["amount"]) + float(row["fee"])
     paid = _paid(data)
-    if paid and abs(paid - want) > 0.01:
+    if paid <= 0:
+        mark(flow, row["id"], "failed", "BKASH CONFIRMED THIS PAYMENT WITHOUT AN AMOUNT (trx %s, %.2f WAS EXPECTED): "
+             "check this payment by hand." % ((data or {}).get("trxID", "?"), want))
+        core.audit("bkash_amount_missing", row.get("payment_id", ""), "no amount in bKash answer, expected %.2f" % want, who="bkash")
+        core.commit()
+        return False
+    if abs(paid - want) > 0.01:
         mark(flow, row["id"], "failed", "PAID %.2f BUT %.2f WAS EXPECTED (trx %s): check this payment by hand."
              % (paid, want, data.get("trxID", "?")))
         core.audit("bkash_amount_mismatch", row.get("payment_id", ""), "paid %.2f expected %.2f" % (paid, want), who="bkash")

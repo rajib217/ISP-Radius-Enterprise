@@ -459,6 +459,34 @@ def check_rules(flask_app, ids):
     check(c.status_code == 200 and "TR0011CI" in c.get_data(as_text=True) and x.status_code == 200 and x.data[:2] == b"PK",
           "admin CSV and Excel exports work")
 
+    # ---- bKash amount check fails closed (no DB rows touched: mark/audit/commit are recorded, not run)
+    import bkash as _bk
+    _marks, _audits = [], []
+    _orig = (_bk.mark, _bk.core.audit, _bk.core.commit, _bk.call, _bk.token)
+    _bk.mark = lambda flow, rid, status, msg: _marks.append((flow, rid, status, msg))
+    _bk.core.audit = lambda *a, **k: _audits.append(a)
+    _bk.core.commit = lambda: None
+    try:
+        _row = {"id": 999001, "amount": 500, "fee": 7.5, "payment_id": "PAYX"}
+        check(_bk._amount_ok("portal", _row, {"amount": "507.50", "trxID": "T1"}) and not _marks,
+              "exact bKash amount (500 + 7.5 fee) is accepted")
+        check(not _bk._amount_ok("portal", _row, {"trxID": "T2"}) and _marks[-1][2] == "failed"
+              and "WITHOUT AN AMOUNT" in _marks[-1][3], "bKash answer without an amount is refused, not credited")
+        check(not _bk._amount_ok("topup", _row, {"amount": 0, "trxID": "T3"}), "zero bKash amount is refused")
+        check(not _bk._amount_ok("topup", _row, {"amount": "abc", "trxID": "T4"}), "unreadable bKash amount is refused")
+        check(not _bk._amount_ok("portal", _row, {"amount": 100, "trxID": "T5"})
+              and "BUT 507.50 WAS EXPECTED" in _marks[-1][3], "wrong bKash amount is refused")
+        _bk.token = lambda: "t"
+        _bk.call = lambda step, body, **k: ({"statusCode": "0000", "transactionStatus": "Completed", "trxID": "T6"}
+                                            if step == "execute" else
+                                            {"statusCode": "0000", "transactionStatus": "Completed",
+                                             "trxID": "T6", "amount": "507.50"})
+        _state, _data = _bk.confirm("PAYX", "portal", 999001)
+        check(_state == "completed" and _bk._paid(_data) == 507.5,
+              "execute without an amount falls back to the status answer, which carries it")
+    finally:
+        _bk.mark, _bk.core.audit, _bk.core.commit, _bk.call, _bk.token = _orig
+
     # ---- BTRC Report (admin only)
     import zipfile as _z2, io as _io2, re as _re2
     adm.post("/reports/btrc/settings", data={"_csrf": "ci", "btrc_division": "Chattogram", "btrc_district": "Brahmanbaria",

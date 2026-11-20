@@ -46,7 +46,7 @@ def send(s, text):
 
 def _ping(ip):
     try:
-        return subprocess.run(["ping", "-c", "1", "-W", "1", ip], capture_output=True, timeout=5).returncode == 0
+        return subprocess.run(["ping", "-c", "1", "-W", "1", "--", ip], capture_output=True, timeout=5).returncode == 0
     except FileNotFoundError:
         return None
     except subprocess.TimeoutExpired:
