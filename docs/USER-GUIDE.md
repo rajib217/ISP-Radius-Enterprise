@@ -165,6 +165,10 @@ sudo -u deploy nano /home/deploy/.ssh/authorized_keys
 ssh-keyscan -H <server-ip>
 ```
 
+Before any deploy, GitHub also runs `tests/test_pages.py`: it starts a real MariaDB 10.11, loads the FreeRADIUS and
+panel schemas, fills in sample data, and opens every page as admin, reseller, staff and customer. If any page answers
+500, the deploy does not happen and the failing page and code line are shown on the Actions page.
+
 Then in GitHub, under Settings > Secrets and variables > Actions, add `SERVER_HOST`, `SERVER_USER` (`deploy`),
 `SERVER_SSH_KEY` (the PRIVATE key) and `SERVER_KNOWN_HOSTS` (the ssh-keyscan output). Optionally add `SERVER_PORT`,
 and `PANEL_URL` (for example `https://panel.yourdomain.com`) to also check the public HTTPS address after each deploy.

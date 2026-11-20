@@ -37,6 +37,7 @@ jobs:
         run: |
           python3 -m py_compile panel/*.py
           python3 -m py_compile deploy/isp-panel-fwsync
+          python3 -m py_compile tests/*.py
 
       - name: Shell syntax
         run: |
@@ -51,9 +52,53 @@ jobs:
           cd panel
           PANEL_SECRET_KEY=ci PANEL_DATA_DIR="$RUNNER_TEMP/panel-data" PYTHONDONTWRITEBYTECODE=1 python3 -c 'import app; print("routes:", len(list(app.app.url_map.iter_rules())))'
 
+  pages:
+    name: Open every page (real MariaDB)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      mariadb:
+        image: mariadb:10.11          # the MariaDB version Ubuntu 24.04 installs
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root
+          MARIADB_DATABASE: radius
+          MARIADB_USER: radius_panel
+          MARIADB_PASSWORD: ci-test
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: "3306"
+      DB_USER: radius_panel
+      DB_PASS: ci-test
+      DB_NAME: radius
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install the same packages as the server
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-flask python3-pymysql python3-werkzeug mariadb-client >/dev/null
+
+      - name: Load the FreeRADIUS and panel schemas (as install.sh does)
+        run: |
+          cd "$RUNNER_TEMP"
+          apt-get download freeradius-config >/dev/null
+          dpkg-deb -x freeradius-config_*.deb fr
+          schema="$(find fr -path '*mods-config/sql/main/mysql/schema.sql' | head -n1)"
+          m="mariadb -h 127.0.0.1 -P 3306 -uroot -pci-root radius"
+          $m < "$schema"
+          $m < "$GITHUB_WORKSPACE/sql/panel_schema.sql"
+          $m -N -e "SELECT CONCAT(COUNT(*), ' tables') FROM information_schema.tables WHERE table_schema = 'radius'"
+
+      - name: Open every page as admin, reseller, staff and customer
+        run: /usr/bin/python3 tests/test_pages.py
+
   deploy:
     name: Deploy to the server
-    needs: check
+    needs: [check, pages]
     runs-on: ubuntu-24.04
     environment: production
     timeout-minutes: 25

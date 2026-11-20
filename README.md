@@ -182,6 +182,7 @@ panel/            the Flask web panel, NOC service and maintenance jobs
 sql/              database schema (applied by install.sh and update.sh)
 deploy/           Caddyfile template, firewall sync, GitHub deploy helper
 docs/             user guide and design notes
+tests/            page test run by GitHub Actions against a real MariaDB
 .github/          GitHub Actions deploy workflow
 ```
 
