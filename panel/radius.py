@@ -67,11 +67,14 @@ def sync_subscriber(cur, username, plan, status, expiry, static_ip, password=Non
         (username,),
     )
     # grace period and MAC binding live on the subscriber row; the row may not exist yet while it is being created
-    cur.execute("SELECT grace_until, mac_bind, quota_hit, net_disabled FROM subscribers WHERE username = %s", (username,))
+    cur.execute("SELECT grace_until, mac_bind, quota_hit, net_disabled, expiry_time FROM subscribers WHERE username = %s",
+                (username,))
     extra = cur.fetchone() or {}
     grace, mac, hit = extra.get("grace_until"), (extra.get("mac_bind") or ""), (extra.get("quota_hit") or "")
+    # the moment the account ends: the subscriber's own time, else the package's fixed time, else the end of the day
+    at = extra.get("expiry_time") or (plan or {}).get("fixed_expire_time")
     if grace and expiry and grace > expiry:
-        expiry = grace
+        expiry, at = grace, (plan or {}).get("fixed_expire_time")   # a grace period runs to the end of its day
     if password is not None:
         cur.execute(
             "DELETE FROM radcheck WHERE username = %s AND attribute = 'Cleartext-Password'",
@@ -97,7 +100,7 @@ def sync_subscriber(cur, username, plan, status, expiry, static_ip, password=Non
         restricted, reject = "", True      # "Disable Net": login refused, profile stays active
     rows = [("Simultaneous-Use", ":=", str(plan.get("simultaneous_use") or 1))]
     if expiry and not (expired and restricted and status != "suspended" and not hit):
-        rows.append(("Expiration", ":=", radius_date(expiry, plan.get("fixed_expire_time"))))
+        rows.append(("Expiration", ":=", radius_date(expiry, at)))
     if reject:
         rows.append(("Auth-Type", ":=", "Reject"))
     if mac:

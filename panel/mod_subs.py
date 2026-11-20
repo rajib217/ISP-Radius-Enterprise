@@ -1,6 +1,6 @@
 """Subscriber tools: renew helper, activation by username, grace period, MAC binding, extra service charges."""
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from flask import abort, flash, g, jsonify, redirect, render_template, request, url_for
 
@@ -54,9 +54,30 @@ def plan_expiry(plan, base, days):
     return base + timedelta(days=days)
 
 
-def do_renew(sub, days, amount, method="cash", note="", notify=True, exact=False):
+_KEEP = object()
+TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+def _clock(hhmm):
+    """'15:30' -> '3:30 PM' (how times are shown in the panel)."""
+    h, m = (int(v) for v in hhmm.split(":")[:2])
+    return "%d:%02d %s" % (h % 12 or 12, m, "AM" if h < 12 else "PM")
+
+
+def end_moment(sub, plan):
+    """When the account ends now: the expiry date at the subscriber's time, else the package's, else 23:59:59."""
+    if not sub.get("expiry_date"):
+        return None
+    at = sub.get("expiry_time") or (plan or {}).get("fixed_expire_time") or "23:59"
+    h, m = (int(v) for v in at.split(":")[:2])
+    return datetime.combine(sub["expiry_date"], datetime.min.time()).replace(hour=h, minute=m, second=59 if at == "23:59" else 0)
+
+
+def do_renew(sub, days, amount, method="cash", note="", notify=True, exact=False, expiry_time=_KEEP):
     """Add days (from today, or from the current expiry if it is later), activate and record the payment.
-    exact=True uses a date the person typed as it is (no whole-month or fixed-day rounding)."""
+    exact=True uses a date the person typed as it is (no whole-month or fixed-day rounding).
+    expiry_time: "HH:MM" (or None for the package's time / end of day) to store with the new expiry; left out, the
+    subscriber's stored time is kept."""
     base = max(sub["expiry_date"] or date.today(), date.today())
     plan = _plan(sub["plan_id"])
     new_expiry = plan_expiry(plan, base, days)
@@ -65,6 +86,8 @@ def do_renew(sub, days, amount, method="cash", note="", notify=True, exact=False
     if exact:
         new_expiry = base + timedelta(days=days)
     x("UPDATE subscribers SET expiry_date = %s, status = 'active' WHERE id = %s", (new_expiry, sub["id"]))
+    if expiry_time is not _KEEP:
+        x("UPDATE subscribers SET expiry_time = %s WHERE id = %s", (expiry_time, sub["id"]))
     # what a reseller / sub-reseller / retailer paid for this package (set by charge_me just before), kept for the profit report
     charged = g.pop("charged", None) or (None, None)
     pay_id = insert("INSERT INTO payments (subscriber_id, username, amount, days_added, method, note, period_to, "
@@ -185,13 +208,15 @@ def _visible_subs(where, args):
     if names is not None:
         where += " AND created_by IN (" + ",".join(["%s"] * len(names)) + ")"
         args = list(args) + list(names)
-    return q("SELECT id, username, full_name, phone, status, plan_id, expiry_date, created_by, balance FROM subscribers WHERE " + where +
+    return q("SELECT id, username, full_name, phone, status, plan_id, expiry_date, expiry_time, created_by, balance FROM subscribers WHERE " + where +
              " ORDER BY username LIMIT 15", args)
 
 
 def _sub_json(r):
     return {"id": r["id"], "username": r["username"], "name": r["full_name"] or "", "phone": r.get("phone") or "", "state": _state(r),
-            "plan_id": r["plan_id"], "expiry": r["expiry_date"].strftime("%d %b %Y") if r["expiry_date"] else "",
+            "plan_id": r["plan_id"],
+            "expiry": (r["expiry_date"].strftime("%d %b %Y") + (" " + _clock(r["expiry_time"]) if r.get("expiry_time") else ""))
+            if r["expiry_date"] else "",
             "expiry_iso": r["expiry_date"].isoformat() if r["expiry_date"] else ""}
 
 
@@ -288,6 +313,9 @@ def subscriber_activate():
             days = _custom_days(sub, f.get("expiry"))
             if days is None:
                 raise ValueError
+            custom_time = (f.get("expiry_time") or "").strip()
+            if custom_time and not TIME_RE.match(custom_time):
+                raise ValueError
         else:
             days = int(plan["validity_days"] or 30)
         received = 0.0 if from_balance else round(float(f.get("amount") or 0), 2)
@@ -342,11 +370,21 @@ def subscriber_activate():
         pay_method, auto = method, ""
     note = "; ".join(t for t in (user_note, auto) if t)
     # the payment row is the package price (revenue); extra money waits in the balance until it is used
-    new_expiry = do_renew(sub2, days, price, pay_method[:32], note, notify=price > 0, exact=custom)
+    # the time the new expiry ends at: the time typed with a custom date; otherwise the moment of activation, unless the
+    # account is still running (then its time is kept) or the package has its own fixed time
+    if custom:
+        new_time = custom_time or datetime.now().strftime("%H:%M")
+    elif plan.get("fixed_expire_time"):
+        new_time = None
+    else:
+        running = end_moment(sub, _plan(sub["plan_id"]))
+        new_time = sub.get("expiry_time") if running and running > datetime.now() else datetime.now().strftime("%H:%M")
+    new_expiry = do_renew(sub2, days, price, pay_method[:32], note, notify=price > 0, exact=custom, expiry_time=new_time)
     audit("activated", sub["username"], "%s, +%d days, %.2f via %s%s" % (plan["label"] or plan["name"], days, price, pay_method,
                                                                      (", balance %+.2f" % change) if change else ""))
     commit()
-    flash("%s is active until %s." % (sub["username"], new_expiry.strftime("%d %b %Y")), "success")
+    shown_time = new_time or plan.get("fixed_expire_time") or "23:59"
+    flash("%s is active until %s %s." % (sub["username"], new_expiry.strftime("%d %b %Y"), _clock(shown_time)), "success")
     if f.get("print") and g.get("last_payment"):
         return redirect(url_for("receipt", pid=g.last_payment, print=1))   # Activate & Print: open the receipt and print it
     return redirect(back)

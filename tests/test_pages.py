@@ -357,6 +357,39 @@ def check_rules(flask_app, ids):
     page = adm.get("/settings/gateway/bkash").get_data(as_text=True)
     check("bk-SECRET-9" not in page and "bk-PASS-9" not in page, "bKash secret and password are not written into the page")
 
+    # ---- expiry time
+    import noc
+    def exp_row(user):
+        r = one("SELECT expiry_date, expiry_time FROM subscribers WHERE username = %s", (user,))
+        e = one("SELECT value FROM radcheck WHERE username = %s AND attribute = 'Expiration'", (user,))
+        return r["expiry_date"], r["expiry_time"], (e or {}).get("value", "")
+    t = "dhanmondi.tanvir"                               # expired admin customer, package 1
+    price1 = adm.get("/subscribers/charge-info?u=%s&plan=1" % t).get_json()["price"]
+    before = datetime.now()
+    activate(adm, t, 1, payment="on", method="cash", amount=str(price1))
+    d, tm, exp = exp_row(t)
+    now_ok = tm is not None and abs((datetime.combine(TODAY, datetime.strptime(tm, "%H:%M").time()) - before.replace(second=0, microsecond=0)).total_seconds()) <= 120
+    check(now_ok and exp.endswith(tm + ":00"), "activation ends at the time of activation (%s, RADIUS: %s)" % (tm, exp))
+    activate(adm, t, 1, payment="on", method="cash", amount=str(price1))
+    d2, tm2, _ = exp_row(t)
+    check(d2 > d and tm2 == tm, "renewing a running account keeps its time (%s -> %s, %s)" % (d, d2, tm2))
+    target = (TODAY + timedelta(days=90)).isoformat()
+    activate(adm, t, 1, payment="on", method="cash", amount="9999", custom="on", expiry=target, expiry_time="15:45")
+    d3, tm3, exp3 = exp_row(t)
+    check(d3.isoformat() == target and tm3 == "15:45" and exp3.endswith("15:45:00"),
+          "custom expiry keeps the typed date and time (%s %s, RADIUS: %s)" % (d3, tm3, exp3))
+    activate(adm, t, 1, payment="on", method="cash", amount="9999", custom="on", expiry=target, expiry_time="25:99")
+    check(exp_row(t)[1] == "15:45", "an invalid time is refused")
+    run("UPDATE subscribers SET expiry_date = CURDATE(), expiry_time = NULL, grace_until = NULL WHERE username = 'mirpur.rahim'")
+    due = one("SELECT COUNT(*) AS c FROM subscribers s LEFT JOIN plans p ON p.id = s.plan_id WHERE s.username = 'mirpur.rahim' "
+              "AND " + noc.END_MOMENT + " <= NOW()")["c"]
+    check(due == 0 or datetime.now().strftime("%H:%M") >= "23:59", "auto-disconnect waits until the end of the last day (not midnight)")
+    past = (datetime.now() - timedelta(minutes=5)).strftime("%H:%M")
+    run("UPDATE subscribers SET expiry_time = %s WHERE username = 'mirpur.rahim'", (past,))
+    due = one("SELECT COUNT(*) AS c FROM subscribers s LEFT JOIN plans p ON p.id = s.plan_id WHERE s.username = 'mirpur.rahim' "
+              "AND " + noc.END_MOMENT + " <= NOW()")["c"]
+    check(due == 1 or past > datetime.now().strftime("%H:%M"), "auto-disconnect starts at the subscriber's own expiry time")
+
     r = "banani.cafe"                                    # the reseller's customer
     run("UPDATE subscribers SET plan_id = 1, balance = 0 WHERE username = %s", (r,))
     cost = float(one("SELECT price FROM user_plans WHERE user_id = %s AND plan_id = 1", (ids["reseller"],))["price"])

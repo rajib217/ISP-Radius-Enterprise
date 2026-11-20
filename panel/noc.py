@@ -207,6 +207,12 @@ def _disconnect(row, secret, port):
         return False, "radclient failed: %s" % exc
 
 
+# When an account ends, exactly as FreeRADIUS's Expiration sees it (radius.sync_subscriber): the subscriber's own time,
+# else the package's fixed time, else the END of the day (23:59:59). A grace period runs to the end of its day.
+END_MOMENT = ("(CASE WHEN s.grace_until IS NOT NULL AND s.grace_until > s.expiry_date "
+              "THEN TIMESTAMP(s.grace_until, COALESCE(NULLIF(p.fixed_expire_time, ''), '23:59:59')) "
+              "ELSE TIMESTAMP(s.expiry_date, COALESCE(NULLIF(s.expiry_time, ''), NULLIF(p.fixed_expire_time, ''), '23:59:59')) END)")
+
 def coa_round(conn, cur, s, down_routers):
     """Send queued disconnects and drop sessions of customers whose package ran out. Returns (sent, failed)."""
     port = int(s.get("coa_port") or 3799)
@@ -232,10 +238,7 @@ def coa_round(conn, cur, s, down_routers):
             "SELECT ra.radacctid, ra.username, ra.nasipaddress, ra.acctsessionid, ra.framedipaddress FROM radacct ra "
             "JOIN subscribers s ON s.username = ra.username LEFT JOIN plans p ON p.id = s.plan_id "
             "WHERE ra.acctstoptime IS NULL AND s.status = 'active' AND s.expiry_date IS NOT NULL "
-            "AND TIMESTAMP(GREATEST(s.expiry_date, COALESCE(s.grace_until, s.expiry_date)), "
-            "COALESCE(NULLIF(p.fixed_expire_time, ''), '00:00')) <= NOW() "
-            "AND ra.acctstarttime < TIMESTAMP(GREATEST(s.expiry_date, COALESCE(s.grace_until, s.expiry_date)), "
-            "COALESCE(NULLIF(p.fixed_expire_time, ''), '00:00')) "
+            "AND " + END_MOMENT + " <= NOW() AND ra.acctstarttime < " + END_MOMENT + " "
             "ORDER BY ra.radacctid LIMIT %s", (KICK_BATCH * 2,))
         todo += [dict(r, why="expired") for r in cur.fetchall()]
     conn.commit()

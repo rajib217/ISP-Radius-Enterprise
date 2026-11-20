@@ -15,6 +15,11 @@
     var custom = !!($("act-custom") && $("act-custom").checked), paying = $("act-paytog").checked;
     $("act-exp-box").hidden = !custom;
     $("act-exp").disabled = !custom; $("act-exp").required = custom;
+    var t = $("act-exp-time");
+    if (t) {
+      t.disabled = !custom;
+      if (custom && !t.value) { var d = new Date(); t.value = ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2); }
+    }
     $("act-pay").hidden = !paying;
     ["act-method", "act-amt", "act-note"].forEach(function (i) { $(i).disabled = !paying; });
     var fromBal = fromBalance();

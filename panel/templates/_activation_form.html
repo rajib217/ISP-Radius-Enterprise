@@ -12,6 +12,7 @@
       <div class="field"><label class="lbl" for="act-paytog">Payment</label><span class="switch"><input id="act-paytog" type="checkbox" name="payment" checked aria-describedby="act-paytog-help"><i></i></span>
         <div class="help" id="act-paytog-help">Off: the package is paid from the subscriber's balance.</div></div>
     </div>
+    <div class="help" style="margin:-4px 0 0">Without Custom Expiry the package ends at the time of activation (for example 30 days from now, same time), or at the package's own fixed time.</div>
 
     <div class="actbox grid2">
       <div class="field"><label class="lbl" for="act-user">Subscriber <b class="req">*</b></label>
@@ -30,8 +31,11 @@
     </div>
 
     <div class="actbox" id="act-exp-box" hidden>
-      <div class="field"><label class="lbl" for="act-exp">Expiry date <b class="req">*</b></label><input id="act-exp" name="expiry" type="date" disabled>
-        <div class="help">The customer is active until this day. It must be after today, or after the current expiry if that is later.</div></div>
+      <div class="grid2">
+        <div class="field"><label class="lbl" for="act-exp">Expiry date <b class="req">*</b></label><input id="act-exp" name="expiry" type="date" disabled></div>
+        <div class="field"><label class="lbl" for="act-exp-time">Expiry time</label><input id="act-exp-time" name="expiry_time" type="time" step="60" disabled></div>
+      </div>
+      <div class="help">The customer is active until this date and time. The date must be after today, or after the current expiry if that is later.</div>
     </div>
   </section>
 

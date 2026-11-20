@@ -100,7 +100,7 @@
       <dt>MAC Binding</dt><dd class="{{ 'v' if sub.mac_bind }}">{{ sub.mac_bind or 'Not bound' }}</dd></dl></div></section>
   <section class="panel kvc"><div class="panel-head"><h2>{{ icon('pin') }}Service Information</h2></div>
     <div class="kvc-body"><dl>
-      <dt>Expiration Date</dt><dd>{% if sub.expiry_date %}<span class="pill {{ 'bad' if sub.days_left is not none and sub.days_left < 0 else 'ok' }}">{{ sub.expiry_date|d }}</span>{% if sub.days_left is not none and sub.days_left >= 0 %} <small class="muted">({{ 'today' if sub.days_left == 0 else 'in ' ~ sub.days_left ~ ' days' }})</small>{% endif %}{% else %}Never{% endif %}</dd>
+      <dt>Expiration Date</dt><dd>{% if sub.expiry_date %}<span class="pill {{ 'bad' if sub.days_left is not none and sub.days_left < 0 else 'ok' }}">{{ sub.expiry_date|d }}{% if sub.expiry_time %} {{ sub.expiry_time|clock }}{% endif %}</span>{% if sub.days_left is not none and sub.days_left >= 0 %} <small class="muted">({{ 'today' if sub.days_left == 0 else 'in ' ~ sub.days_left ~ ' days' }})</small>{% endif %}{% else %}Never{% endif %}</dd>
       <dt>Last Activation Date</dt><dd>{{ x.last_activation.paid_at|dt if x.last_activation else 'N/A' }}</dd>
       <dt>Fixed IP</dt><dd>{{ sub.static_ip or 'From pool' }}</dd></dl></div></section>
   <section class="panel kvc"><div class="panel-head"><h2>{{ icon('globe') }}Connection Status</h2></div>
@@ -167,7 +167,7 @@
   <section class="panel kvc"><div class="panel-head"><h2>{{ icon('package') }}Package</h2></div>
     <div class="kvc-body"><dl><dt>Package</dt><dd>{{ sub.plan_label or '—' }}{% if sub.plan_label %} <small class="muted">{{ bw(sub) }}</small>{% endif %}</dd>
       <dt>Duration</dt><dd>{{ ('%d %s%s' % (sub.duration or sub.validity_days, sub.duration_type or 'day', '' if (sub.duration or sub.validity_days) == 1 else 's')) if sub.validity_days else '—' }}</dd>
-      <dt>Price</dt><dd>{{ currency }} {{ sub.price|money if sub.price is not none else '—' }}</dd><dt>Expiry</dt><dd{% if sub.state == 'expired' %} class="r"{% endif %}>{{ sub.expiry_date|d if sub.expiry_date else '—' }}</dd></dl></div></section>
+      <dt>Price</dt><dd>{{ currency }} {{ sub.price|money if sub.price is not none else '—' }}</dd><dt>Expiry</dt><dd{% if sub.state == 'expired' %} class="r"{% endif %}>{{ (sub.expiry_date|d) ~ ((' ' ~ (sub.expiry_time|clock)) if sub.expiry_time else '') if sub.expiry_date else '—' }}</dd></dl></div></section>
   <section class="panel kvc"><div class="panel-head"><h2>{{ icon('sliders') }}Service Settings</h2></div>
     <div class="kvc-body"><dl>
       {% for label, on, fk in [('SMS Status', sub.sms_on, 'svc.sms'), ('Email Status', sub.email_on, 'svc.email'), ('Auto Mac Lock', sub.auto_mac, 'svc.maclock'), ('Auto Renew Status', sub.auto_renew, 'svc.skip_renew')] if can_fn(fk) or fk in ('svc.maclock', 'svc.skip_renew') %}<dt>{{ label }}</dt><dd class="{{ 'g' if on else 'r' }}">{{ 'Enabled' if on else 'Disabled' }}</dd>{% endfor %}

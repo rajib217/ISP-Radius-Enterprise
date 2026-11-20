@@ -700,3 +700,7 @@ ALTER TABLE portal_payments ADD COLUMN IF NOT EXISTS payment_ref INT UNSIGNED NU
 ALTER TABLE topups ADD COLUMN IF NOT EXISTS checked_at DATETIME NULL;
 ALTER TABLE portal_payments ADD KEY IF NOT EXISTS idx_pending (status, created_at);
 ALTER TABLE topups ADD KEY IF NOT EXISTS idx_pending (status, created_at);
+
+-- Expiry time per subscriber ("HH:MM", NULL = the package's fixed time, else the end of the day). Activation sets it to
+-- the time of activation, so a 30-day package bought at 15:30 ends at 15:30.
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS expiry_time VARCHAR(5) NULL;

@@ -114,6 +114,16 @@ def f_bytes(value):
         value /= 1024.0
 
 
+@app.template_filter("clock")
+def f_clock(value):
+    """'15:30' -> '3:30 PM'."""
+    try:
+        h, m = (int(v) for v in str(value).split(":")[:2])
+    except (TypeError, ValueError):
+        return value or ""
+    return "%d:%02d %s" % (h % 12 or 12, m, "AM" if h < 12 else "PM")
+
+
 @app.template_filter("bps")
 def f_bps(value):
     """Bits per second in network units (1000-based): 940 Kbps, 18.4 Mbps, 1.84 Gbps."""
