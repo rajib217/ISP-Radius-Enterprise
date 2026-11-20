@@ -43,3 +43,6 @@ Thumbs.db
 
 # ---- local build leftovers
 *.zip
+
+# ---- local demo (tests/demo_server.py)
+.demo-data/
