@@ -381,7 +381,9 @@ def settings_logs():
             flash("Engine URL must start with http:// or https://. Nothing was saved.", "error")
             return redirect(url_for("settings_logs"))
         new["nat_url"] = url
-        new["nat_token"] = f.get("nat_token", "").strip()[:200]
+        # the token is never sent back to the browser: an empty box keeps the saved one, the tick box removes it
+        typed = f.get("nat_token", "").strip()[:200]
+        new["nat_token"] = "" if f.get("clear_token") else (typed or cfg().get("nat_token", ""))
         new["nat_on"] = "1" if f.get("nat_on") else "0"
         new["nat_push_on"] = "1" if f.get("nat_push_on") else "0"
         new["nat_view"] = "raw" if f.get("nat_view") == "raw" else "details"

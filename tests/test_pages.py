@@ -314,6 +314,21 @@ def check_rules(flask_app, ids):
     b6, e6, _, n6 = state(u)
     check(b6 == b4 and e6 == e4 and n6 == n4, "cash plus balance still short: refused, nothing changed")
 
+    # ---- secrets are never written into settings pages
+    run("INSERT INTO settings (skey, svalue) VALUES ('nat_token', 'tok-SECRET-123') ON DUPLICATE KEY UPDATE svalue = VALUES(svalue)")
+    page = adm.get("/settings/log-engine").get_data(as_text=True)
+    check("tok-SECRET-123" not in page and "Saved: leave empty" in page, "Log Engine API token is not written into the page")
+    adm.post("/settings/log-engine", data={"_csrf": "ci", "nat_url": "http://127.0.0.1:8080", "nat_token": "", "nat_export_days": "7",
+                                     "nat_export_rows": "100000", "authlog_days": "30", "archive_months": "12"})
+    check(one("SELECT svalue FROM settings WHERE skey = 'nat_token'")["svalue"] == "tok-SECRET-123", "saving with an empty token box keeps the token")
+    adm.post("/settings/log-engine", data={"_csrf": "ci", "nat_url": "http://127.0.0.1:8080", "nat_token": "", "clear_token": "1",
+                                     "nat_export_days": "7", "nat_export_rows": "100000", "authlog_days": "30", "archive_months": "12"})
+    check((one("SELECT svalue FROM settings WHERE skey = 'nat_token'") or {}).get("svalue", "") == "", "the tick box removes the saved token")
+    run("INSERT INTO settings (skey, svalue) VALUES ('bkash_secret', 'bk-SECRET-9'), ('bkash_pass', 'bk-PASS-9') "
+        "ON DUPLICATE KEY UPDATE svalue = VALUES(svalue)")
+    page = adm.get("/settings/gateway/bkash").get_data(as_text=True)
+    check("bk-SECRET-9" not in page and "bk-PASS-9" not in page, "bKash secret and password are not written into the page")
+
     r = "banani.cafe"                                    # the reseller's customer
     run("UPDATE subscribers SET plan_id = 1, balance = 0 WHERE username = %s", (r,))
     cost = float(one("SELECT price FROM user_plans WHERE user_id = %s AND plan_id = 1", (ids["reseller"],))["price"])
