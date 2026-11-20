@@ -67,29 +67,11 @@
 
 {# ---- v3: analytics ---- #}
 <div class="cols dash-charts">
-  {% if v3.bw %}
-  <section class="panel c-8">
-    <div class="panel-head"><h2>Bandwidth usage</h2>
-      <div class="seg-tabs" role="tablist" aria-label="Time range" data-traffic-tabs data-target="traffic-chart" data-url="{{ url_for('api_traffic') }}">
-        {% for k, l in (('1h', '1H'), ('24h', '24H'), ('7d', '7D'), ('30d', '30D')) %}<button type="button" role="tab" data-range="{{ k }}" aria-selected="{{ 'true' if k == '24h' else 'false' }}">{{ l }}</button>{% endfor %}
-      </div>
-    </div>
-    <div class="panel-body"><div class="chart" id="traffic-chart" data-kind="area" data-src="traffic-data" aria-label="Download and upload throughput"></div>
-      <script type="application/json" id="traffic-data">{{ v3.traffic|tojson }}</script></div>
-  </section>
-  {% endif %}
-  <section class="panel {{ 'c-4' if v3.bw or v3.money else 'c-12' }}">
+  <section class="panel c-12">
     <div class="panel-head"><h2>Subscriber status</h2><a class="aside" href="{{ url_for('subscribers') }}">View all</a></div>
     <div class="panel-body"><div class="chart" data-kind="donut" data-src="status-mix" data-link="{{ url_for('subscribers') }}"></div>
       <script type="application/json" id="status-mix">{{ v3.mix|tojson }}</script></div>
   </section>
-  {% if v3.money %}
-  <section class="panel {{ 'c-12' if v3.bw else 'c-8' }}">
-    <div class="panel-head"><h2>Revenue &amp; collection</h2><span class="aside" title="Older months are estimated from the customers who are active now">Last 6 months · not collected is estimated</span></div>
-    <div class="panel-body"><div class="chart" data-kind="bars" data-src="revenue-6m" aria-label="Collected and not collected per month"></div>
-      <script type="application/json" id="revenue-6m">{{ v3.revenue6|tojson }}</script></div>
-  </section>
-  {% endif %}
 </div>
 {% endif %}
 
@@ -180,6 +162,26 @@
     </ul>
     {% else %}<div class="empty"><h3>No refused logins</h3><p>Wrong passwords and blocked accounts will show here.</p></div>{% endif %}
   </section>
+
+  {# usage and money charts sit just above the server panel (owner's layout) #}
+  {% if v3.bw %}
+  <section class="panel c-12">
+    <div class="panel-head"><h2>Bandwidth usage</h2>
+      <div class="seg-tabs" role="tablist" aria-label="Time range" data-traffic-tabs data-target="traffic-chart" data-url="{{ url_for('api_traffic') }}">
+        {% for k, l in (('1h', '1H'), ('24h', '24H'), ('7d', '7D'), ('30d', '30D')) %}<button type="button" role="tab" data-range="{{ k }}" aria-selected="{{ 'true' if k == '24h' else 'false' }}">{{ l }}</button>{% endfor %}
+      </div>
+    </div>
+    <div class="panel-body"><div class="chart" id="traffic-chart" data-kind="area" data-src="traffic-data" aria-label="Download and upload throughput"></div>
+      <script type="application/json" id="traffic-data">{{ v3.traffic|tojson }}</script></div>
+  </section>
+  {% endif %}
+  {% if v3.money %}
+  <section class="panel c-12">
+    <div class="panel-head"><h2>Revenue &amp; collection</h2><span class="aside" title="Older months are estimated from the customers who are active now">Last 6 months · not collected is estimated</span></div>
+    <div class="panel-body"><div class="chart" data-kind="bars" data-src="revenue-6m" aria-label="Collected and not collected per month"></div>
+      <script type="application/json" id="revenue-6m">{{ v3.revenue6|tojson }}</script></div>
+  </section>
+  {% endif %}
 
   {% if server %}
   <section class="panel c-12">
