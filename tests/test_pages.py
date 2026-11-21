@@ -628,6 +628,29 @@ def check_rules(flask_app, ids):
     check(len(_p1) == 10 and len(_p2) == 5 and not set(_p1) & set(_p2) and "1–10 of 15" in _s1 and "onu_page=2" in _s1
           and "#offline-onus" in _s1, "Offline ONUs shows 10 a page with page links that come back to the section")
     check(_pl == ["ONU-CI-LOS"] and 'aria-current="true"' in _sl, "the LOS filter shows only LOS ONUs")
+    _h = adm.get("/").get_data(as_text=True)
+    _at = _h.index('id="offline-onus"')
+    check(_h.count('id="offline-onus"') == 1 and _h.index("Customers by plan") < _at
+          and ("<h2>This server</h2>" not in _h or _at < _h.index("<h2>This server</h2>")),
+          "on the admin dashboard Offline ONUs sits low, just above This server (once)")
+    # which customer uses an unlinked ONU: ONU name = PPPoE username, or ONU MAC = the customer's bound MAC
+    _a_sub = one("SELECT id, username FROM subscribers WHERE created_by NOT IN ('karim', 'karim_sub') ORDER BY id LIMIT 1")
+    _b_sub = one("SELECT id, username FROM subscribers WHERE created_by NOT IN ('karim', 'karim_sub') ORDER BY id DESC LIMIT 1")
+    run("UPDATE subscribers SET mac_bind = 'AA:BB:CC:00:11:22' WHERE id = %s", (_b_sub["id"],))
+    run("DELETE FROM onus WHERE name LIKE 'ONU-CI-PG%%'")
+    run("INSERT INTO onus (olt_id, name, serial, mac, status, last_seen) VALUES "
+        "(%s, %s, 'ZTEGNAME01', '', 'los', NOW()), (%s, 'ONU-CI-BYMAC', 'ZTEGMAC01', 'aa-bb-cc-00-11-22', 'offline', NOW())",
+        (_olt_a, _a_sub["username"].upper(), _olt_a))
+    _h = adm.get("/").get_data(as_text=True)
+    _sec = _h.split('id="offline-onus"', 1)[-1].split("</section>", 1)[0]
+    check("auto by ONU name" in _sec and 'value="%s"' % _a_sub["username"] in _sec
+          and "auto by MAC" in _sec and 'value="%s"' % _b_sub["username"] in _sec,
+          "unlinked offline ONUs show the customer found by ONU name or MAC, with a Link button")
+    _oid = one("SELECT id FROM onus WHERE name = 'ONU-CI-BYMAC'")["id"]
+    _lk = adm.post("/onus/%d/map" % _oid, data={"_csrf": "ci", "username": _b_sub["username"], "next": "/#offline-onus"})
+    check(one("SELECT username FROM onus WHERE id = %s", (_oid,))["username"] == _b_sub["username"]
+          and _lk.headers.get("Location", "").endswith("/#offline-onus"), "Link saves the match and comes back to the section")
+    run("UPDATE subscribers SET mac_bind = '' WHERE id = %s", (_b_sub["id"],))
     _res_home = client(ids["reseller"]).get("/").get_data(as_text=True)
     check('id="offline-onus"' not in _res_home and "ONU-CI-LOS" not in _res_home,
           "a reseller without ONU access gets no Offline ONUs section")

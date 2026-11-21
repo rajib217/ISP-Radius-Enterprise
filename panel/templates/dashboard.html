@@ -131,6 +131,7 @@
 {% endif %}
 
 {# ---- ONUs that are Offline or LOS (everyone who may see ONUs; sellers: only their own OLTs) ---- #}
+{% set onu_section %}
 {% if off_onus is not none %}{% set oo = off_onus %}
 <section class="panel onu-off" id="offline-onus" aria-labelledby="off-onu-h">
   <div class="onu-off-head">
@@ -162,6 +163,9 @@
       <div class="onu-off-cust">
         {% if o.sid %}<a href="{{ url_for('subscriber_view', sid=o.sid) }}">{{ icon('user') }}<span class="mono">{{ o.username }}</span></a>{% if o.full_name %}<small>{{ o.full_name }}</small>{% endif %}
         {% elif o.username %}<span>{{ icon('user') }}<span class="mono">{{ o.username }}</span></span>
+        {% elif o.guess %}<span class="onu-off-guess"><a href="{{ url_for('subscriber_view', sid=o.guess.sid) }}">{{ icon('user') }}<span class="mono">{{ o.guess.username }}</span></a>
+          {% if can_fn('onu.edit') %}<form method="post" action="{{ url_for('onu_map', oid=o.id) }}" class="inline">{{ csrf_input() }}<input type="hidden" name="username" value="{{ o.guess.username }}"><input type="hidden" name="next" value="{{ url_for('dashboard', _anchor='offline-onus', **oo.keep) }}"><button class="onu-off-link" type="submit" title="Save this ONU as {{ o.guess.username }}'s">{{ icon('link') }}Link</button></form>{% endif %}</span>
+          <small title="Not linked yet: found by the {{ 'ONU name on the OLT' if o.guess.how == 'ONU name' else 'MAC binding' }}. Press Link to save it.">{{ o.guess.full_name ~ ' · ' if o.guess.full_name else '' }}auto by {{ o.guess.how }}</small>
         {% else %}<span class="muted">{{ icon('link') }}Not linked to a customer</span>{% endif %}
       </div>
       <div class="onu-off-facts">
@@ -193,6 +197,8 @@
   {% endif %}
 </section>
 {% endif %}
+{% endset %}
+{% if seller %}{{ onu_section }}{% endif %}
 
 
 
@@ -270,6 +276,7 @@
   </section>
   {% endif %}
 
+  {% if off_onus is not none %}<div class="c-12 onu-off-slot">{{ onu_section }}</div>{% endif %}
   {% if server %}
   <section class="panel c-12">
     <div class="panel-head"><h2>This server</h2>{% if server.uptime %}<span class="aside">Up {{ server.uptime|dur }}</span>{% endif %}</div>
