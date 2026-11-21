@@ -451,6 +451,41 @@ def apply_timezone(name):
         time.tzset()
 
 
+LOCALTIME = "/etc/localtime"
+TIMEZONE_FILE = "/etc/timezone"
+
+
+def server_timezone():
+    """The server's own timezone name (what MariaDB's NOW() and services that do not read the setting use), or ""."""
+    try:
+        with open(TIMEZONE_FILE) as fh:
+            name = fh.read().strip()
+        if name:
+            return name
+    except OSError:
+        pass
+    try:
+        link = os.path.realpath(LOCALTIME)
+        if "zoneinfo/" in link:
+            return link.split("zoneinfo/", 1)[1]
+    except OSError:
+        pass
+    return ""
+
+
+def same_timezone(a, b):
+    """True when two zone names give the same clock (same name, or same UTC offset in January and July)."""
+    if not a or not b or a == b:
+        return True
+    from datetime import datetime as _dt
+    import zoneinfo
+    try:
+        za, zb = zoneinfo.ZoneInfo(a), zoneinfo.ZoneInfo(b)
+    except (zoneinfo.ZoneInfoNotFoundError, ValueError):
+        return True            # cannot tell: do not raise a false alarm
+    return all(_dt(2026, m, 15, 12, tzinfo=za).utcoffset() == _dt(2026, m, 15, 12, tzinfo=zb).utcoffset() for m in (1, 7))
+
+
 def modules_off():
     row = q("SELECT svalue FROM settings WHERE skey = 'modules_off'", one=True)
     return {m for m in (row["svalue"] if row else "").split(",") if m in dict(MODULES)}

@@ -26,6 +26,7 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime
 
 import alertlib
+import core
 import db
 import radius
 import snmplib
@@ -278,6 +279,7 @@ def one_round():
     try:
         cur = conn.cursor()
         s = db.load_settings(cur)
+        core.apply_timezone(s.get("timezone"))     # log lines and the heartbeat use the panel's Local Timezone too
         conn.commit()
         down = set()
         try:

@@ -597,6 +597,31 @@ def check_rules(flask_app, ids):
           and 'href="/portal#invoices"' in p_html and 'id="invoices"' in p_html and 'id="usage"' in p_html,
           "customer portal and pay page open, with the bottom nav and its #usage / #invoices targets")
 
+    # ---- timezone: Settings warns when the server clock is on another zone; noc.py follows the panel setting
+    import tempfile as _tf2
+    _core = sys.modules["core"]
+    check(_core.same_timezone("Asia/Dhaka", "Asia/Dhaka") and _core.same_timezone("Asia/Dhaka", "Asia/Dacca")
+          and not _core.same_timezone("Asia/Dhaka", "UTC") and _core.same_timezone("Asia/Dhaka", ""),
+          "timezone comparison: same clock is a match (aliases too), a different offset is not, unknown never alarms")
+    _tzf = os.path.join(_tf2.mkdtemp(), "timezone")
+    _keep_tz = _core.TIMEZONE_FILE
+    try:
+        with open(_tzf, "w") as fh:
+            fh.write("UTC\n")
+        _core.TIMEZONE_FILE = _tzf
+        run("REPLACE INTO settings (skey, svalue) VALUES ('timezone', 'Asia/Dhaka')")
+        warn_page = adm.get("/settings").get_data(as_text=True)
+        with open(_tzf, "w") as fh:
+            fh.write("Asia/Dhaka\n")
+        ok_page = adm.get("/settings").get_data(as_text=True)
+        check(_core.server_timezone() == "Asia/Dhaka" and "The server clock is on UTC" in warn_page
+              and "sudo timedatectl set-timezone Asia/Dhaka" in warn_page and "The server clock is on" not in ok_page,
+              "Settings warns (with the fix command) only when the server timezone differs from Local Timezone")
+    finally:
+        _core.TIMEZONE_FILE = _keep_tz
+    _noc_src = open(os.path.join(ROOT, "panel", "noc.py"), encoding="utf-8").read()
+    check('core.apply_timezone(s.get("timezone"))' in _noc_src, "noc.py follows the panel's Local Timezone like the other services")
+
     # ---- documents uploaded on a customer's page show there and in the main Documents menu; sellers see only their own
     import io as _io3
     run("REPLACE INTO settings (skey, svalue) VALUES ('doc_upload', '1')")

@@ -317,7 +317,9 @@ def settings():
         return redirect(url_for("settings"))
     zones = sorted(z for z in zoneinfo.available_timezones() if "/" in z and not z.startswith(("Etc/", "posix", "right")))
     currencies = CURRENCIES if s["currency"] in CURRENCIES else CURRENCIES + [s["currency"]]
-    return render_template("settings.html", s=s, zones=zones, currencies=currencies, tab="general")
+    server_tz = core.server_timezone()
+    return render_template("settings.html", s=s, zones=zones, currencies=currencies, tab="general", server_tz=server_tz,
+                           tz_mismatch=not core.same_timezone(s.get("timezone"), server_tz))
 
 
 @route("/settings/software", methods=["GET", "POST"])
