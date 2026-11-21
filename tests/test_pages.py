@@ -680,6 +680,44 @@ def check_rules(flask_app, ids):
     run("DELETE FROM onus WHERE name LIKE 'ONU-CI-%%'")
     run("DELETE FROM net_devices WHERE name LIKE 'CI-OLT-%%'")
 
+    # ---- installable app (PWA): manifests, icons, service worker, offline page, tags on every layout
+    import struct as _st
+    import mod_pwa as _pwa
+    _anon2 = flask_app.test_client()
+
+    def _png_size(data):
+        return _st.unpack(">II", data[16:24]) if data[:8] == b"\x89PNG\r\n\x1a\n" else None
+    _mf = _anon2.get("/manifest.webmanifest")
+    _mfj = json.loads(_mf.get_data(as_text=True))
+    _pmf = json.loads(_anon2.get("/portal/manifest.webmanifest").get_data(as_text=True))
+    check(_mf.status_code == 200 and "manifest+json" in _mf.headers.get("Content-Type", "") and _mfj["display"] == "standalone"
+          and _mfj["start_url"] == "/?source=pwa" and _mfj["name"].endswith("Panel")
+          and sorted(i["purpose"] for i in _mfj["icons"]) == ["any", "any", "maskable"]
+          and _pmf["start_url"] == "/portal?source=pwa" and _pmf["scope"] == "/portal",
+          "panel and customer-portal app manifests open without sign-in, standalone, with any + maskable icons")
+    _i512 = _anon2.get("/pwa/icon-512.png")
+    _i180 = _anon2.get("/pwa/icon-180.png")
+    _im = _anon2.get("/pwa/icon-512-maskable.png")
+    check(_i512.mimetype == "image/png" and _png_size(_i512.data) == (512, 512) and _png_size(_i180.data) == (180, 180)
+          and _png_size(_im.data) == (512, 512) and _anon2.get("/pwa/icon-999.png").status_code == 404,
+          "app icons are real PNGs of the declared sizes (180, 512, maskable 512)")
+    check(_png_size(_pwa._ring_icon(48, False)) == (48, 48) and _png_size(_pwa._ring_icon(48, True)) == (48, 48),
+          "without a logo or Pillow the panel's mark is drawn as the icon")
+    _sw = _anon2.get("/sw.js")
+    _sw_js = _sw.get_data(as_text=True)
+    check(_sw.status_code == 200 and "javascript" in _sw.mimetype and _sw.headers.get("Service-Worker-Allowed") == "/"
+          and '"/offline"' in _sw_js and "app.css" in _sw_js and 'req.mode === "navigate"' in _sw_js,
+          "the service worker is served at /sw.js and only precaches static files and the offline page")
+    check("ইন্টারনেট সংযোগ নেই" in _anon2.get("/offline").get_data(as_text=True), "the offline page opens without sign-in")
+    _home = adm.get("/").get_data(as_text=True)
+    _login = _anon2.get("/login").get_data(as_text=True)
+    _portal_html = pc.get("/portal").get_data(as_text=True)
+    check('rel="manifest" href="/manifest.webmanifest"' in _home and "apple-touch-icon" in _home and "pwa.js" in _home
+          and "data-pwa-install" in _home and "pwa-launch" in _home
+          and 'rel="manifest" href="/manifest.webmanifest"' in _login and "pwa.js" in _login
+          and 'rel="manifest" href="/portal/manifest.webmanifest"' in _portal_html and "pwa.js" in _portal_html,
+          "every layout (panel, login, customer portal) links its app manifest, splash and loading script")
+
     # ---- expired notice: expired customers stay online in the notice group and see the unpaid-bill page
     import radius as _rad
     _ex = one("SELECT s.id, s.username FROM subscribers s JOIN radacct r ON r.username = s.username AND r.acctstoptime IS NULL "

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="bn">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <title>সংযোগ নেই · {{ isp }}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; background: #0f172a; color: #f1f5f9;
+      font: 16px/1.6 "Noto Sans Bengali", "Hind Siliguri", "Nirmala UI", system-ui, sans-serif; text-align: center; }
+    img { width: 96px; height: 96px; border-radius: 24px; box-shadow: 0 18px 40px -12px rgb(0 0 0 / .6); }
+    h1 { margin: 22px 0 6px; font-size: 22px; }
+    p { margin: 0 auto; max-width: 30em; color: #94a3b8; }
+    button { margin-top: 22px; height: 48px; padding: 0 26px; border: 0; border-radius: 12px; background: #2563eb; color: #fff;
+      font: inherit; font-weight: 700; cursor: pointer; }
+    small { display: block; margin-top: 14px; color: #64748b; }
+  </style>
+</head>
+<body>
+  <main>
+    <img src="{{ icon }}" alt="{{ isp }}">
+    <h1>ইন্টারনেট সংযোগ নেই</h1>
+    <p>এই মুহূর্তে সার্ভারে পৌঁছানো যাচ্ছে না। সংযোগ ঠিক হলে আবার চেষ্টা করুন।</p>
+    <button type="button" onclick="location.reload()">আবার চেষ্টা করুন</button>
+    <small>You are offline. {{ isp }} will open again when the connection is back.</small>
+  </main>
+  <script>window.addEventListener("online", function () { location.reload(); });</script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+{# Installable app: manifest, phone icons, and the launch splash (painted by CSS before the page so nothing flashes;
+   static/js/pwa.js fades it out once the page has loaded). Set pwa_kind = 'portal' before including for the customer app. #}
+{% set _portal = pwa_kind is defined and pwa_kind == 'portal' %}
+<link rel="manifest" href="{{ url_for('portal_manifest' if _portal else 'pwa_manifest') }}">
+<meta name="theme-color" content="#0f172a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="{{ pwa_name }}">
+<link rel="apple-touch-icon" href="{{ url_for('pwa_icon', name='icon-180', v=pwa_icon_key) }}">
+<style>
+  html.pwa-launch body { visibility: hidden; }
+  html.pwa-launch::before {
+    content: attr(data-pwa-name); visibility: visible; position: fixed; inset: 0; z-index: 2147483646;
+    display: flex; align-items: flex-end; justify-content: center; padding-bottom: calc(50vh - 112px);
+    background: #0f172a url("{{ url_for('pwa_icon', name='icon-512', v=pwa_icon_key) }}") center calc(50% - 40px) / 120px 120px no-repeat;
+    color: #f1f5f9; font: 700 22px/1.3 "Inter", "Noto Sans Bengali", system-ui, sans-serif; letter-spacing: .01em;
+    transition: opacity .45s ease;
+  }
+  html.pwa-launch::after {
+    content: ""; visibility: visible; position: fixed; z-index: 2147483647; left: 50%; bottom: 14vh; width: 34px; height: 34px;
+    margin-left: -17px; border-radius: 50%; border: 3px solid rgb(255 255 255 / .18); border-top-color: #60a5fa;
+    animation: pwa-spin .8s linear infinite; transition: opacity .3s ease;
+  }
+  html.pwa-launch.pwa-out::before, html.pwa-launch.pwa-out::after { opacity: 0; }
+  @keyframes pwa-spin { to { transform: rotate(360deg); } }
+</style>
+<script>
+  /* show the splash only when opened as an installed app, once per launch */
+  try {
+    if ((window.matchMedia && matchMedia("(display-mode: standalone)").matches || navigator.standalone) && !sessionStorage.getItem("pwa-launched")) {
+      sessionStorage.setItem("pwa-launched", "1");
+      document.documentElement.setAttribute("data-pwa-name", {{ pwa_name|tojson }});
+      document.documentElement.classList.add("pwa-launch");
+      setTimeout(function () { document.documentElement.classList.remove("pwa-launch"); }, 5000);   /* never stuck */
+    }
+  } catch (e) {}
+</script>

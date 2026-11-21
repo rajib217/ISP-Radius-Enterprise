@@ -7,6 +7,7 @@
   {% if brand.favicon %}<link rel="icon" href="{{ brand.favicon }}">{% else %}<link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">{% endif %}
   <script>try{var t=localStorage.getItem("isp-theme");if(!t&&window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches)t="dark";if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
   <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+  {% include "_pwa_head.html" %}
 </head>
 <body>
 {% include "_icons.html" %}
@@ -50,5 +51,6 @@
   });
 })();
 </script>
+<script src="{{ asset('js/pwa.js') }}"></script>
 </body>
 </html>

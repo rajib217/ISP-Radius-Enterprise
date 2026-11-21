@@ -48,6 +48,10 @@ if ! grep -q '^PANEL_SETTINGS_KEY=' "$ENV_FILE"; then
   echo "PANEL_SETTINGS_KEY=$(openssl rand -base64 32 | tr '+/' '-_')" >> "$ENV_FILE"
   c_ok "Generated PANEL_SETTINGS_KEY in $ENV_FILE (settings encryption)"
 fi
+if ! python3 -c 'import PIL' 2>/dev/null; then
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3-pil >/dev/null \
+    || c_warn "Could not install python3-pil: the app icons use the panel's mark instead of your logo."
+fi
 if ! python3 -c 'import cryptography.fernet' 2>/dev/null; then
   c_ok "Installing python3-cryptography (settings encryption)"
   DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3-cryptography >/dev/null \

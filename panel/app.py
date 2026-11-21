@@ -194,6 +194,21 @@ def _sees_live():
     return me["role"] == "admin" or (me["role"] not in core.SELLER_ROLES and core.can("online"))
 
 
+def _pwa_name():
+    try:
+        return cfg().get("isp_name") or "ISP Panel"
+    except Exception:            # no database yet (first start): the page still renders
+        return "ISP Panel"
+
+
+def _pwa_icon_key():
+    try:
+        import mod_pwa
+        return mod_pwa.icon_key()
+    except Exception:
+        return "mark"
+
+
 @app.context_processor
 def inject():
     if "csrf" not in session:
@@ -218,6 +233,8 @@ def inject():
         "endpoint": request.endpoint or "",
         "today": date.today(),
         "asset": asset_url,
+        "pwa_name": _pwa_name(),
+        "pwa_icon_key": _pwa_icon_key(),
         "can": core.can,
         "can_fn": core.can_fn,
         "bw": core.bw_text,
@@ -242,7 +259,7 @@ def gate():
         sent = request.form.get("_csrf") or request.headers.get("X-CSRF-Token", "")
         if not session.get("csrf") or not secrets.compare_digest(sent, session["csrf"]):
             abort(400, "Your session expired. Reload the page and try again.")
-    if request.endpoint in ("login", "login_2fa", "branding", "healthz", "expired_notice") or (request.endpoint or "").startswith("portal"):
+    if request.endpoint in ("login", "login_2fa", "branding", "healthz", "expired_notice", "pwa_manifest", "pwa_sw", "pwa_icon", "pwa_offline") or (request.endpoint or "").startswith("portal"):
         return None          # the customer portal has its own sign-in (mod_portal.py)
     uid = session.get("uid")
     if not uid:
@@ -1610,6 +1627,7 @@ import mod_bkash_report  # noqa: E402,F401
 import mod_btrc  # noqa: E402,F401
 import mod_noc  # noqa: E402,F401
 import mod_expired  # noqa: E402,F401
+import mod_pwa  # noqa: E402,F401
 
 core.attach(app)
 

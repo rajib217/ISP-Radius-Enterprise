@@ -243,7 +243,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get install -y freeradius freeradius-mysql freeradius-utils \
   mariadb-server mariadb-client openssl sudo curl gnupg ca-certificates dnsutils ufw git \
-  python3 python3-flask python3-pymysql python3-werkzeug python3-cryptography gunicorn iputils-ping
+  python3 python3-flask python3-pymysql python3-werkzeug python3-cryptography python3-pil gunicorn iputils-ping
 if ! command -v caddy >/dev/null 2>&1; then
   c_ok "Installing Caddy (official Caddy apt repository)"
   apt-get install -y debian-keyring debian-archive-keyring apt-transport-https
