@@ -130,6 +130,31 @@
 </section>
 {% endif %}
 
+{# ---- ONUs that are Offline or LOS (everyone who may see ONUs; sellers: only their own OLTs) ---- #}
+{% if off_onus is not none %}
+<section class="panel" id="offline-onus" style="margin-bottom:16px" aria-labelledby="off-onu-h">
+  <div class="panel-head"><h2 id="off-onu-h">Offline ONUs</h2>
+    {% if off_onus.los %}<a class="badge bad" href="{{ url_for('onus', status='los') }}" title="No light on the fiber">LOS {{ '{:,}'.format(off_onus.los) }}</a>{% endif %}
+    {% if off_onus.offline %}<a class="badge mute" href="{{ url_for('onus', status='offline') }}">Offline {{ '{:,}'.format(off_onus.offline) }}</a>{% endif %}
+    <a class="aside" href="{{ url_for('onus', status='offline') }}">View all</a></div>
+  {% if off_onus.rows %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>ONU</th><th>OLT / PON</th><th>Customer</th><th>Status</th><th class="num">Rx power</th><th>Last seen</th></tr></thead>
+    <tbody>{% for o in off_onus.rows %}<tr>
+      <td class="who-cell" data-card="title"><a href="{{ url_for('onu_view', oid=o.id) }}"><b class="mono">{{ o.name or o.serial or o.mac or ('ONU #' ~ o.id) }}</b></a>{% if o.name and (o.serial or o.mac) %}<small class="mono">{{ o.serial or o.mac }}</small>{% endif %}</td>
+      <td data-card="key">{{ o.olt or '—' }}{% if o.pon_port %} <small class="muted mono">· {{ o.pon_port }}</small>{% endif %}</td>
+      <td data-card="key">{% if o.sid %}<a class="mono" href="{{ url_for('subscriber_view', sid=o.sid) }}">{{ o.username }}</a>{% elif o.username %}<span class="mono">{{ o.username }}</span>{% else %}<span class="muted">Unmapped</span>{% endif %}</td>
+      <td data-card="key">{% if o.status == 'los' %}<span class="badge bad" title="No light on the fiber: cut or unplugged cable">LOS</span>{% else %}<span class="badge mute">Offline</span>{% endif %}</td>
+      <td class="num muted">{{ ('%.2f dBm' % o.rx_dbm|float) if o.rx_dbm is not none else '—' }}</td>
+      <td class="nowrap muted">{{ o.last_seen|ago if o.last_seen else '—' }}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% if off_onus.total > off_onus.rows|length %}<div class="panel-body muted" style="padding-top:10px">Showing the {{ off_onus.rows|length }} most recent of {{ '{:,}'.format(off_onus.total) }}. <a href="{{ url_for('onus', status='offline') }}">See every offline ONU</a> or <a href="{{ url_for('onus', status='los') }}">every LOS ONU</a>.</div>{% endif %}
+  {% else %}<div class="empty"><h3>Every ONU is online</h3><p>ONUs that go offline or lose light (LOS) appear here after the next OLT sync.</p></div>{% endif %}
+</section>
+{% endif %}
+
+
 
 {% if not seller %}
 

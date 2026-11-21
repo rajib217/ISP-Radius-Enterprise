@@ -456,21 +456,21 @@ TIMEZONE_FILE = "/etc/timezone"
 
 
 def server_timezone():
-    """The server's own timezone name (what MariaDB's NOW() and services that do not read the setting use), or ""."""
+    """The server's own timezone name (what MariaDB's NOW() and services that do not read the setting use), or "".
+
+    /etc/localtime is what the system clock really uses, and `timedatectl set-timezone` (install.sh) only changes that
+    link. The old Debian file /etc/timezone is not updated by it and can still say Etc/UTC, so it is only a fallback."""
     try:
-        with open(TIMEZONE_FILE) as fh:
-            name = fh.read().strip()
-        if name:
-            return name
-    except OSError:
-        pass
-    try:
-        link = os.path.realpath(LOCALTIME)
-        if "zoneinfo/" in link:
+        link = os.path.realpath(LOCALTIME).replace(os.sep, "/")
+        if "zoneinfo/" in link and os.path.exists(LOCALTIME):
             return link.split("zoneinfo/", 1)[1]
     except OSError:
         pass
-    return ""
+    try:
+        with open(TIMEZONE_FILE) as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
 
 
 def same_timezone(a, b):

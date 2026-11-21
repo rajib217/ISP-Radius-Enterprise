@@ -451,6 +451,26 @@ def _notices():
     return mod_notices.active_notices()
 
 
+OFFLINE_ONU_LIMIT = 20
+
+
+def offline_onus():
+    """ONUs that are Offline or LOS (no light), newest drop first, for the dashboard. None when this person may not see
+    ONUs (Network module and the ONU View tick); a seller only gets the ONUs on their own OLTs (core.onu_scope)."""
+    if not (core.can("network") and core.can_fn("onu.view")):
+        return None
+    sc, sp = core.onu_scope("o")
+    counts = {r["status"]: int(r["c"]) for r in q(
+        "SELECT o.status, COUNT(*) AS c FROM onus o WHERE o.status IN ('offline', 'los')" + sc + " GROUP BY o.status", sp)}
+    rows = q("SELECT o.id, o.name, o.serial, o.mac, o.username, o.pon_port, o.rx_dbm, o.status, o.last_seen, "
+             "d.name AS olt, s.id AS sid FROM onus o LEFT JOIN net_devices d ON d.id = o.olt_id "
+             "LEFT JOIN subscribers s ON s.username = o.username AND o.username <> '' "
+             "WHERE o.status IN ('offline', 'los')" + sc +
+             " ORDER BY o.last_seen IS NULL, o.last_seen DESC, o.id DESC LIMIT %s", sp + [OFFLINE_ONU_LIMIT])
+    return {"rows": rows, "offline": counts.get("offline", 0), "los": counts.get("los", 0),
+            "total": counts.get("offline", 0) + counts.get("los", 0)}
+
+
 @app.route("/")
 def dashboard():
     seller = core.my_downline() is not None
@@ -473,7 +493,7 @@ def dashboard():
                         + where + "ORDER BY s.expiry_date, s.username LIMIT %s OFFSET %s",
                         names + [per, exp_pg["offset"]]) if names else []
         return render_template("dashboard.html", seller=True, tabs=tabs, tab=tab, td=tabdata, attention=core.attention(),
-                               notices=_notices(), my_expiring=my_expiring, exp_pg=exp_pg,
+                               notices=_notices(), my_expiring=my_expiring, exp_pg=exp_pg, off_onus=offline_onus(),
                                exp_keep={"tab": tab} if request.args.get("tab") else {}, today=date.today())
     st = q("SELECT COUNT(*) AS total, "
            "SUM(status = 'suspended') AS suspended, "
@@ -524,7 +544,7 @@ def dashboard():
                            plans=plans, by_nas=by_nas, rejects=rejects, expiring=expiring,
                            revenue=revenue, server=server_info(), attention=core.attention(),
                            notices=_notices(),
-                           seller=False, tabs=tabs, tab=tab, td=tabdata)
+                           seller=False, tabs=tabs, tab=tab, td=tabdata, off_onus=offline_onus())
 
 
 @app.route("/api/live")

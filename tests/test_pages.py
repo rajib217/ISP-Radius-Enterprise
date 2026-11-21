@@ -597,6 +597,37 @@ def check_rules(flask_app, ids):
           and 'href="/portal#invoices"' in p_html and 'id="invoices"' in p_html and 'id="usage"' in p_html,
           "customer portal and pay page open, with the bottom nav and its #usage / #invoices targets")
 
+    # ---- dashboard: Offline ONUs (Offline + LOS), sellers only see the ONUs on their own OLTs
+    run("INSERT INTO net_devices (name, kind, ip, created_by) VALUES ('CI-OLT-Admin', 'olt', '10.9.0.1', 'admin')")
+    _olt_a = one("SELECT id FROM net_devices WHERE name = 'CI-OLT-Admin'")["id"]
+    run("INSERT INTO net_devices (name, kind, ip, created_by) VALUES ('CI-OLT-Karim', 'olt', '10.9.0.2', 'karim')")
+    _olt_k = one("SELECT id FROM net_devices WHERE name = 'CI-OLT-Karim'")["id"]
+    _shop_u = one("SELECT username FROM subscribers WHERE created_by = 'karim' LIMIT 1")["username"]
+    run("INSERT INTO onus (olt_id, name, serial, username, pon_port, rx_dbm, status, last_seen) VALUES "
+        "(%s, 'ONU-CI-LOS', 'ZTEG0001', '', '0/1', NULL, 'los', NOW() - INTERVAL 5 MINUTE), "
+        "(%s, 'ONU-CI-OFF', 'ZTEG0002', '', '0/2', -27.10, 'offline', NOW() - INTERVAL 1 HOUR), "
+        "(%s, 'ONU-CI-UP', 'ZTEG0003', '', '0/3', -20.00, 'online', NOW()), "
+        "(%s, 'ONU-CI-KARIM', 'ZTEG0004', %s, '0/1', -29.00, 'offline', NOW())",
+        (_olt_a, _olt_a, _olt_a, _olt_k, _shop_u))
+    _adm_home = adm.get("/").get_data(as_text=True)
+    _sec = _adm_home.split('id="offline-onus"', 1)[-1].split("</section>", 1)[0] if 'id="offline-onus"' in _adm_home else ""
+    check(_sec and "ONU-CI-LOS" in _sec and "ONU-CI-OFF" in _sec and "ONU-CI-KARIM" in _sec and "ONU-CI-UP" not in _sec
+          and _sec.index("ONU-CI-KARIM") < _sec.index("ONU-CI-LOS") < _sec.index("ONU-CI-OFF"),
+          "admin dashboard lists Offline and LOS ONUs (newest drop first), not the online ones")
+    _res_home = client(ids["reseller"]).get("/").get_data(as_text=True)
+    check('id="offline-onus"' not in _res_home and "ONU-CI-LOS" not in _res_home,
+          "a reseller without ONU access gets no Offline ONUs section")
+    run("REPLACE INTO role_perms (role, module, level) VALUES ('reseller', 'network', 'view')")
+    run("INSERT INTO role_funcs (role, fkey, allowed) VALUES ('reseller', 'onu.view', 1) ON DUPLICATE KEY UPDATE allowed = 1")
+    _res_home = client(ids["reseller"]).get("/").get_data(as_text=True)
+    _rsec = _res_home.split('id="offline-onus"', 1)[-1].split("</section>", 1)[0] if 'id="offline-onus"' in _res_home else ""
+    check(_rsec and "ONU-CI-KARIM" in _rsec and "ONU-CI-LOS" not in _rsec and "ONU-CI-OFF" not in _rsec,
+          "with ONU access a reseller's dashboard shows only the offline ONUs on their own OLTs")
+    run("DELETE FROM role_perms WHERE role = 'reseller' AND module = 'network'")
+    run("DELETE FROM role_funcs WHERE role = 'reseller' AND fkey = 'onu.view'")
+    run("DELETE FROM onus WHERE name LIKE 'ONU-CI-%%'")
+    run("DELETE FROM net_devices WHERE name LIKE 'CI-OLT-%%'")
+
     # ---- timezone: Settings warns when the server clock is on another zone; noc.py follows the panel setting
     import tempfile as _tf2
     _core = sys.modules["core"]
@@ -604,21 +635,32 @@ def check_rules(flask_app, ids):
           and not _core.same_timezone("Asia/Dhaka", "UTC") and _core.same_timezone("Asia/Dhaka", ""),
           "timezone comparison: same clock is a match (aliases too), a different offset is not, unknown never alarms")
     _tzf = os.path.join(_tf2.mkdtemp(), "timezone")
-    _keep_tz = _core.TIMEZONE_FILE
+    _keep_tz, _keep_lt = _core.TIMEZONE_FILE, _core.LOCALTIME
     try:
-        with open(_tzf, "w") as fh:
-            fh.write("UTC\n")
+        _zi = os.path.join(_tf2.mkdtemp(), "zoneinfo")
+        for _z in ("UTC", os.path.join("Asia", "Dhaka")):
+            os.makedirs(os.path.dirname(os.path.join(_zi, _z)), exist_ok=True)
+            open(os.path.join(_zi, _z), "w").close()
         _core.TIMEZONE_FILE = _tzf
         run("REPLACE INTO settings (skey, svalue) VALUES ('timezone', 'Asia/Dhaka')")
+        # /etc/localtime decides; a stale /etc/timezone (timedatectl does not update it) must not raise a false alarm
+        with open(_tzf, "w") as fh:
+            fh.write("Etc/UTC\n")
+        _core.LOCALTIME = os.path.join(_zi, "Asia", "Dhaka")
+        stale_page = adm.get("/settings").get_data(as_text=True)
+        _core.LOCALTIME = os.path.join(_zi, "UTC")
         warn_page = adm.get("/settings").get_data(as_text=True)
+        _core.LOCALTIME = os.path.join(_zi, "missing")       # no /etc/localtime: fall back to /etc/timezone
         with open(_tzf, "w") as fh:
             fh.write("Asia/Dhaka\n")
         ok_page = adm.get("/settings").get_data(as_text=True)
-        check(_core.server_timezone() == "Asia/Dhaka" and "The server clock is on UTC" in warn_page
-              and "sudo timedatectl set-timezone Asia/Dhaka" in warn_page and "The server clock is on" not in ok_page,
-              "Settings warns (with the fix command) only when the server timezone differs from Local Timezone")
+        check("The server clock is on" not in stale_page and "The server clock is on UTC" in warn_page
+              and "sudo timedatectl set-timezone Asia/Dhaka" in warn_page and "freeradius" in warn_page
+              and _core.server_timezone() == "Asia/Dhaka" and "The server clock is on" not in ok_page,
+              "Settings warns (with the fix command) only when the server clock (/etc/localtime) differs from Local "
+              "Timezone; a stale /etc/timezone is ignored")
     finally:
-        _core.TIMEZONE_FILE = _keep_tz
+        _core.TIMEZONE_FILE, _core.LOCALTIME = _keep_tz, _keep_lt
     _noc_src = open(os.path.join(ROOT, "panel", "noc.py"), encoding="utf-8").read()
     check('core.apply_timezone(s.get("timezone"))' in _noc_src, "noc.py follows the panel's Local Timezone like the other services")
 
