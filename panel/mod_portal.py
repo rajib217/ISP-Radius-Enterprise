@@ -141,6 +141,58 @@ def portal_notifications_check():
     return resp
 
 
+# ===================================================================== Web Push (notifications with the app closed)
+@route("/portal/push/key")
+def portal_push_key():
+    from flask import jsonify
+    import webpush
+    if not session.get("cid") or not webpush.available():
+        return jsonify({"key": None})
+    with core.get_db().cursor() as cur:
+        _priv, pub = webpush.keys(cur)
+    commit()
+    return jsonify({"key": pub})
+
+
+@route("/portal/push/subscribe", methods=["POST"])
+def portal_push_subscribe():
+    """The customer's browser allowed notifications: keep its push subscription (one row per browser / phone)."""
+    from flask import jsonify
+    import hashlib
+    import webpush
+    sub = _need()
+    if not sub:
+        return jsonify({"ok": False}), 401
+    d = request.get_json(silent=True) or {}
+    endpoint = (d.get("endpoint") or "").strip()
+    keys = d.get("keys") or {}
+    p256dh, auth = (keys.get("p256dh") or "").strip(), (keys.get("auth") or "").strip()
+    if not webpush.endpoint_ok(endpoint) or not (40 <= len(p256dh) <= 255) or not (8 <= len(auth) <= 64):
+        return jsonify({"ok": False, "error": "This browser's push address is not accepted."}), 400
+    h = hashlib.sha1(endpoint.encode()).hexdigest()
+    x("INSERT INTO push_subscriptions (subscriber_id, endpoint_hash, endpoint, p256dh, auth, user_agent) "
+      "VALUES (%s, %s, %s, %s, %s, %s) ON DUPLICATE KEY UPDATE subscriber_id = VALUES(subscriber_id), "
+      "p256dh = VALUES(p256dh), auth = VALUES(auth), user_agent = VALUES(user_agent), fails = 0",
+      (sub["id"], h, endpoint, p256dh, auth, (request.headers.get("User-Agent") or "")[:255]))
+    audit("push_enabled", sub["username"], who=sub["username"])
+    commit()
+    return jsonify({"ok": True})
+
+
+@route("/portal/push/unsubscribe", methods=["POST"])
+def portal_push_unsubscribe():
+    from flask import jsonify
+    import hashlib
+    sub = _need()
+    if not sub:
+        return jsonify({"ok": False}), 401
+    endpoint = ((request.get_json(silent=True) or {}).get("endpoint") or "").strip()
+    x("DELETE FROM push_subscriptions WHERE subscriber_id = %s AND endpoint_hash = %s",
+      (sub["id"], hashlib.sha1(endpoint.encode()).hexdigest()))
+    commit()
+    return jsonify({"ok": True})
+
+
 # ===================================================================== the customer's page
 @route("/portal")
 def portal():

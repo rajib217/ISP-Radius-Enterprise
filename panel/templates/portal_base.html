@@ -25,6 +25,6 @@
   <a href="{{ url_for('portal_pay') }}" class="{{ 'on' if endpoint == 'portal_pay' }}" {% if endpoint == 'portal_pay' %}aria-current="page"{% endif %}>{{ icon('wallet') }}<span>Pay</span></a>
 </nav>{% endif %}
 <script src="{{ asset('js/pwa.js') }}"></script>
-{% if sub is defined and sub %}<script src="{{ asset('js/portal-notify.js') }}" data-check="{{ url_for('portal_notifications_check') }}" data-list="{{ url_for('portal_notifications') }}" data-unread="{{ portal_unread }}"></script>{% endif %}
+{% if sub is defined and sub %}<script src="{{ asset('js/portal-notify.js') }}" data-check="{{ url_for('portal_notifications_check') }}" data-list="{{ url_for('portal_notifications') }}" data-unread="{{ portal_unread }}" data-push-key="{{ url_for('portal_push_key') }}" data-push-sub="{{ url_for('portal_push_subscribe') }}" data-push-unsub="{{ url_for('portal_push_unsubscribe') }}" data-csrf="{{ session.get('csrf', '') }}"></script>{% endif %}
 </body>
 </html>

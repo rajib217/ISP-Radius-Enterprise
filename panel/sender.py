@@ -67,6 +67,52 @@ def work(conn, cur, s):
     return sent
 
 
+PUSH_BATCH = 50
+
+
+def push_round(conn, cur, s, send=None):
+    """Send Web Push for new in-app notifications (made in the last day) to every browser the customer allowed.
+    A subscription the push service reports gone (404 / 410) is deleted; one that keeps failing is dropped after 20."""
+    import webpush
+    if s.get("portal_on") != "1" or not webpush.available():
+        return 0
+    send = send or webpush.send
+    cur.execute("SELECT n.id, n.subscriber_id, n.title, n.body, n.link FROM sub_notifications n WHERE n.pushed_at IS NULL "
+                "AND n.created_at > NOW() - INTERVAL 1 DAY ORDER BY n.id LIMIT %s", (PUSH_BATCH,))
+    rows = cur.fetchall()
+    if not rows:
+        return 0
+    priv, pub = webpush.keys(cur)
+    conn.commit()
+    subject = webpush.subject_of(s)
+    sent = 0
+    for n in rows:
+        cur.execute("UPDATE sub_notifications SET pushed_at = NOW() WHERE id = %s AND pushed_at IS NULL", (n["id"],))
+        conn.commit()
+        cur.execute("SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE subscriber_id = %s", (n["subscriber_id"],))
+        subs = cur.fetchall()
+        if not subs:
+            continue
+        cur.execute("SELECT COUNT(*) AS c FROM sub_notifications WHERE subscriber_id = %s AND read_at IS NULL", (n["subscriber_id"],))
+        unread = int(cur.fetchone()["c"])
+        data = {"title": n["title"], "body": n["body"], "url": n["link"] or "/portal/notifications",
+                "tag": "n%d" % n["id"], "unread": unread}
+        for sub in subs:
+            if not RUNNING:
+                break
+            status, _detail = send(sub, data, priv, pub, subject)
+            if status in (200, 201, 202):
+                cur.execute("UPDATE push_subscriptions SET last_ok = NOW(), fails = 0 WHERE id = %s", (sub["id"],))
+                sent += 1
+            elif status in (404, 410):
+                cur.execute("DELETE FROM push_subscriptions WHERE id = %s", (sub["id"],))
+            else:
+                cur.execute("UPDATE push_subscriptions SET fails = fails + 1 WHERE id = %s", (sub["id"],))
+                cur.execute("DELETE FROM push_subscriptions WHERE id = %s AND fails >= 20", (sub["id"],))
+            conn.commit()
+    return sent
+
+
 def main():
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
@@ -79,6 +125,11 @@ def main():
             s = db.load_settings(cur)
             conn.commit()
             work(conn, cur, s)
+            try:
+                push_round(conn, cur, s)
+            except Exception:      # the push tables appear after update.sh; never stop SMS / email for it
+                conn.rollback()
+                traceback.print_exc()
         except Exception:  # database restarted, bad settings ... keep the service alive
             traceback.print_exc()
             try:

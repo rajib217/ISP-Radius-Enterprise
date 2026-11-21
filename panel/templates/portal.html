@@ -3,6 +3,7 @@
   <span class="pt-top-acts"><a class="notif-bell" href="{{ url_for('portal_notifications') }}" aria-label="Notifications{{ ' (%d unread)' % portal_unread if portal_unread }}" data-notif-link>{{ icon('bell') }}{% if portal_unread %}<b class="notif-dot" data-notif-count>{{ portal_unread if portal_unread < 100 else '99+' }}</b>{% else %}<b class="notif-dot" data-notif-count hidden></b>{% endif %}</a>
   <form method="post" action="{{ url_for('portal_logout') }}">{{ csrf_input() }}<button class="btn sm">Sign out</button></form></span></div>{% endblock %}
 {% block content %}
+<div class="push-card" data-push-card="home" hidden></div>
 <section class="pt-hero {{ state }}">
   <span class="muted">{{ sub.full_name or sub.username }} <span class="mono">({{ sub.username }})</span></span>
   {% if state == 'suspended' %}<div class="pt-days">Suspended</div><span>Your account is switched off. Please contact us.</span>

@@ -715,6 +715,53 @@ def check_rules(flask_app, ids):
           and (flask_app.test_client().get("/portal/notifications/check").get_json() or {}).get("unread") == 0,
           "the live check gives nothing to someone who is not signed in")
 
+    # ---- Web Push: opt-in, subscription storage (only real push services), the sender, the service worker
+    import webpush as _wp
+    import sender as _snd
+    _key = (pc.get("/portal/push/key").get_json() or {}).get("key")
+    check((len(_key or "") > 80) if _wp.available() else _key is None,
+          "the push key is made once and given to the signed-in customer's app (none without python3-cryptography)")
+    _hdr = {"X-CSRF-Token": "ci"}
+    _good = {"endpoint": "https://fcm.googleapis.com/fcm/send/ci-test-endpoint-123",
+             "keys": {"p256dh": "B" + "A" * 86, "auth": "AAAAAAAAAAAAAAAAAAAAAA"}}
+    _evil = dict(_good, endpoint="https://10.0.0.5/admin/reboot")
+    _r_evil = pc.post("/portal/push/subscribe", json=_evil, headers=_hdr)
+    _r_good = pc.post("/portal/push/subscribe", json=_good, headers=_hdr)
+    _r_again = pc.post("/portal/push/subscribe", json=_good, headers=_hdr)
+    check(_r_evil.status_code == 400 and _r_good.status_code == 200 and _r_again.status_code == 200
+          and one("SELECT COUNT(*) AS c FROM push_subscriptions WHERE subscriber_id = %s", (_nsid,))["c"] == 1,
+          "a browser's push subscription is stored once; an address that is not a real push service is refused")
+    _calls = []
+    _keep_av, _keep_keys = _wp.available, _wp.keys
+    try:
+        _wp.available = lambda: True
+        _wp.keys = lambda cur: ("priv", "pub")
+        _c3 = db.connect()
+        with _c3.cursor() as cur:
+            cur.execute("UPDATE sub_notifications SET pushed_at = NOW() WHERE pushed_at IS NULL")
+            _an.add(cur, _nsid, "custom", "CI push", "push body")
+            _c3.commit()
+            _sent = _snd.push_round(_c3, cur, {"portal_on": "1", "support_email": "noc@example.net"},
+                                    send=lambda sub, data, priv, pub, subj: (_calls.append((sub["endpoint"], data, subj)) or (201, "")))
+            _again = _snd.push_round(_c3, cur, {"portal_on": "1"}, send=lambda *a: (_calls.append("dup") or (201, "")))
+            _an.add(cur, _nsid, "custom", "CI push 2", "gone")
+            _c3.commit()
+            _snd.push_round(_c3, cur, {"portal_on": "1"}, send=lambda *a: (410, "gone"))
+        _c3.close()
+    finally:
+        _wp.available, _wp.keys = _keep_av, _keep_keys
+    check(_sent == 1 and _again == 0 and len(_calls) == 1 and _calls[0][1]["title"] == "CI push"
+          and _calls[0][1]["url"] == "/portal/notifications" and _calls[0][2] == "mailto:noc@example.net"
+          and one("SELECT COUNT(*) AS c FROM push_subscriptions WHERE subscriber_id = %s", (_nsid,))["c"] == 0,
+          "the sender pushes each new notification once to the customer's phones and drops a subscription the service reports gone")
+    _sw2 = flask_app.test_client().get("/sw.js").get_data(as_text=True)
+    _ph = pc.get("/portal/notifications").get_data(as_text=True)
+    check('addEventListener("push"' in _sw2 and "showNotification" in _sw2 and "notificationclick" in _sw2 and "silent: false" in _sw2
+          and 'data-push-card="list"' in _ph and "data-push-sub=" in _ph and "push_vapid_private" in db.SECRET_KEYS,
+          "the service worker shows pushes with sound and opens the app on tap; the portal offers the opt-in")
+    _r_un = pc.post("/portal/push/unsubscribe", json={"endpoint": _good["endpoint"]}, headers=_hdr)
+    check(_r_un.status_code == 200, "a customer can switch push off again")
+
     # ---- installable app (PWA): manifests, icons, service worker, offline page, tags on every layout
     import struct as _st
     import mod_pwa as _pwa

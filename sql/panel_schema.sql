@@ -452,6 +452,25 @@ CREATE TABLE IF NOT EXISTS sub_notifications (
   KEY idx_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+ALTER TABLE sub_notifications ADD COLUMN IF NOT EXISTS pushed_at DATETIME NULL;
+ALTER TABLE sub_notifications ADD INDEX IF NOT EXISTS idx_push (pushed_at, id);
+
+-- Web Push subscriptions of the customers' browsers / installed apps (webpush.py, sent by isp-panel-sender)
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  subscriber_id INT UNSIGNED NOT NULL,
+  endpoint_hash CHAR(40)      NOT NULL,
+  endpoint      VARCHAR(1000) NOT NULL,
+  p256dh        VARCHAR(255)  NOT NULL,
+  auth          VARCHAR(64)   NOT NULL,
+  user_agent    VARCHAR(255)  NOT NULL DEFAULT '',
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_ok       DATETIME NULL,
+  fails         INT UNSIGNED NOT NULL DEFAULT 0,
+  UNIQUE KEY uq_endpoint (endpoint_hash),
+  KEY idx_sub (subscriber_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS sub_ledger (
   id            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   subscriber_id INT UNSIGNED NOT NULL,

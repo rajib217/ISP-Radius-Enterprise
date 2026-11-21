@@ -3,6 +3,7 @@
 {% block title %}Notifications{% endblock %}
 {% block top %}<div class="pt-top"><b>নোটিফিকেশন</b><a class="btn sm" href="{{ url_for('portal') }}">Home</a></div>{% endblock %}
 {% block content %}
+<div class="push-card" data-push-card="list" hidden></div>
 {% set icons = {'payment': 'check', 'balance': 'wallet', 'expiring': 'alert', 'expired': 'power', 'custom': 'bell'} %}
 <section class="panel notif-list-wrap">
   {% if rows %}

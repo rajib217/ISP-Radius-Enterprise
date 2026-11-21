@@ -178,6 +178,28 @@ self.addEventListener("activate", (e) => {
   e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith("isp-panel-") && k !== CACHE)
     .map((k) => caches.delete(k)))).then(() => self.clients.claim()));
 });
+self.addEventListener("push", (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (x) { d = { body: e.data ? e.data.text() : "" }; }
+  const title = d.title || "নোটিফিকেশন";
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+    list.forEach((c) => c.postMessage({ type: "push", title: title, body: d.body || "", unread: d.unread }));
+    if (typeof d.unread === "number" && self.navigator.setAppBadge) { self.navigator.setAppBadge(d.unread).catch(() => {}); }
+    return self.registration.showNotification(title, {
+      body: d.body || "", icon: "__ICON__", tag: d.tag, renotify: true, silent: false,
+      vibrate: [180, 80, 180], data: { url: d.url || "/portal/notifications" } });
+  }));
+});
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || "/portal/notifications";
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+    for (const c of list) {
+      if (c.url.indexOf(self.location.origin) === 0 && "focus" in c) { if (c.navigate) c.navigate(url); return c.focus(); }
+    }
+    return self.clients.openWindow(url);
+  }));
+});
 self.addEventListener("fetch", (e) => {
   const req = e.request;
   if (req.method !== "GET") return;
@@ -204,7 +226,8 @@ def pwa_sw():
     pre = ["/offline"] + files + [url_for("pwa_icon", name="icon-192", v=icon_key()),
                                   url_for("pwa_icon", name="icon-512", v=icon_key())]
     version = hashlib.sha1("|".join(pre).encode()).hexdigest()[:12]
-    body = SW.replace("__VERSION__", version).replace("__PRECACHE__", json.dumps(pre))
+    body = SW.replace("__VERSION__", version).replace("__PRECACHE__", json.dumps(pre)).replace(
+        "__ICON__", url_for("pwa_icon", name="icon-192", v=icon_key()))
     return Response(body, mimetype="application/javascript",
                     headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
 
