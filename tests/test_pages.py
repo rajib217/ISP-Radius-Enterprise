@@ -226,6 +226,16 @@ def one(sql, args=()):
         conn.close()
 
 
+def run_q(sql, args=()):
+    conn = db.connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, args)
+            return cur.fetchall()
+    finally:
+        conn.close()
+
+
 def run(sql, args=()):
     conn = db.connect()
     try:
@@ -586,6 +596,41 @@ def check_rules(flask_app, ids):
     check(p_home.status_code == 200 and p_pay.status_code in (200, 302) and 'class="pt-bottom-nav"' in p_html
           and 'href="/portal#invoices"' in p_html and 'id="invoices"' in p_html and 'id="usage"' in p_html,
           "customer portal and pay page open, with the bottom nav and its #usage / #invoices targets")
+
+    # ---- Mass Activation / Mass Payment / Mass Delete open as popups and work
+    lst = adm.get("/subscribers").get_data(as_text=True)
+    check(all(t in lst for t in ('id="mass-act-dlg"', 'id="mass-pay-dlg"', 'id="mass-del-dlg"', 'data-mass-open="mass-act-dlg"',
+                                 'data-mass-open="mass-pay-dlg"', 'data-mass-open="mass-del-dlg"', 'data-u="'))
+          and 'value="extend">Mass Activation' not in lst,
+          "admin's subscriber list has the three mass popups (and the old bar options are gone)")
+    pair = [r["id"] for r in run_q("SELECT id FROM subscribers WHERE plan_id IS NOT NULL AND status = 'active' "
+                                   "AND (created_by = 'admin' OR created_by IS NULL OR created_by = '') ORDER BY id LIMIT 2")]
+    if len(pair) == 2:
+        run("UPDATE subscribers SET balance = 0 WHERE id IN (%s, %s)", tuple(pair))
+        before = {r["id"]: r["expiry_date"] for r in run_q("SELECT id, expiry_date FROM subscribers WHERE id IN (%s, %s)", tuple(pair))}
+        pays0 = one("SELECT COUNT(*) AS c FROM payments WHERE subscriber_id IN (%s, %s)", tuple(pair))["c"]
+        r = adm.post("/subscribers/mass-activate", data={"_csrf": "ci", "ids": [str(i) for i in pair], "plan_id": "current",
+                                                          "method": "balance", "next": "/subscribers"})
+        same = {r2["id"]: r2["expiry_date"] for r2 in run_q("SELECT id, expiry_date FROM subscribers WHERE id IN (%s, %s)", tuple(pair))}
+        check(r.status_code == 302 and same == before, "Subscriber Balance method skips customers whose balance is too low")
+        r = adm.post("/subscribers/mass-activate", data={"_csrf": "ci", "ids": [str(i) for i in pair], "plan_id": "current",
+                                                          "method": "cash", "next": "/subscribers"})
+        after = {r2["id"]: r2["expiry_date"] for r2 in run_q("SELECT id, expiry_date FROM subscribers WHERE id IN (%s, %s)", tuple(pair))}
+        pays1 = one("SELECT COUNT(*) AS c FROM payments WHERE subscriber_id IN (%s, %s)", tuple(pair))["c"]
+        check(all(after[i] and (before[i] is None or after[i] > before[i]) for i in pair) and pays1 == pays0 + 2,
+              "Cash method activates every ticked customer and records a payment for each")
+        r = adm.post("/subscribers/mass-payment", data={"_csrf": "ci", "ids": [str(i) for i in pair], "method": "bKash",
+                                                         "amount": "250", "next": "/subscribers"})
+        bals = [float(r2["balance"]) for r2 in run_q("SELECT balance FROM subscribers WHERE id IN (%s, %s)", tuple(pair))]
+        led = one("SELECT COUNT(*) AS c FROM sub_ledger WHERE subscriber_id IN (%s, %s) AND note = 'Mass payment (bKash)'", tuple(pair))["c"]
+        check(bals == [250.0, 250.0] and led == 2, "Mass Payment adds the amount to each balance and writes the ledger")
+        exp2 = {r2["id"]: r2["expiry_date"] for r2 in run_q("SELECT id, expiry_date FROM subscribers WHERE id IN (%s, %s)", tuple(pair))}
+        r = adm.post("/subscribers/mass-activate", data={"_csrf": "ci", "ids": [str(i) for i in pair], "plan_id": "current",
+                                                          "method": "smart", "next": "/subscribers"})
+        exp3 = {r2["id"]: r2["expiry_date"] for r2 in run_q("SELECT id, expiry_date FROM subscribers WHERE id IN (%s, %s)", tuple(pair))}
+        check(all(exp3[i] > exp2[i] for i in pair), "Smart Payment activates (from balance when it covers the price, else cash)")
+    res_list = client(ids["reseller"]).get("/subscribers").get_data(as_text=True)
+    check('id="mass-del-dlg"' not in res_list, "only the admin gets Mass Delete")
 
     # ---- RX / TX: not in the subscriber list any more; a live chart on each customer's page, for every panel
     other = one("SELECT id FROM subscribers WHERE created_by NOT IN ('karim', 'karim_sub') OR created_by IS NULL LIMIT 1")

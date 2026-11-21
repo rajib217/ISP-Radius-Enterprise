@@ -362,13 +362,26 @@
   (function () {
     var tbl = $("#subsTable"); if (!tbl) return;
     var bar = $("[data-bulkbar]"), action = $("[data-bulk-action]"), hint = $("#massHint");
-    $$("[data-mass]").forEach(function (b) {
+    /* Mass Activation / Payment / Delete: open the popup with the ticked customers (their ids go in hidden inputs) */
+    $$("[data-mass-open]").forEach(function (b) {
       b.addEventListener("click", function () {
-        if (!action) return;
-        action.value = b.dataset.mass; action.dispatchEvent(new Event("change"));
-        var any = $$(".row-check", tbl).some(function (c) { return c.checked; });
-        if (hint) hint.classList.toggle("hide", any);
-        if (any) bar.scrollIntoView({ block: "nearest" });
+        var dlg = document.getElementById(b.dataset.massOpen); if (!dlg) return;
+        var picked = $$(".row-check", tbl).filter(function (c) { return c.checked; });
+        if (!picked.length) { if (hint) { hint.classList.remove("hide"); hint.scrollIntoView({ block: "nearest" }); } return; }
+        if (hint) hint.classList.add("hide");
+        var form = $("form", dlg); form.reset();
+        var box = $("[data-ids-box]", dlg); box.innerHTML = "";
+        picked.forEach(function (c) { var i = document.createElement("input"); i.type = "hidden"; i.name = "ids"; i.value = c.value; box.appendChild(i); });
+        $("[data-ids-label]", dlg).value = picked.length + " selected: " + picked.map(function (c) { return c.dataset.u || c.value; }).join(", ");
+        var cf = $("[data-custom-fields]", dlg); if (cf) cf.hidden = true;
+        dlg.showModal();
+      });
+    });
+    $$("[data-custom-toggle]").forEach(function (t) {
+      t.addEventListener("change", function () {
+        var cf = $("[data-custom-fields]", t.closest("form")); if (!cf) return;
+        cf.hidden = !t.checked;
+        $$("input", cf).forEach(function (i) { i.required = t.checked && i.type === "date"; });
       });
     });
     if (bar) bar.addEventListener("submit", function () { if (hint) hint.classList.add("hide"); });

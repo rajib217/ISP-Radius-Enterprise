@@ -281,6 +281,230 @@ def subscriber_charge_info():
                     "balance": round(float(sub["balance"] or 0), 2)})
 
 
+def activate_one(sub, plan, days, from_balance, method, received, custom=False, custom_time="", user_note="",
+                 notify=True, label="Activation"):
+    """Activate / renew one customer for `days` on `plan` (the rules of the Activation window, also used by Mass
+    Activation). Nothing is committed here: the caller commits, or rolls back on failure.
+
+    from_balance: the whole price comes out of the customer's balance; otherwise `received` (money taken by `method`)
+    pays it, extra goes into the balance and a shortfall is taken from it. A seller also pays their own package cost
+    (charge_me). Returns {"ok": True, "expiry", "time", "price", "method", "change"} or {"ok": False, "error", "seller"}
+    where seller=True means the seller's own balance ran out (no point trying further customers)."""
+    plan_id = plan["id"]
+    price = customer_price(sub, plan, days)
+    have = round(float(sub["balance"] or 0), 2)
+    # what the customer's balance changes by: the whole price when paid from the balance; otherwise money received
+    # beyond the price is added to it, and a shortfall is taken from it
+    change = -price if from_balance else round(received - price, 2)
+    if change < 0 and have + change < -0.001:
+        return {"ok": False, "seller": False, "error":
+                "Not activated: %s's balance (%.2f) is lower than the %.2f needed%s. Add balance to the customer, or take "
+                "the payment in cash. Nothing was changed." % (sub["username"], have, -change,
+                                                             "" if from_balance else " besides the %.2f received" % received)}
+    sub2 = dict(sub, plan_id=plan_id)
+    why = charge_me(sub2, "%s %s +%d days" % (label, sub["username"], days))
+    if why:
+        return {"ok": False, "seller": True, "error": "Not activated: %s. Add balance first. Nothing was changed." % why}
+    if plan_id != sub["plan_id"]:
+        x("UPDATE subscribers SET plan_id = %s WHERE id = %s", (plan_id, sub["id"]))
+    if change:
+        with get_db().cursor() as cur:
+            # locked, conditional update: two activations at once can never take the balance below zero
+            cur.execute("UPDATE subscribers SET balance = balance + %s WHERE id = %s AND balance + %s >= 0",
+                        (change, sub["id"], change))
+            if cur.rowcount != 1:
+                get_db().rollback()
+                return {"ok": False, "seller": False,
+                        "error": "Not activated: the customer's balance changed meanwhile. Try again. Nothing was changed."}
+            cur.execute("SELECT balance FROM subscribers WHERE id = %s", (sub["id"],))
+            after = float(cur.fetchone()["balance"])
+            if from_balance:
+                text = "%s +%d days (%s)" % (label, days, plan["label"] or plan["name"])
+            elif change > 0:
+                text = "Extra from activation payment (received %.2f, package %.2f)" % (received, price)
+            else:
+                text = "Rest of activation from balance (received %.2f, package %.2f)" % (received, price)
+            cur.execute("INSERT INTO sub_ledger (subscriber_id, amount, balance_after, note, created_by) VALUES (%s, %s, %s, %s, %s)",
+                        (sub["id"], change, after, text[:255], g.me["username"]))
+    if from_balance:
+        pay_method, auto = "balance", "Paid from the customer's balance"
+    elif change > 0:
+        pay_method, auto = method, "Received %.2f, %.2f added to the balance" % (received, change)
+    elif change < 0:
+        pay_method, auto = method + "+balance", "Received %.2f, %.2f taken from the balance" % (received, -change)
+    else:
+        pay_method, auto = method, ""
+    note = "; ".join(t for t in (user_note, auto) if t)
+    # the payment row is the package price (revenue); extra money waits in the balance until it is used
+    # the time the new expiry ends at: the time typed with a custom date; otherwise the moment of activation, unless the
+    # account is still running (then its time is kept) or the package has its own fixed time
+    if custom:
+        new_time = custom_time or datetime.now().strftime("%H:%M")
+    elif plan.get("fixed_expire_time"):
+        new_time = None
+    else:
+        running = end_moment(sub, _plan(sub["plan_id"]))
+        new_time = sub.get("expiry_time") if running and running > datetime.now() else datetime.now().strftime("%H:%M")
+    new_expiry = do_renew(sub2, days, price, pay_method[:32], note, notify=notify and price > 0, exact=custom,
+                          expiry_time=new_time)
+    audit("activated", sub["username"], "%s, +%d days, %.2f via %s%s" % (plan["label"] or plan["name"], days, price, pay_method,
+                                                                     (", balance %+.2f" % change) if change else ""))
+    return {"ok": True, "expiry": new_expiry, "time": new_time, "price": price, "method": pay_method, "change": change}
+
+
+MASS_METHODS = (("balance", "Subscriber Balance"), ("cash", "Cash received"), ("smart", "Smart Payment"))
+MASS_LIMIT = 1000
+
+
+def _mass_subs(back):
+    """The ticked customers this person may touch (a seller: only their downline's), or None after a flash."""
+    ids = [int(i) for i in request.form.getlist("ids") if i.isdigit()][:MASS_LIMIT]
+    if not ids:
+        flash("Tick the customers in the list first.", "warn")
+        return None
+    subs = q("SELECT * FROM subscribers WHERE id IN (%s) ORDER BY username" % ",".join(["%s"] * len(ids)), ids)
+    names = core.my_downline()
+    if names is not None:
+        subs = [s for s in subs if s["created_by"] in names]
+    if not subs:
+        flash("None of the ticked customers can be changed by you.", "warn")
+        return None
+    return subs
+
+
+def _names(rows, limit=8):
+    shown = ", ".join(rows[:limit])
+    return shown + (" and %d more" % (len(rows) - limit) if len(rows) > limit else "")
+
+
+@route("/subscribers/mass-activate", module="subscribers", methods=["POST"])
+def subscribers_mass_activate():
+    """Mass Activation: renew every ticked customer on their current package or a chosen one.
+      balance: only customers whose balance covers the price are activated (paid from the balance), others skipped
+      cash:    everyone is activated, the price is recorded as cash received
+      smart:   the customer's balance when it covers the price, otherwise cash received
+    A seller's own package cost is taken from their balance for each customer, as in the Activation window."""
+    f = request.form
+    back = core.safe_next(f.get("next")) or url_for("subscribers")
+    subs = _mass_subs(back)
+    if subs is None:
+        return redirect(back)
+    mode = f.get("method") if f.get("method") in dict(MASS_METHODS) else ""
+    if not mode:
+        flash("Choose a payment method.", "error")
+        return redirect(back)
+    chosen = None
+    if f.get("plan_id", "") not in ("", "current"):
+        chosen = _plan(int(f["plan_id"])) if f["plan_id"].isdigit() else None
+        if not chosen:
+            flash("Choose a package.", "error")
+            return redirect(back)
+    custom = f.get("custom") == "on"
+    custom_time = (f.get("expiry_time") or "").strip()
+    if custom and not core.can_fn("sub.custom_expiry"):
+        flash("You do not have permission to set a custom expiry date. Ask the administrator to allow Custom Expiry.", "error")
+        return redirect(back)
+    if custom and custom_time and not TIME_RE.match(custom_time):
+        flash("Enter the expiry time as HH:MM.", "error")
+        return redirect(back)
+    notify = f.get("notify") == "on"
+    done, low, no_plan, not_allowed, bad_date, other = [], [], [], [], [], []
+    stopped = ""
+    for sub in subs:
+        plan = chosen or _plan(sub["plan_id"])
+        if not plan:
+            no_plan.append(sub["username"])
+            continue
+        if not core.plan_allowed(plan["id"], sub["plan_id"]):
+            not_allowed.append(sub["username"])
+            continue
+        if custom:
+            days = _custom_days(sub, f.get("expiry"))
+            if days is None:
+                bad_date.append(sub["username"])
+                continue
+        else:
+            days = int(plan["validity_days"] or 30)
+        price = customer_price(sub, plan, days)
+        enough = round(float(sub["balance"] or 0), 2) + 0.001 >= price
+        if mode == "balance" and not enough:
+            low.append(sub["username"])
+            continue
+        from_balance = mode == "balance" or (mode == "smart" and enough)
+        res = activate_one(sub, plan, days, from_balance, "cash", 0.0 if from_balance else price, custom,
+                           custom_time if custom else "", "Mass activation", notify=notify, label="Mass activation")
+        if res["ok"]:
+            commit()
+            done.append(sub["username"])
+        else:
+            get_db().rollback()
+            if res.get("seller"):
+                stopped = res["error"]
+                break
+            other.append(sub["username"])
+    audit("mass_activation", "%d subscribers" % len(done), "%s, %s" % (dict(MASS_METHODS)[mode],
+                                                                         (chosen["label"] or chosen["name"]) if chosen else "current package"))
+    commit()
+    if done:
+        flash("%d subscriber(s) activated." % len(done), "success")
+    for rows, why in ((low, "balance lower than the package price"), (no_plan, "no package"),
+                      (not_allowed, "package not allowed for you"), (bad_date, "custom date is not after their expiry"),
+                      (other, "balance changed meanwhile, try again")):
+        if rows:
+            flash("Skipped %d (%s): %s." % (len(rows), why, _names(rows)), "warn")
+    if stopped:
+        flash("Stopped after %d: %s" % (len(done), stopped), "error")
+    if not done and not stopped and not any((low, no_plan, not_allowed, bad_date, other)):
+        flash("Nobody was activated.", "warn")
+    return redirect(back)
+
+
+MASS_PAY_METHODS = ("cash", "bKash", "Nagad", "bank", "other")
+
+
+@route("/subscribers/mass-payment", module="subscribers", methods=["POST"])
+def subscribers_mass_payment():
+    """Mass Payment: add the same amount to the balance of every ticked customer (Ledger: Balance Topup). A seller pays
+    it from their own balance, as with Add Balance on one customer. Activation can then take it from the balance."""
+    f = request.form
+    back = core.safe_next(f.get("next")) or url_for("subscribers")
+    subs = _mass_subs(back)
+    if subs is None:
+        return redirect(back)
+    method = f.get("method") if f.get("method") in MASS_PAY_METHODS else ""
+    try:
+        amount = round(float(f.get("amount") or 0), 2)
+        assert 0 < amount < 10 ** 7
+    except (ValueError, AssertionError):
+        amount = 0
+    if not method or not amount:
+        flash("Choose a method and enter an amount above zero.", "error")
+        return redirect(back)
+    seller = g.me["role"] in core.SELLER_ROLES
+    done, stopped = [], ""
+    for sub in subs:
+        if seller:
+            ok, have = core.seller_pays(amount, "Mass payment to %s" % sub["username"])
+            if not ok:
+                get_db().rollback()
+                stopped = "your balance (%.2f) is lower than %.2f" % (have, amount)
+                break
+        with get_db().cursor() as cur:
+            cur.execute("UPDATE subscribers SET balance = balance + %s WHERE id = %s", (amount, sub["id"]))
+            cur.execute("SELECT balance FROM subscribers WHERE id = %s", (sub["id"],))
+            after = float(cur.fetchone()["balance"])
+            cur.execute("INSERT INTO sub_ledger (subscriber_id, amount, balance_after, note, created_by) VALUES (%s, %s, %s, %s, %s)",
+                        (sub["id"], amount, after, ("Mass payment (%s)" % method)[:255], g.me["username"]))
+        audit("balance_changed", sub["username"], "%+.2f -> %.2f (mass payment, %s)" % (amount, after, method))
+        commit()
+        done.append(sub["username"])
+    if done:
+        flash("%.2f added to the balance of %d subscriber(s)." % (amount, len(done)), "success")
+    if stopped:
+        flash("Stopped after %d: %s. Add balance to yourself first." % (len(done), stopped), "error")
+    return redirect(back)
+
+
 @route("/subscribers/activate", module="subscribers", methods=["POST"])
 def subscriber_activate():
     f = request.form
@@ -323,66 +547,13 @@ def subscriber_activate():
     except (ValueError, AssertionError):
         flash("Pick an expiry date after %s (within 10 years) and enter a valid amount." % base.strftime("%d %b %Y"), "error")
         return redirect(back)
-    price = customer_price(sub, plan, days)
-    have = round(float(sub["balance"] or 0), 2)
-    # what the customer's balance changes by: the whole price when paid from the balance; otherwise money received
-    # beyond the price is added to it, and a shortfall is taken from it
-    change = -price if from_balance else round(received - price, 2)
-    if change < 0 and have + change < -0.001:
-        flash("Not activated: %s's balance (%.2f) is lower than the %.2f needed%s. Add balance to the customer, or take "
-              "the payment in cash. Nothing was changed." % (sub["username"], have, -change,
-                                                           "" if from_balance else " besides the %.2f received" % received), "error")
+    res = activate_one(sub, plan, days, from_balance, method, received, custom,
+                       custom_time if custom else "", f.get("note", "").strip())
+    if not res["ok"]:
+        flash(res["error"], "error")
         return redirect(back)
-    user_note = f.get("note", "").strip()
-    sub2 = dict(sub, plan_id=plan_id)
-    why = charge_me(sub2, "Activation %s +%d days" % (sub["username"], days))
-    if why:
-        flash("Not activated: %s. Add balance first. Nothing was changed." % why, "error")
-        return redirect(back)
-    if plan_id != sub["plan_id"]:
-        x("UPDATE subscribers SET plan_id = %s WHERE id = %s", (plan_id, sub["id"]))
-    if change:
-        with get_db().cursor() as cur:
-            # locked, conditional update: two activations at once can never take the balance below zero
-            cur.execute("UPDATE subscribers SET balance = balance + %s WHERE id = %s AND balance + %s >= 0",
-                        (change, sub["id"], change))
-            if cur.rowcount != 1:
-                get_db().rollback()
-                flash("Not activated: the customer's balance changed meanwhile. Try again. Nothing was changed.", "error")
-                return redirect(back)
-            cur.execute("SELECT balance FROM subscribers WHERE id = %s", (sub["id"],))
-            after = float(cur.fetchone()["balance"])
-            if from_balance:
-                text = "Activation +%d days (%s)" % (days, plan["label"] or plan["name"])
-            elif change > 0:
-                text = "Extra from activation payment (received %.2f, package %.2f)" % (received, price)
-            else:
-                text = "Rest of activation from balance (received %.2f, package %.2f)" % (received, price)
-            cur.execute("INSERT INTO sub_ledger (subscriber_id, amount, balance_after, note, created_by) VALUES (%s, %s, %s, %s, %s)",
-                        (sub["id"], change, after, text[:255], g.me["username"]))
-    if from_balance:
-        pay_method, auto = "balance", "Paid from the customer's balance"
-    elif change > 0:
-        pay_method, auto = method, "Received %.2f, %.2f added to the balance" % (received, change)
-    elif change < 0:
-        pay_method, auto = method + "+balance", "Received %.2f, %.2f taken from the balance" % (received, -change)
-    else:
-        pay_method, auto = method, ""
-    note = "; ".join(t for t in (user_note, auto) if t)
-    # the payment row is the package price (revenue); extra money waits in the balance until it is used
-    # the time the new expiry ends at: the time typed with a custom date; otherwise the moment of activation, unless the
-    # account is still running (then its time is kept) or the package has its own fixed time
-    if custom:
-        new_time = custom_time or datetime.now().strftime("%H:%M")
-    elif plan.get("fixed_expire_time"):
-        new_time = None
-    else:
-        running = end_moment(sub, _plan(sub["plan_id"]))
-        new_time = sub.get("expiry_time") if running and running > datetime.now() else datetime.now().strftime("%H:%M")
-    new_expiry = do_renew(sub2, days, price, pay_method[:32], note, notify=price > 0, exact=custom, expiry_time=new_time)
-    audit("activated", sub["username"], "%s, +%d days, %.2f via %s%s" % (plan["label"] or plan["name"], days, price, pay_method,
-                                                                     (", balance %+.2f" % change) if change else ""))
     commit()
+    new_expiry, new_time = res["expiry"], res["time"]
     shown_time = new_time or plan.get("fixed_expire_time") or "23:59"
     flash("%s is active until %s %s." % (sub["username"], new_expiry.strftime("%d %b %Y"), _clock(shown_time)), "success")
     if f.get("print") and g.get("last_payment"):

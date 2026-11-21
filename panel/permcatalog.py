@@ -198,6 +198,7 @@ ENDPOINT_FN = {
     "subscriber_reset_mac": "sub.reset_mac", "subscriber_settings": "sub.service", "subscriber_kick": "sub.disconnect",
     "subscriber_net": ("sub.net_on", "sub.net_off"), "subscriber_toggle": ("sub.profile_on", "sub.profile_off"),
     "subscribers_bulk": ("sub.mass_settings", "sub.mass_delete", "sub.mass_activation"),
+    "subscribers_mass_activate": "sub.mass_activation", "subscribers_mass_payment": "sub.mass_payment",
     "my_users": "usr.module", "user_transfer": "usr.balance",
     "my_user_save": ("usr.add", "usr.edit"), "my_user_toggle": "usr.edit", "my_user_password": "usr.password",
     "my_user_packages": "usr.pkg_assign", "my_user_delete": "usr.delete",

@@ -1628,3 +1628,12 @@ dialog.modal.confirm-dlg { width: min(420px, calc(100vw - 24px)); }
 .lr-line.rx { stroke: var(--accent); } .lr-line.tx { stroke: var(--online); }
 .lr-scale { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; color: var(--muted); font-size: 12px; margin-top: 6px; }
 @media (max-width: 767px) { .lr-body { grid-template-columns: 1fr; } .lr-now { grid-template-columns: 1fr 1fr; } }
+
+/* ---- Mass Activation / Payment / Delete popups ---- */
+.mass-pop .modal-body { gap: 16px; }
+.mass-note { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: var(--r-md); background: var(--accent-soft); color: var(--text); font-size: 13.5px; }
+.mass-note > .i { color: var(--accent); flex: none; margin-top: 2px; }
+.mass-note p { margin: 4px 0 0; }
+.mass-toggle { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; }
+.mass-pop span.lbl { display: block; margin-bottom: 6px; }
+.mass-pop textarea[readonly] { resize: vertical; min-height: 44px; background: var(--surface-2); color: var(--text); }

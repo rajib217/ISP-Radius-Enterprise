@@ -23,14 +23,14 @@
   {% if can('subscribers', 'edit') %}
   {% if can_fn('sub.add') %}<button class="btn tb" type="button" data-open="add-drawer">{{ icon('plus') }}Add Subscriber</button>{% endif %}
   <button class="btn tb" type="button" data-open="activate-dlg">{{ icon('bolt') }}Activation</button>
-  <button class="btn tb" type="button" data-mass="extend">{{ icon('play') }}Mass Activation</button>
+  {% if can_fn('sub.mass_activation') %}<button class="btn tb" type="button" data-mass-open="mass-act-dlg">{{ icon('play') }}Mass Activation</button>{% endif %}
   {% if can_fn('sub.import') %}<a class="btn tb" href="{{ url_for('import_csv') }}">{{ icon('upload') }}Import</a>{% endif %}
   {% endif %}
   {% if can_fn('sub.export') %}<a class="btn tb" href="{{ url_for('subscribers_export', **keep) }}">{{ icon('download') }}Export</a>
   <a class="btn tb green" href="{{ url_for('subscribers_export', **dict(keep, passwords='1' if me.role == 'admin' else '0')) }}">{{ icon('download') }}{{ 'Export with passwords' if me.role == 'admin' else 'Download export' }}</a>{% endif %}
   {% if can('subscribers', 'edit') %}
-  <button class="btn tb" type="button" data-mass="renew">{{ icon('card') }}Mass Payment</button>
-  {% if me.role == 'admin' %}<button class="btn tb red" type="button" data-mass="delete">{{ icon('trash') }}Mass Delete</button>{% endif %}
+  {% if can_fn('sub.mass_payment') %}<button class="btn tb" type="button" data-mass-open="mass-pay-dlg">{{ icon('card') }}Mass Payment</button>{% endif %}
+  {% if me.role == 'admin' %}<button class="btn tb red" type="button" data-mass-open="mass-del-dlg">{{ icon('trash') }}Mass Delete</button>{% endif %}
   <button class="btn tb" type="button" id="massSetBtn">{{ icon('sliders') }}Mass Settings</button>
   {% endif %}
   <button class="btn tb" type="button" data-open="filter-dlg">{{ icon('filter') }}Filter</button>
@@ -48,12 +48,9 @@
     <select name="action" data-bulk-action aria-label="Bulk action">
       <option value="suspend">Suspend</option>
       <option value="activate">Activate</option>
-      <option value="extend">Mass Activation (add days)</option>
-      <option value="renew">Mass Payment (plan price and days)</option>
       <option value="plan">Change plan</option>
       <option value="grace">Grace period</option>
       <option value="unbind">Remove MAC binding</option>
-      {% if me.role == 'admin' %}<option value="delete">Delete</option>{% endif %}
     </select>
     <select name="plan_id" data-for="plan" class="hide" aria-label="New plan">
       {% for p in plans %}<option value="{{ p.id }}">{{ p.label }}</option>{% endfor %}
@@ -130,7 +127,7 @@
       {% for s in rows %}
         <tr>
           <td class="muted" data-card="hide">{{ s.id }}</td>
-          <td class="sel" data-card="select"><input class="row-check" type="checkbox" name="ids" value="{{ s.id }}" form="bulkForm" aria-label="Select {{ s.username }}"></td>
+          <td class="sel" data-card="select"><input class="row-check" type="checkbox" name="ids" value="{{ s.id }}" data-u="{{ s.username }}" form="bulkForm" aria-label="Select {{ s.username }}"></td>
           <td class="act nowrap" data-card="actions">
             {% if can('subscribers', 'edit') %}
             {% if can_fn('sub.activation') %}<button type="button" class="ic purple" data-open="renew-drawer" data-action="{{ url_for('subscriber_renew', sid=s.id) }}" data-label="{{ s.username }}"
@@ -260,6 +257,77 @@
     <div class="modal-foot"><span style="flex:1"></span><button type="button" class="btn" data-close>Close</button><button class="btn primary" type="submit" data-confirm="Apply the filled settings to all selected subscribers? Empty fields are left unchanged.">Submit</button></div>
   </form>
 </dialog>
+
+
+{# ---- Mass Activation / Mass Payment / Mass Delete: each opens as its own popup with the ticked customers ---- #}
+{% if can_fn('sub.mass_activation') %}
+<dialog class="modal wide mass-pop" id="mass-act-dlg" aria-labelledby="ma-title">
+  <form method="post" action="{{ url_for('subscribers_mass_activate') }}" autocomplete="off">
+    {{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}"><div data-ids-box></div>
+    <div class="modal-head"><h2 id="ma-title">Mass Activation</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body">
+      <div class="mass-note info">{{ icon('info') }}<div><b>How payment works</b>
+        <p><b>1. Subscriber Balance:</b> activates only customers whose balance covers the package price (paid from the balance). Others are skipped.</p>
+        <p><b>2. Cash received:</b> activates everyone and records the package price as cash received.</p>
+        <p><b>3. Smart Payment:</b> uses the customer's balance when it covers the price, otherwise records cash received.</p>
+        {% if me.role in ('reseller', 'subreseller', 'retailer') %}<p>Your own package cost for each customer comes out of your balance, as with Activation.</p>{% endif %}
+        <p><b>Package:</b> "Current Package" renews each customer on their own package; pick a package to switch them all to it.</p></div></div>
+      <div class="grid2">
+        <div class="field"><label class="lbl" for="ma-plan">Packages <b class="req">*</b></label>
+          <select id="ma-plan" name="plan_id" required><option value="">Select A Package</option><option value="current">Current Package</option>
+            {% for p in act_plans %}<option value="{{ p.id }}">{{ p.label }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="ma-method">Payment Method <b class="req">*</b></label>
+          <select id="ma-method" name="method" required><option value="">Select Payment Method</option>
+            <option value="balance">1. Subscriber Balance</option><option value="cash">2. Cash received</option><option value="smart">3. Smart Payment</option></select></div>
+      </div>
+      <label class="mass-toggle"><span class="switch"><input type="checkbox" name="notify"><i></i></span>Send SMS/Email (activation and payment messages)</label>
+      {% if can_fn('sub.custom_expiry') %}
+      <div class="field"><span class="lbl">Custom Expiry</span>
+        <label class="mass-toggle"><span class="switch"><input type="checkbox" name="custom" data-custom-toggle><i></i></span>Enable</label></div>
+      <div class="grid2" data-custom-fields hidden>
+        <div class="field"><label class="lbl" for="ma-exp">Expiry date</label><input id="ma-exp" name="expiry" type="date"><div class="help">Must be after each customer's current expiry; the price is pro-rated.</div></div>
+        <div class="field"><label class="lbl" for="ma-time">Expiry time</label><input id="ma-time" name="expiry_time" type="time"></div>
+      </div>
+      {% endif %}
+      <div class="field"><label class="lbl">Selected Subscribers <b class="req">*</b></label><textarea rows="2" readonly data-ids-label></textarea></div>
+    </div>
+    <div class="modal-foot"><span style="flex:1"></span><button type="button" class="btn" data-close>Close</button><button class="btn primary" type="submit">Submit</button></div>
+  </form>
+</dialog>
+{% endif %}
+{% if can_fn('sub.mass_payment') %}
+<dialog class="modal mass-pop" id="mass-pay-dlg" aria-labelledby="mp-title">
+  <form method="post" action="{{ url_for('subscribers_mass_payment') }}" autocomplete="off">
+    {{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}"><div data-ids-box></div>
+    <div class="modal-head"><h2 id="mp-title">Mass Payment</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body">
+      <div class="field"><label class="lbl">Selected Subscribers <b class="req">*</b></label><textarea rows="2" readonly data-ids-label></textarea></div>
+      <div class="grid2">
+        <div class="field"><label class="lbl" for="mp-method">Method <b class="req">*</b></label>
+          <select id="mp-method" name="method" required><option value="">Select a Method</option>
+            {% for m in ('cash', 'bKash', 'Nagad', 'bank', 'other') %}<option value="{{ m }}">{{ m|capitalize if m in ('cash', 'bank', 'other') else m }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="mp-amount">Amount <b class="req">*</b></label>
+          <input id="mp-amount" name="amount" type="number" inputmode="decimal" min="0.01" step="0.01" required placeholder="Enter Amount"></div>
+      </div>
+      <p class="muted" style="margin:0">The amount is added to the balance of each selected customer{% if me.role in ('reseller', 'subreseller', 'retailer') %} and taken from your balance{% endif %}. Activation can then take the package price from it.</p>
+    </div>
+    <div class="modal-foot"><span style="flex:1"></span><button type="button" class="btn" data-close>Close</button><button class="btn primary" type="submit">Submit</button></div>
+  </form>
+</dialog>
+{% endif %}
+{% if me.role == 'admin' %}
+<dialog class="modal mass-pop" id="mass-del-dlg" aria-labelledby="md-title">
+  <form method="post" action="{{ url_for('subscribers_bulk') }}" autocomplete="off">
+    {{ csrf_input() }}<input type="hidden" name="action" value="delete"><input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}"><div data-ids-box></div>
+    <div class="modal-head"><h2 id="md-title">Mass Delete</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body">
+      <div class="field"><label class="lbl">Selected Subscribers</label><textarea rows="2" readonly data-ids-label></textarea></div>
+      <p class="muted" style="margin:0">Their logins stop working at once. Payment and usage history is kept.</p>
+    </div>
+    <div class="modal-foot"><span style="flex:1"></span><button type="button" class="btn" data-close>Close</button><button class="btn danger" type="submit" data-confirm="Permanently delete the selected subscribers? This cannot be undone.">Submit</button></div>
+  </form>
+</dialog>
+{% endif %}
 
 <dialog class="modal" id="legend-dlg" aria-labelledby="leg-title">
   <div class="modal-head"><h2 id="leg-title">What each list shows</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
