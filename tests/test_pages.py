@@ -632,6 +632,11 @@ def check_rules(flask_app, ids):
           and one("SELECT svalue FROM settings WHERE skey = 'portal_on'")["svalue"] == "1"
           and 'data-save="/settings/subscriber/portal"' in adm.get("/settings/subscriber").get_data(as_text=True),
           "Settings > Subscriber: the Customer Portal switch saves the moment it is flipped (admins only)")
+    _css = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "panel", "static", "css", "app.css"), encoding="utf-8").read()
+    _sw = re.search(r'\.switch input\[type="checkbox"\] \{([^}]*)\}', _css)
+    check(bool(_sw) and "width: 100%" in _sw.group(1) and "height: 100%" in _sw.group(1)
+          and _css.rindex('.switch input[type="checkbox"] {') > _css.index('input[type="checkbox"], input[type="radio"] {'),
+          "every on/off switch answers a click anywhere on it (the 16px checkbox default does not shrink it)")
 
     # ---- dashboard: Offline ONUs (Offline + LOS), sellers only see the ONUs on their own OLTs
     run("INSERT INTO net_devices (name, kind, ip, created_by) VALUES ('CI-OLT-Admin', 'olt', '10.9.0.1', 'admin')")

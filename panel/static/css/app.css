@@ -1818,3 +1818,10 @@ dialog.modal.confirm-dlg { width: min(420px, calc(100vw - 24px)); }
 .portal-state.on { color: var(--online); font-weight: 600; }
 .portal-state.bad { color: var(--danger, #dc2626); font-weight: 600; }
 
+/* ---- switches: the invisible checkbox covers the whole switch again.
+   input[type="checkbox"] { 16px } (form defaults above) has the same weight as .switch input and came later,
+   so only a 16px corner of every switch answered clicks. ---- */
+.switch input[type="checkbox"] { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; opacity: 0; cursor: pointer; z-index: 1; box-shadow: none; }
+.switch input[type="checkbox"]:disabled { cursor: not-allowed; }
+.switch i { pointer-events: none; }
+
