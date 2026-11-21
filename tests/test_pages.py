@@ -587,6 +587,15 @@ def check_rules(flask_app, ids):
           and 'href="/portal#invoices"' in p_html and 'id="invoices"' in p_html and 'id="usage"' in p_html,
           "customer portal and pay page open, with the bottom nav and its #usage / #invoices targets")
 
+    # ---- phone menu: the empty toast box once covered the whole phone screen (top AND bottom set, z-index 100)
+    # and swallowed every tap on the menu and the page
+    _css = open(os.path.join(ROOT, "panel", "static", "css", "app.css"), encoding="utf-8").read()
+    check(".toasts { pointer-events: none; }" in _css and ".toast { pointer-events: auto; }" in _css
+          and ".toasts { top: auto; bottom:" in _css,
+          "toast box never catches taps, and on phones it sits only at the bottom")
+    check("body.nav-open::after" in _css and "100dvh" in _css,
+          "phone menu has a real tap-catching backdrop and fits the visible screen")
+
     # ---- Phase 2 shell: the topbar "online" pill is ISP-wide, so never for sellers
     import re as _re3
     a_html = adm.get("/subscribers").get_data(as_text=True)
