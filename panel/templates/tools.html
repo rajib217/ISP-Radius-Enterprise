@@ -34,8 +34,25 @@
   </section>
 
   <section class="panel c-12">
-    <div class="panel-head"><h2>RADIUS server log</h2><span class="aside">Last 80 lines</span></div>
-    <pre class="log">{{ log }}</pre>
+    <div class="panel-head"><h2>Recent login attempts</h2><span class="aside">Last 30 answered by the RADIUS server{% if can('logs') %} · <a href="{{ url_for('noc') }}">all in Logs &amp; System Health</a>{% endif %}</span></div>
+    {% if logins %}
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>Time</th><th>Username</th><th>Result</th><th>Reason</th><th>Router</th></tr></thead>
+      <tbody>{% for r in logins %}<tr>
+        <td class="nowrap" data-card="key">{{ r.authdate|dt('%d %b, %H:%M:%S') }}</td>
+        <td class="mono" data-card="title">{{ r.username or '(empty)' }}</td>
+        <td data-card="key"><span class="badge {{ 'ok' if r.reply == 'Access-Accept' else 'bad' }}">{{ 'Accepted' if r.reply == 'Access-Accept' else 'Refused' }}</span></td>
+        <td class="muted">{{ r.reason or '' }}</td>
+        <td class="mono muted">{{ r.nas_ip or '' }}</td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}<div class="empty"><h3>No login attempts yet</h3><p>When a router asks this server to check a customer's login, it shows up here.</p></div>{% endif %}
+  </section>
+
+  <section class="panel c-12">
+    <div class="panel-head"><h2>RADIUS server log</h2><span class="aside mono">{{ log_file }} · last 80 lines</span></div>
+    {% if log.strip() %}<pre class="log">{{ log }}</pre>
+    {% else %}<div class="empty"><h3>Nothing in the log right now</h3><p>FreeRADIUS writes only start-ups, warnings and errors here, and the file is emptied when the logs are rotated. Customer logins are listed above.</p></div>{% endif %}
   </section>
 </div>
 {% endblock %}

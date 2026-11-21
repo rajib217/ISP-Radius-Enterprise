@@ -1475,6 +1475,32 @@ def logs():
 # ====================================================================
 
 
+def web_server_unit():
+    """The web server in front of the panel: install.sh sets up Caddy (HTTPS); older or hand-made servers may use
+    nginx. Show the one that is running, else Caddy."""
+    for unit in ("caddy", "nginx"):
+        if service_state(unit) == "active":
+            return unit
+    return "caddy"
+
+
+RADIUS_LOGS = ("/var/log/freeradius/radius.log", "/var/log/freeradius/radius.log.1")
+
+
+def radius_log(lines=80):
+    """(text, file) of the newest non-empty FreeRADIUS log. FreeRADIUS only writes start-ups, warnings and errors
+    there (logins go to the radpostauth table), and logrotate empties the file, so it is often blank."""
+    first_error = None
+    for path in RADIUS_LOGS:
+        text = tail(path, lines)
+        if text.startswith("Cannot read "):
+            first_error = first_error or text
+            continue
+        if text.strip():
+            return text, path
+    return (first_error or ""), RADIUS_LOGS[0]
+
+
 def tail(path, lines=80):
     try:
         with open(path, errors="replace") as fh:
@@ -1494,10 +1520,21 @@ def tools():
             ok, out = radius.test_login(user, pw, os.environ.get("RADIUS_LOCAL_SECRET", ""))
             result = {"ok": ok, "output": out, "user": user}
     services = [(label, svc, service_state(svc)) for label, svc in
-                (("RADIUS server", "freeradius"), ("Database", "mariadb"), ("Web server", "nginx"),
+                (("RADIUS server", "freeradius"), ("Database", "mariadb"), ("Web server", web_server_unit()),
                  ("This panel", "isp-panel"), ("Maintenance timer", "isp-panel-maint.timer"))]
-    log = tail("/var/log/freeradius/radius.log")
-    return render_template("tools.html", result=result, services=services, log=log, server=server_info())
+    log, log_file = radius_log()
+    # every login the RADIUS server answered (FreeRADIUS writes these to the database, not to its log file)
+    sql = "SELECT p.authdate, p.username, p.reply, p.reason, p.nas_ip FROM radpostauth p"
+    names = core.my_downline()
+    if names is None:
+        logins = q(sql + " ORDER BY p.id DESC LIMIT 30")
+    elif names:         # a seller: only their downline's customers
+        logins = q(sql + " JOIN subscribers s ON s.username = p.username WHERE s.created_by IN (%s) ORDER BY p.id DESC LIMIT 30"
+                   % ",".join(["%s"] * len(names)), list(names))
+    else:
+        logins = []
+    return render_template("tools.html", result=result, services=services, log=log, log_file=log_file,
+                           logins=logins, server=server_info())
 
 
 @app.route("/tools/reload", methods=["POST"])

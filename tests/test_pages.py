@@ -597,6 +597,29 @@ def check_rules(flask_app, ids):
           and 'href="/portal#invoices"' in p_html and 'id="invoices"' in p_html and 'id="usage"' in p_html,
           "customer portal and pay page open, with the bottom nav and its #usage / #invoices targets")
 
+    # ---- Server tools: the web server is Caddy (install.sh), and logins are listed even when radius.log is empty
+    import tempfile as _tf
+    panel_app = sys.modules["app"]
+    tools_html = adm.get("/tools").get_data(as_text=True)
+    check(">caddy<" in tools_html and ">nginx<" not in tools_html, "Server tools checks Caddy, the web server install.sh sets up")
+    check("Recent login attempts" in tools_html and "Cleartext password does not match" in tools_html,
+          "Server tools lists recent RADIUS login attempts with the refusal reason")
+    _d = _tf.mkdtemp()
+    _empty, _old = os.path.join(_d, "radius.log"), os.path.join(_d, "radius.log.1")
+    open(_empty, "w").close()
+    with open(_old, "w") as fh:
+        fh.write("Info: Ready to process requests\n")
+    _keep = panel_app.RADIUS_LOGS
+    try:
+        panel_app.RADIUS_LOGS = (_empty, _old)
+        text, used = panel_app.radius_log()
+        check("Ready to process requests" in text and used == _old, "an empty radius.log falls back to the rotated file")
+        panel_app.RADIUS_LOGS = (_empty,)
+        text, _ = panel_app.radius_log()
+        check(text == "", "no log text at all shows the empty-log message instead of a blank box")
+    finally:
+        panel_app.RADIUS_LOGS = _keep
+
     # ---- Mass Activation / Mass Payment / Mass Delete open as popups and work
     lst = adm.get("/subscribers").get_data(as_text=True)
     check(all(t in lst for t in ('id="mass-act-dlg"', 'id="mass-pay-dlg"', 'id="mass-del-dlg"', 'data-mass-open="mass-act-dlg"',
