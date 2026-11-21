@@ -789,6 +789,18 @@ def subscriber_new():
     form, errors = {"status": "active"}, {}
     if request.args.get("plan", "").isdigit():
         form["plan_id"] = request.args["plan"]
+    from_req = None
+    if request.method == "GET" and request.args.get("req"):
+        # Network > CoA Request Log > New PPPoE requests: the router already asks for this username (and password)
+        import mod_coa
+        from_req = mod_coa.request_row(request.args["req"])
+        if from_req:
+            form.update(username=from_req["username"], password=from_req["pass"] or "",
+                        notes="PPPoE request from router %s%s on %s." % (
+                            from_req["nas_ip"] or "?", (", MAC " + from_req["mac"]) if from_req["mac"] else "",
+                            from_req["authdate"].strftime("%d-%m-%Y %H:%M")))
+        else:
+            flash("That PPPoE request is gone or the username is already a customer.", "warn")
     if request.method == "POST":
         form, errors = read_sub_form(request.form, creating=True)
         if not errors.get("username") and (
@@ -815,7 +827,7 @@ def subscriber_new():
             return redirect(url_for("subscriber_view", sid=sid))
         flash("Please fix the highlighted fields.", "error")
     return render_template("subscriber_form.html", mode="new", plans=plans, form=form, errors=errors, sub=None,
-                           areas=core.area_names())
+                           areas=core.area_names(), from_req=from_req)
 
 
 @app.route("/subscribers/<int:sid>/edit", methods=["GET", "POST"])
@@ -1621,6 +1633,7 @@ import mod_network  # noqa: E402,F401
 import mod_tickets  # noqa: E402,F401
 import mod_messages  # noqa: E402,F401
 import mod_notify  # noqa: E402,F401
+import mod_coa  # noqa: E402,F401
 import mod_settings  # noqa: E402,F401
 import mod_notes  # noqa: E402,F401
 import mod_documents  # noqa: E402,F401

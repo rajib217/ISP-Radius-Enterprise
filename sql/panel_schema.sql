@@ -757,3 +757,11 @@ ALTER TABLE portal_payments ADD KEY IF NOT EXISTS idx_created (created_at);
 -- bulk app notifications (Notifications > Send): one batch id per send, for the history and "take back"
 ALTER TABLE sub_notifications ADD COLUMN IF NOT EXISTS batch VARCHAR(12) NULL;
 ALTER TABLE sub_notifications ADD KEY IF NOT EXISTS idx_batch (batch);
+
+-- New PPPoE requests (Network > CoA Request Log): FreeRADIUS writes the attempted password (PAP only); keep it only
+-- when the login was refused for a username that is not a customer. Accepted logins and existing customers' wrong
+-- passwords are never stored (every customer has radcheck rows; radcheck and radpostauth share FreeRADIUS's
+-- collation, the panel tables may not yet on a fresh install). maintenance.py wipes the kept ones after 3 days.
+DROP TRIGGER IF EXISTS radpostauth_pass;
+CREATE TRIGGER radpostauth_pass BEFORE INSERT ON radpostauth FOR EACH ROW SET NEW.pass = IF(NEW.reply = 'Access-Reject' AND NEW.username <> '' AND NOT EXISTS (SELECT 1 FROM radcheck WHERE username = NEW.username), LEFT(NEW.pass, 64), '');
+UPDATE radpostauth p SET p.pass = '' WHERE p.pass <> '' AND (p.reply <> 'Access-Reject' OR EXISTS (SELECT 1 FROM radcheck rc WHERE rc.username = p.username));

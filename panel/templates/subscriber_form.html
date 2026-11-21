@@ -2,6 +2,7 @@
 {% from "_macros.html" import icon, field %}
 {% block title %}{{ 'New subscriber' if mode == 'new' else 'Edit ' ~ sub.username }}{% endblock %}
 {% block content %}
+{% if from_req %}<div class="state-banner ok" style="margin-bottom:14px">{{ icon('globe') }} Filled in from the PPPoE request of <b class="mono">{{ from_req.username }}</b>{% if from_req.pass %} (username and password){% else %}. The router did not send the password (CHAP / MS-CHAP): type the one set on the customer's router{% endif %}. Pick the package and fill in the customer's details.</div>{% endif %}
 <div class="page-head">
   <div>
     <h1>{{ 'New subscriber' if mode == 'new' else 'Edit subscriber' }}</h1>

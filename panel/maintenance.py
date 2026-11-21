@@ -458,6 +458,13 @@ def main():
         if closed:
             print("closed %d stale sessions" % closed)
 
+    # passwords of refused unknown usernames (Network > CoA Request Log > New PPPoE requests) are kept for 3 days only
+    try:
+        cur.execute("UPDATE radpostauth SET pass = '' WHERE pass <> '' AND authdate < NOW() - INTERVAL 3 DAY")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+
     cur.execute("SELECT svalue FROM settings WHERE skey = 'last_daily'")
     row = cur.fetchone()
     today = date.today().isoformat()

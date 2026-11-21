@@ -905,6 +905,36 @@ def check_rules(flask_app, ids):
           and 'href="/notifications/send"' in adm.get("/").get_data(as_text=True),
           "App Notification sends to a whole group with each customer's own details, sellers reach only their customers, "
           "and a send can be taken back")
+    # ---- Network > CoA Request Log: disconnect log, and new PPPoE requests that open a filled-in New subscriber form
+    _known = one("SELECT username FROM subscribers ORDER BY id LIMIT 1")["username"]
+    run("INSERT INTO radpostauth (username, pass, reply, authdate, nas_ip, mac) VALUES "
+        "('new.pppoe', 'S3cret!x', 'Access-Reject', NOW(), '10.9.9.1', 'AA:BB:CC:00:11:22'), "
+        "('new.pppoe', '', 'Access-Reject', NOW() - INTERVAL 1 HOUR, '10.9.9.1', ''), "
+        "('chap.only', '', 'Access-Reject', NOW(), '10.9.9.2', ''), "
+        "(%s, 'typo-of-real-pw', 'Access-Reject', NOW(), '10.9.9.1', ''), "
+        "(%s, 'real-pw', 'Access-Accept', NOW(), '10.9.9.1', '')", (_known, _known))
+    run("INSERT INTO coa_log (username, nas_ip, ok, message, created_by) VALUES (%s, '10.9.9.1', 1, 'CI disconnect', 'admin')", (_known,))
+    _kept = one("SELECT COUNT(*) AS c FROM radpostauth WHERE username = %s AND pass <> ''", (_known,))["c"]
+    _pw = one("SELECT pass FROM radpostauth WHERE username = 'new.pppoe' AND pass <> ''")
+    _coa = adm.get("/network/coa").get_data(as_text=True)
+    _newp = adm.get("/network/coa?tab=new").get_data(as_text=True)
+    _rid = one("SELECT id FROM radpostauth WHERE username = 'new.pppoe' AND pass <> ''")["id"]
+    _form = adm.get("/subscribers/new?req=%d" % _rid).get_data(as_text=True)
+    _rid_known = one("SELECT MAX(id) AS id FROM radpostauth WHERE username = %s", (_known,))["id"]
+    _form_known = adm.get("/subscribers/new?req=%d" % _rid_known).get_data(as_text=True)
+    _sel = client(ids["reseller"])
+    _sel_new = _sel.get("/network/coa?tab=new")
+    _sel_form = _sel.get("/subscribers/new?req=%d" % _rid).get_data(as_text=True)
+    check(_kept == 0 and _pw and _pw["pass"] == "S3cret!x"
+          and "CI disconnect" in _coa and "New PPPoE requests" in _coa
+          and "new.pppoe" in _newp and "chap.only" in _newp and _known not in _newp and "Received" in _newp and "Not sent" in _newp
+          and ('href="/subscribers/new?req=%d"' % _rid) in _newp and "S3cret" not in _newp
+          and 'value="new.pppoe"' in _form and 'value="S3cret!x"' in _form and "10.9.9.1" in _form and "AA:BB:CC:00:11:22" in _form
+          and "typo-of-real-pw" not in _form_known and "real-pw" not in _form_known
+          and "S3cret" not in _sel_form and (_sel_new.status_code == 403 or "new.pppoe" not in _sel_new.get_data(as_text=True))
+          and 'href="/network/coa"' in adm.get("/").get_data(as_text=True),
+          "CoA Request Log sits under Network; a refused unknown PPPoE username opens New subscriber with its username and "
+          "password filled in, existing customers' passwords are never kept, and sellers do not see others' requests")
 
     # ---- installable app (PWA): manifests, icons, service worker, offline page, tags on every layout
     import struct as _st

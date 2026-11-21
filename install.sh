@@ -21,7 +21,7 @@ DB_RADIUS_USER=radius
 DB_PANEL_USER=radius_panel
 # Raise when a change needs this installer (new service, unit change, FreeRADIUS or Caddy config): update.sh then
 # refuses to deploy and asks for "sudo ./install.sh" once, instead of half-applying it.
-INSTALLER_VERSION=3
+INSTALLER_VERSION=4
 ADMIN_USER="${ADMIN_USER:-}"
 TIMEZONE="${TIMEZONE-Asia/Dhaka}"
 
@@ -514,7 +514,8 @@ wr(p, s)
 link = fr + "/mods-enabled/sql"
 if not os.path.lexists(link): os.symlink("../mods-available/sql", link)
 
-# 2. do not store attempted passwords in radpostauth
+# 2. do not store attempted passwords in radpostauth (the stock User-Password / Chap-Password value is dropped here;
+#    the post-auth query in 2b writes User-Password and the radpostauth_pass trigger keeps it only for unknown usernames)
 #    Always start from the original file kept in isp-backups: every change to queries.conf is made here, so a re-run
 #    also repairs a copy that an older version of this installer edited wrongly.
 p = fr + "/mods-config/sql/main/mysql/queries.conf"; backup(p)
@@ -563,7 +564,7 @@ POSTAUTH_QUERY = r'''	query =	"\
 			(username, pass, reply, authdate, reason, nas_ip, mac ${..class.column_name}) \
 		VALUES ( \
 			'%{SQL-User-Name}', \
-			'', \
+			'%{User-Password}', \
 			'%{reply:Packet-Type}', \
 			'%S.%M', \
 			'%{%{Module-Failure-Message}:-%{reply:Reply-Message}}', \

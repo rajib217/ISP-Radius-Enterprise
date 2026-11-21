@@ -2017,3 +2017,6 @@ html.hover-menu:not(.menu-ready) .nav-group[open] > summary > .i:last-child { tr
 .brand-acts label.btn { cursor: pointer; }
 @media (max-width: 520px) { .brand-grid { grid-template-columns: 1fr; padding: 14px; } .brand-item { flex-direction: column; align-items: center; text-align: center; } .brand-acts { justify-content: center; } .brand-info h3 { justify-content: center; } }
 
+
+/* a green notice (New subscriber filled in from a PPPoE request) */
+.state-banner.ok { background: var(--ok-soft); color: var(--ok); border: 1px solid color-mix(in srgb, var(--ok) 25%, transparent); border-radius: 12px; }

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, pager %}
+{% block title %}CoA Request Log{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>CoA Request Log</h1><p class="sub">{{ 'Disconnect requests sent to the routers' if tab == 'coa' else 'Routers asking for a username that is not a customer yet: add them in one click' }}</p></div>
+</div>
+<div class="tabs">
+  <a class="{{ 'on' if tab == 'coa' }}" href="{{ url_for('coa_log') }}">CoA requests</a>
+  {% if sees_new %}<a class="{{ 'on' if tab == 'new' }}" href="{{ url_for('coa_log', tab='new') }}">New PPPoE requests{% if new_count %} <span class="pill warn">{{ new_count }}</span>{% endif %}</a>{% endif %}
+</div>
+{% if tab == 'coa' and not logging_on %}
+<div class="state-banner warn" style="margin-bottom:16px">CoA Request Log is off, so new disconnect requests are not recorded.{% if me.role == 'admin' %} <a href="{{ url_for('settings_software') }}">Turn it on</a>.{% endif %}</div>
+{% endif %}
+<section class="panel">
+  <form class="listbar" method="get" style="padding:12px 14px;gap:8px;flex-wrap:wrap">
+    {% if tab == 'new' %}<input type="hidden" name="tab" value="new">{% endif %}
+    <input name="q" value="{{ text }}" placeholder="{{ 'Username, router or message' if tab == 'coa' else 'Username, router or MAC' }}" spellcheck="false" style="max-width:280px">
+    {% if tab == 'coa' %}<select name="result"><option value="">Any result</option><option value="ok" {{ 'selected' if result == 'ok' }}>Accepted</option><option value="fail" {{ 'selected' if result == 'fail' }}>Failed</option></select>{% endif %}
+    <button class="btn" type="submit">{{ icon('search') }}Search</button>
+  </form>
+  {% if rows %}
+  <div class="tbl-wrap"><table class="tbl">
+  {% if tab == 'coa' %}
+    <thead><tr><th>Date</th><th>Username</th><th>Router</th><th>Result</th><th>By</th><th>Message</th></tr></thead>
+    <tbody>{% for c in rows %}<tr>
+      <td class="nowrap" data-label="Date">{{ c.created_at|dt }}</td>
+      <td data-label="Username">{% if c.sid %}<a href="{{ url_for('subscriber_view', sid=c.sid) }}">{{ c.username }}</a>{% else %}{{ c.username }}{% endif %}</td>
+      <td class="mono" data-label="Router">{{ c.nas_ip }}</td>
+      <td data-label="Result"><span class="pill {{ 'ok' if c.ok else 'bad' }}">{{ 'Accepted' if c.ok else 'Failed' }}</span></td>
+      <td class="muted" data-label="By">{{ c.created_by }}</td>
+      <td class="muted" data-label="Message">{{ c.message }}</td></tr>{% endfor %}</tbody>
+  {% else %}
+    <thead><tr><th>Username</th><th>Last try</th><th class="num">Tries</th><th>Router</th><th>MAC</th><th>Password</th><th></th></tr></thead>
+    <tbody>{% for r in rows %}<tr>
+      <td class="mono" data-label="Username"><b>{{ r.username }}</b></td>
+      <td class="nowrap" data-label="Last try">{{ r.last|dt }}</td>
+      <td class="num" data-label="Tries">{{ r.tries }}</td>
+      <td class="mono" data-label="Router">{{ r.nas_ip or '-' }}</td>
+      <td class="mono" data-label="MAC">{{ r.mac or '-' }}</td>
+      <td data-label="Password">{% if r.has_pw %}<span class="pill ok">Received</span>{% else %}<span class="pill mute" title="The router uses CHAP / MS-CHAP, which never sends the password">Not sent</span>{% endif %}</td>
+      <td><a class="btn sm primary" href="{{ url_for('subscriber_new', req=r.rid) }}">{{ icon('plus') }}Add New Subscriber</a></td></tr>{% endfor %}</tbody>
+  {% endif %}
+  </table></div>
+  <div class="listbar"><span class="muted">Showing {{ pg.first }} to {{ pg.last }} of {{ '{:,}'.format(pg.total) }}</span>{{ pager(pg, keep, 'coa_log') }}</div>
+  {% else %}
+  <div class="empty"><p>{% if tab == 'coa' %}No disconnect requests{% if text or result %} match this search{% endif %}.{% else %}No new PPPoE requests{% if text %} match this search{% endif %}. When a router asks for a username that is not a customer yet, it shows here.{% endif %}</p></div>
+  {% endif %}
+</section>
+{% if tab == 'new' %}<p class="muted" style="margin-top:10px;font-size:13px">The password arrives only when the router's PPPoE profile uses PAP. With CHAP / MS-CHAP (MikroTik's default) only the username comes, so type the password yourself. Passwords are kept for 3 days and only for usernames that are not customers.</p>{% endif %}
+{% endblock %}

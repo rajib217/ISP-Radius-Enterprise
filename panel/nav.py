@@ -84,6 +84,7 @@ STRUCTURE = [
         _i("Graph", "network_graph", fn="nas.module"),
         _i("Diagram", "network_diagram", fn="nas.module"),
         _i("Test login", "tools", ["tools", "tools_reload"], fn="nas.module"),
+        _i("CoA Request Log", "coa_log", fn="log.coa"),
     ]),
     _g("area", "Area", "pin", module="area", items=[
         _i("Areas", "areas"),
