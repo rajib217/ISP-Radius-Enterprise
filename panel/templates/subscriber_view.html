@@ -68,6 +68,24 @@
 </section>
 
 <div class="sv-pane" id="tab-profile">
+<section class="panel live-rate" data-rate-src="{{ url_for('subscriber_rate', sid=sub.id) }}" aria-label="Live speed">
+  <div class="panel-head"><h2>{{ icon('activity') }}Live speed (RX / TX)</h2>
+    <span class="aside" data-lr-note>Loading…</span></div>
+  <div class="lr-body">
+    <div class="lr-now">
+      <div class="lr-stat rx"><small>{{ icon('arrow-down') }}Download (RX)</small><b data-lr-down>–</b></div>
+      <div class="lr-stat tx"><small>{{ icon('arrow-up') }}Upload (TX)</small><b data-lr-up>–</b></div>
+    </div>
+    <div class="lr-chart-wrap">
+      <svg class="lr-chart" viewBox="0 0 600 150" preserveAspectRatio="none" role="img" aria-label="Download and upload speed while this page is open">
+        <g data-lr-grid></g>
+        <polyline class="lr-line rx" data-lr-rx points=""></polyline>
+        <polyline class="lr-line tx" data-lr-tx points=""></polyline>
+      </svg>
+      <div class="lr-scale"><span data-lr-max></span><span>while this page is open · updates every 30 s</span></div>
+    </div>
+  </div>
+</section>
 <div class="cards3">
   <section class="panel kvc"><div class="panel-head"><h2>{{ icon('user') }}Personal Information</h2></div>
     <div class="kvc-body">
@@ -292,6 +310,7 @@
 {% endif %}
 {% endblock %}
 {% block scripts %}
+<script src="{{ asset('js/live-rate.js') }}"></script>
 <script>
 (function () {
   var tabs = document.querySelectorAll("[data-tab]"), panes = document.querySelectorAll(".sv-pane");

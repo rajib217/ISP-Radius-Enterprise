@@ -3,7 +3,7 @@ import os
 import re
 from datetime import date, timedelta
 
-from flask import abort, flash, g, redirect, request, send_file, url_for
+from flask import abort, flash, g, jsonify, redirect, request, send_file, url_for
 
 import core
 import radius
@@ -301,3 +301,30 @@ def subscriber_photo_save(sid):
     commit()
     flash("Photo saved.", "success")
     return _back(sid)
+
+
+@route("/subscribers/<int:sid>/rate", module="subscribers")
+def subscriber_rate(sid):
+    """Current download / upload speed of one customer (JSON, polled by the live chart on their page).
+
+    The speed is worked out by the 5-minute traffic job from the router's byte counters, and routers send new counters
+    only at each interim update (5 minutes on MikroTik by default), so the value changes in steps, not every second."""
+    sub = q("SELECT username FROM subscribers WHERE id = %s", (sid,), one=True) or abort(404)
+    sessions = q("SELECT radacctid, COALESCE(acctupdatetime, acctstarttime) AS upd FROM radacct "
+                 "WHERE username = %s AND acctstoptime IS NULL", (sub["username"],))
+    down = up = 0
+    known = False
+    if sessions:
+        try:
+            ids = [r["radacctid"] for r in sessions]
+            for t in q("SELECT down_bps, up_bps FROM traffic_last WHERE radacctid IN (%s)" % ",".join(["%s"] * len(ids)), ids):
+                down += int(t["down_bps"] or 0)
+                up += int(t["up_bps"] or 0)
+                known = True
+        except Exception:       # traffic_last appears after install.sh / update.sh has run
+            known = False
+    newest = max((r["upd"] for r in sessions if r["upd"]), default=None)
+    resp = jsonify(online=bool(sessions), known=known, down=down, up=up,
+                   updated=newest.strftime("%H:%M") if newest else "")
+    resp.headers["Cache-Control"] = "no-store"
+    return resp

@@ -94,7 +94,7 @@
         <button type="button" data-tx="csv">CSV</button>
         <span class="viewmenu"><button type="button" id="viewBtn" aria-haspopup="true">View &#9662;</button>
           <div class="viewpop hide" id="viewPop">
-            {% for key, name in (('password', 'Password'), ('plan', 'Packages'), ('mac', 'IP / MAC'), ('rate', 'Rx / Tx'), ('seller', 'Salesperson'), ('balance', 'Balance'), ('due', 'Due'), ('area', 'Area'), ('phone', 'Phone')) %}
+            {% for key, name in (('password', 'Password'), ('plan', 'Packages'), ('mac', 'IP / MAC'), ('seller', 'Salesperson'), ('balance', 'Balance'), ('due', 'Due'), ('area', 'Area'), ('phone', 'Phone')) %}
             <label><input type="checkbox" data-col="{{ key }}" checked> {{ name }}</label>{% endfor %}
           </div></span>
       </div>
@@ -122,7 +122,7 @@
         {{ th('expiry', 'Expiration') }}
         <th data-c="password">Password</th>
         {{ th('plan', 'Packages') }}
-        <th data-c="mac">IP / MAC</th><th data-c="rate" class="num" title="Average over the last router update (about 10 minutes)">Rx / Tx</th>
+        <th data-c="mac">IP / MAC</th>
         <th data-c="seller">Salesperson</th><th data-c="balance">Balance</th><th data-c="due">Due</th>
         {{ th('area', 'Area', '', 'area') }}<th data-c="phone">Phone</th>
       </tr></thead>
@@ -151,7 +151,6 @@
           <td data-c="password"><span class="pill info mono">{{ s.password or '—' }}</span></td>
           <td data-c="plan" data-card="key">{% if s.plan_label %}<span class="pill info">{{ s.plan_label }}</span>{% else %}<span class="muted">No plan</span>{% endif %}</td>
           <td data-c="mac" class="mono ipmac">{% if s.live_ip or s.live_mac %}<span>{{ s.live_ip or '—' }}</span><small>{{ s.live_mac or '—' }}</small>{% else %}<span class="muted">—</span>{% endif %}</td>
-          <td data-c="rate" class="num mono rate">{% if s.rx_bps is not none %}<span class="rx" title="Download">{{ icon('arrow-down') }}{{ s.rx_bps|bps }}</span><span class="tx" title="Upload">{{ icon('arrow-up') }}{{ s.tx_bps|bps }}</span>{% elif s.online %}<span class="muted" title="Waiting for the next router update">…</span>{% else %}<span class="muted">—</span>{% endif %}</td>
           <td data-c="seller">{% if s.created_by %}<span class="pill violet">{{ s.seller_name or s.created_by }}{% if s.seller_role %} ({{ roles.get(s.seller_role, s.seller_role) }}){% endif %}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
           <td data-c="balance"><span class="pill ok">{{ '%.2f'|format(s.balance|float) }}</span></td>
           <td data-c="due"><span class="pill {{ 'bad' if s.due|float > 0 else 'ok' }}">{{ '%.2f'|format(s.due|float) }}</span></td>

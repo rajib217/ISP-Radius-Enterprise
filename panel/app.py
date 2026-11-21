@@ -598,20 +598,12 @@ def subscribers():
         for a in q("SELECT username, framedipaddress, callingstationid, nasipaddress, acctstarttime FROM radacct "
                    "WHERE acctstoptime IS NULL AND username IN (%s) ORDER BY acctstarttime" % marks, names):
             live[a["username"]] = a
-        try:            # per-customer rate from the 5-minute traffic job (table appears after install.sh is re-run)
-            rates = {t["username"]: t for t in q(
-                "SELECT username, SUM(down_bps) AS down, SUM(up_bps) AS up FROM traffic_last "
-                "WHERE username IN (%s) GROUP BY username" % marks, names)}
-        except Exception:
-            rates = {}
         for r in rows:
             a = live.get(r["username"])
             r["online"] = a is not None
             r["live_ip"] = (a["framedipaddress"] if a else "") or r["static_ip"] or ""
             r["live_mac"] = (a["callingstationid"] if a else "") or r["mac_bind"] or ""
             r["live_nas"] = a["nasipaddress"] if a else ""
-            t = rates.get(r["username"]) if a else None
-            r["rx_bps"], r["tx_bps"] = (float(t["down"] or 0), float(t["up"] or 0)) if t else (None, None)
     plans = core.filter_plans(q("SELECT id, label FROM plans ORDER BY download_mbps, label"))
     areas = [r["area"] for r in q("SELECT DISTINCT area FROM subscribers WHERE area <> '' ORDER BY area")]
     sellers = q("SELECT username, full_name, role FROM panel_admins ORDER BY username") if core.my_downline() is None else []

@@ -587,6 +587,32 @@ def check_rules(flask_app, ids):
           and 'href="/portal#invoices"' in p_html and 'id="invoices"' in p_html and 'id="usage"' in p_html,
           "customer portal and pay page open, with the bottom nav and its #usage / #invoices targets")
 
+    # ---- RX / TX: not in the subscriber list any more; a live chart on each customer's page, for every panel
+    other = one("SELECT id FROM subscribers WHERE created_by NOT IN ('karim', 'karim_sub') OR created_by IS NULL LIMIT 1")
+    shop = one("SELECT s.id, s.username, r.radacctid FROM subscribers s JOIN radacct r ON r.username = s.username "
+               "AND r.acctstoptime IS NULL WHERE s.created_by = 'karim' LIMIT 1")
+    if not shop:        # give one of karim's customers an open session
+        u = one("SELECT id, username FROM subscribers WHERE created_by = 'karim' LIMIT 1")
+        run("INSERT INTO radacct (acctsessionid, acctuniqueid, username, nasipaddress, acctstarttime, acctupdatetime) "
+            "VALUES ('ci-rate', 'ci-rate-u', %s, '10.0.0.1', NOW() - INTERVAL 1 HOUR, NOW())", (u["username"],))
+        shop = one("SELECT s.id, s.username, r.radacctid FROM subscribers s JOIN radacct r ON r.username = s.username "
+                   "AND r.acctstoptime IS NULL WHERE s.id = %s LIMIT 1", (u["id"],))
+    shop_id = shop["id"]
+    run("REPLACE INTO traffic_last (radacctid, username, down_bps, up_bps, upd) VALUES (%s, %s, 4640000, 186000, NOW())",
+        (shop["radacctid"], shop["username"]))
+    lst = adm.get("/subscribers").get_data(as_text=True)
+    check("Rx / Tx" not in lst and 'data-c="rate"' not in lst, "the subscriber list has no Rx / Tx column")
+    for who, cl in (("admin", adm), ("reseller", client(ids["reseller"]))):
+        page = cl.get("/subscribers/%d" % shop_id).get_data(as_text=True)
+        rj = cl.get("/subscribers/%d/rate" % shop_id)
+        d = rj.get_json(silent=True) or {}
+        check('data-rate-src="/subscribers/%d/rate"' % shop_id in page and "live-rate.js" in page
+              and rj.status_code == 200 and d.get("online") is True and d.get("down") == 4640000 and d.get("up") == 186000,
+              "%s sees the live RX / TX chart and its speed on the customer's page" % who)
+    if other:
+        check(client(ids["reseller"]).get("/subscribers/%d/rate" % other["id"]).status_code in (302, 403, 404),
+              "a reseller cannot read the speed of a customer who is not theirs")
+
     # ---- phone menu: the empty toast box once covered the whole phone screen (top AND bottom set, z-index 100)
     # and swallowed every tap on the menu and the page
     _css = open(os.path.join(ROOT, "panel", "static", "css", "app.css"), encoding="utf-8").read()
