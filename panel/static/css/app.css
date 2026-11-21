@@ -1977,3 +1977,24 @@ a.btn-bkash .i { color: #fff; }
 html.hover-menu:not(.menu-ready) .nav-group[open] > .nav-sub { display: none; }
 html.hover-menu:not(.menu-ready) .nav-group[open] > summary > .i:last-child { transform: none; }
 
+
+/* menu: no visible scrollbars anywhere (sidebar, rail flyouts, phone drawer); it still scrolls with wheel / touch */
+.side, .side .nav, .nav-sub, .side *, .bottom-nav { scrollbar-width: none; -ms-overflow-style: none; }
+.side::-webkit-scrollbar, .side *::-webkit-scrollbar, .nav-sub::-webkit-scrollbar, .bottom-nav::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+/* ---- smooth scrolling on phones ----
+   * no backdrop blur on sticky bars / dialog backdrops: blurring what scrolls underneath every frame is what makes
+     cheaper Android phones stutter; the bars get a solid background instead
+   * the menu drawer, tables, tab rows and button rows scroll with momentum and do not drag the page along
+   * in-page jumps (#tabs, "See all") glide instead of snapping, unless the phone asks for reduced motion */
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+@media (max-width: 767px) {
+  html, body { -webkit-tap-highlight-color: transparent; }
+  .topbar, .pp-bar { backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--surface); }
+  dialog.modal::backdrop { backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .side { touch-action: pan-y; will-change: transform; contain: layout paint; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  .bottom-nav, .pt-bottom-nav { will-change: transform; }
+  .tbl-wrap, .pp-tabs, .sv-tabs, .toolbtns, .chips, .seg-tabs { -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+  .push-ic, .notif-bell .notif-dot { animation-iteration-count: 3; }
+}
+

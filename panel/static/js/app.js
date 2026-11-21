@@ -288,8 +288,15 @@
   $$("[data-nav-toggle]").forEach(function (b) { b.addEventListener("click", function () { setTimeout(navIdle, 0); }); });
   var side = $(".side");
   if (side) {
+    var idleAt = 0;                    /* scroll fires every frame: restart the 5 s wait at most every 200 ms */
     ["touchstart", "pointerdown", "scroll", "wheel", "keydown", "toggle"].forEach(function (ev) {
-      side.addEventListener(ev, function () { if (document.body.classList.contains("nav-open")) navIdle(); }, { passive: true, capture: true });
+      side.addEventListener(ev, function () {
+        if (!document.body.classList.contains("nav-open")) return;
+        var now = Date.now();
+        if (ev === "scroll" && now - idleAt < 200) return;
+        idleAt = now;
+        navIdle();
+      }, { passive: true, capture: true });
     });
     side.addEventListener("click", function (e) {      /* an item was picked: keep the menu until the next page shows */
       if (e.target.closest(".nav a[href]") && navTimer) { clearTimeout(navTimer); navTimer = null; }
@@ -650,8 +657,14 @@
     else if (e.key === "[") { var b = $("[data-side-toggle]"); if (b) b.click(); }
   });
   var bn = $(".bottom-nav"), lastY = window.scrollY || 0;
+  var bnTick = false;                 /* at most once per frame: smooth scrolling on phones */
   if (bn) window.addEventListener("scroll", function () {
-    var y = window.scrollY || 0;
-    if (Math.abs(y - lastY) > 8) { bn.classList.toggle("bn-hidden", y > lastY && y > 120); lastY = y; }
+    if (bnTick) return;
+    bnTick = true;
+    requestAnimationFrame(function () {
+      bnTick = false;
+      var y = window.scrollY || 0;
+      if (Math.abs(y - lastY) > 8) { bn.classList.toggle("bn-hidden", y > lastY && y > 120); lastY = y; }
+    });
   }, { passive: true });
 })();
