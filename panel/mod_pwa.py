@@ -178,12 +178,16 @@ self.addEventListener("activate", (e) => {
   e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith("isp-panel-") && k !== CACHE)
     .map((k) => caches.delete(k)))).then(() => self.clients.claim()));
 });
+function isPortal(c) {            /* a window of the customer app, not a staff panel window */
+  try { const u = new URL(c.url); return u.origin === self.location.origin && (u.pathname === "/portal" || u.pathname.startsWith("/portal/")); }
+  catch (x) { return false; }
+}
 self.addEventListener("push", (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch (x) { d = { body: e.data ? e.data.text() : "" }; }
   const title = d.title || "নোটিফিকেশন";
   e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
-    list.forEach((c) => c.postMessage({ type: "push", title: title, body: d.body || "", unread: d.unread }));
+    list.filter(isPortal).forEach((c) => c.postMessage({ type: "push", title: title, body: d.body || "", unread: d.unread }));
     if (typeof d.unread === "number" && self.navigator.setAppBadge) { self.navigator.setAppBadge(d.unread).catch(() => {}); }
     return self.registration.showNotification(title, {
       body: d.body || "", icon: "__ICON__", tag: d.tag, renotify: true, silent: false,
@@ -195,7 +199,7 @@ self.addEventListener("notificationclick", (e) => {
   const url = (e.notification.data && e.notification.data.url) || "/portal/notifications";
   e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
     for (const c of list) {
-      if (c.url.indexOf(self.location.origin) === 0 && "focus" in c) { if (c.navigate) c.navigate(url); return c.focus(); }
+      if (isPortal(c) && "focus" in c) { if (c.navigate) c.navigate(url); return c.focus(); }
     }
     return self.clients.openWindow(url);
   }));

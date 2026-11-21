@@ -1,12 +1,14 @@
 {# Installable app: manifest, phone icons, and the launch splash (painted by CSS before the page so nothing flashes;
    static/js/pwa.js fades it out once the page has loaded). Set pwa_kind = 'portal' before including for the customer app. #}
 {% set _portal = pwa_kind is defined and pwa_kind == 'portal' %}
+{% set _app_name = pwa_name if _portal else (pwa_name ~ ' Panel') %}
+<meta name="pwa-kind" content="{{ 'portal' if _portal else 'panel' }}">
 <link rel="manifest" href="{{ url_for('portal_manifest' if _portal else 'pwa_manifest') }}">
 <meta name="theme-color" content="#0f172a">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="{{ pwa_name }}">
+<meta name="apple-mobile-web-app-title" content="{{ _app_name }}">
 <link rel="apple-touch-icon" href="{{ url_for('pwa_icon', name='icon-180', v=pwa_icon_key) }}">
 <style>
   html.pwa-launch body { visibility: hidden; }
@@ -28,9 +30,9 @@
 <script>
   /* show the splash only when opened as an installed app, once per launch */
   try {
-    if ((window.matchMedia && matchMedia("(display-mode: standalone)").matches || navigator.standalone) && !sessionStorage.getItem("pwa-launched")) {
-      sessionStorage.setItem("pwa-launched", "1");
-      document.documentElement.setAttribute("data-pwa-name", {{ pwa_name|tojson }});
+    if ((window.matchMedia && matchMedia("(display-mode: standalone)").matches || navigator.standalone) && !sessionStorage.getItem("pwa-launched-{{ 'portal' if _portal else 'panel' }}")) {
+      sessionStorage.setItem("pwa-launched-{{ 'portal' if _portal else 'panel' }}", "1");
+      document.documentElement.setAttribute("data-pwa-name", {{ _app_name|tojson }});
       document.documentElement.classList.add("pwa-launch");
       setTimeout(function () { document.documentElement.classList.remove("pwa-launch"); }, 5000);   /* never stuck */
     }

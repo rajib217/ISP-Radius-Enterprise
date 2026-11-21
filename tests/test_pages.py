@@ -878,6 +878,33 @@ def check_rules(flask_app, ids):
           "the service worker shows pushes with sound and opens the app on tap; the portal offers the opt-in")
     _r_un = pc.post("/portal/push/unsubscribe", json={"endpoint": _good["endpoint"]}, headers=_hdr)
     check(_r_un.status_code == 200, "a customer can switch push off again")
+    # ---- bulk app notification: a group of customers at once, with history and take-back
+    _all_n = one("SELECT COUNT(*) AS c FROM subscribers")["c"]
+    _np = adm.get("/notifications/send")
+    _cnt = adm.get("/notifications/recipients").get_json()["count"]
+    _rb = adm.post("/notifications/send", data={"_csrf": "ci", "audience": "filter", "title": "CI bulk {name}",
+                                                "body": "Hello {username}"})
+    _bulk = run_q("SELECT n.title, n.body, s.full_name, s.username, n.batch FROM sub_notifications n "
+              "JOIN subscribers s ON s.id = n.subscriber_id WHERE n.title LIKE 'CI bulk%%'")
+    _batch = _bulk[0]["batch"] if _bulk else ""
+    _hist = adm.get("/notifications/send").get_data(as_text=True)
+    _resc = client(ids["reseller"])
+    _rcnt = _resc.get("/notifications/recipients").get_json()["count"]
+    _resc.post("/notifications/send", data={"_csrf": "ci", "audience": "filter", "title": "CI seller", "body": "x"})
+    _rs_rows = one("SELECT COUNT(*) AS c FROM sub_notifications WHERE title = 'CI seller'")["c"]
+    _rs_take = _resc.post("/notifications/batch/%s/delete" % _batch, data={"_csrf": "ci"}).status_code
+    _empty = adm.post("/notifications/send", data={"_csrf": "ci", "audience": "filter", "title": "", "body": "x"})
+    _del = adm.post("/notifications/batch/%s/delete" % _batch, data={"_csrf": "ci"})
+    check(_np.status_code == 200 and "notify-form" in _np.get_data(as_text=True) and _cnt == _all_n
+          and _rb.status_code == 302 and len(_bulk) == _all_n and len({r["batch"] for r in _bulk}) == 1
+          and all(r["title"] == "CI bulk " + (r["full_name"] or r["username"]) and r["body"] == "Hello " + r["username"] for r in _bulk)
+          and "CI bulk" in _hist and "Take back" in _hist
+          and 0 < _rcnt < _all_n and _rs_rows == _rcnt and _rs_take == 404
+          and one("SELECT COUNT(*) AS c FROM sub_notifications WHERE title LIKE 'CI bulk%%'")["c"] == 0 and _del.status_code == 302
+          and one("SELECT COUNT(*) AS c FROM sub_notifications WHERE title = ''")["c"] == 0 and _empty.status_code == 200
+          and 'href="/notifications/send"' in adm.get("/").get_data(as_text=True),
+          "App Notification sends to a whole group with each customer's own details, sellers reach only their customers, "
+          "and a send can be taken back")
 
     # ---- installable app (PWA): manifests, icons, service worker, offline page, tags on every layout
     import struct as _st
@@ -920,6 +947,14 @@ def check_rules(flask_app, ids):
     check("beforeinstallprompt" in _pjs and "Add to Home Screen" in _pjs and "pwa-install-later" in _pjs
           and ".pwa-sheet-card" in open(os.path.join(ROOT, "panel", "static", "css", "app.css"), encoding="utf-8").read(),
           "phones get an install sheet (Android one-tap install, iPhone steps) that 'Later' hides for a week")
+    check(_pmf["id"] != _mfj["id"] and _pmf["scope"] == "/portal" and _pmf["name"] != _mfj["name"]
+          and '"pwa-install-later-" + KIND' in _pjs
+          and '<meta name="pwa-kind" content="panel">' in _home and '<meta name="pwa-kind" content="panel">' in _login
+          and '<meta name="pwa-kind" content="portal">' in _portal_html
+          and 'apple-mobile-web-app-title" content="%s"' % _pmf["name"] in _portal_html
+          and 'apple-mobile-web-app-title" content="%s"' % _mfj["name"] in _home
+          and "list.filter(isPortal)" in _sw_js and "if (isPortal(c)" in _sw_js,
+          "panel and customer apps install separately: own id, name and 'Later' memory; a notification never takes over a panel window")
 
     # ---- expired notice: expired customers stay online in the notice group and see the unpaid-bill page
     import radius as _rad

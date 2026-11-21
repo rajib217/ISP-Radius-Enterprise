@@ -1620,6 +1620,7 @@ import mod_inventory  # noqa: E402,F401
 import mod_network  # noqa: E402,F401
 import mod_tickets  # noqa: E402,F401
 import mod_messages  # noqa: E402,F401
+import mod_notify  # noqa: E402,F401
 import mod_settings  # noqa: E402,F401
 import mod_notes  # noqa: E402,F401
 import mod_documents  # noqa: E402,F401

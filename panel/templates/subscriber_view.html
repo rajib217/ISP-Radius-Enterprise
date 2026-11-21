@@ -198,7 +198,7 @@
   {% if t.messages %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Channel</th><th>To</th><th>Message</th><th>Status</th></tr></thead><tbody>{% for m in t.messages %}<tr><td class="nowrap">{{ m.created_at|dt }}</td><td>{{ m.channel|upper }}</td><td class="mono">{{ m.to_addr }}</td><td>{{ (m.subject ~ ' · ' if m.subject) }}{{ m.body|truncate(90) }}</td><td><span class="pill {{ {'sent': 'ok', 'failed': 'bad'}.get(m.status, 'warn') }}">{{ m.status|capitalize }}</span>{% if m.error %} <small class="muted">{{ m.error }}</small>{% endif %}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><p>No messages sent to this customer.</p></div>{% endif %}</section></div>
 
 <div class="sv-pane" id="tab-notifications" hidden><section class="panel"><div class="panel-head"><h2>App notifications</h2>
-  <span class="aside">{% set unread_n = t.notifs|selectattr('read_at', 'none')|list|length %}{{ unread_n }} unread{% if edit %} · <a href="#" data-open="notify-dlg">Send one</a>{% endif %}</span></div>
+  <span class="aside">{% set unread_n = t.notifs|selectattr('read_at', 'none')|list|length %}{{ unread_n }} unread{% if edit %} · <a href="#" data-open="notify-dlg">Send one</a> · <a href="{{ url_for('notify_send') }}">Send to many</a>{% endif %}</span></div>
   {% if t.notifs %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Sent</th><th>Type</th><th>Title</th><th>Message</th><th>Status</th><th>By</th></tr></thead><tbody>{% for n in t.notifs %}<tr>
     <td class="nowrap" data-card="key">{{ n.created_at|dt }}</td>
     <td data-card="key"><span class="pill {{ {'payment': 'ok', 'balance': 'ok', 'expiring': 'warn', 'expired': 'bad'}.get(n.kind, 'info') }}">{{ n.kind|capitalize }}</span></td>

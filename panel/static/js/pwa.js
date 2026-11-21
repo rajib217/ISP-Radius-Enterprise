@@ -57,7 +57,9 @@
      Android / Chrome / Samsung Internet: the browser's own install prompt (beforeinstallprompt), one tap.
      iPhone / iPad: Safari has no install prompt, so the sheet shows the two steps (Share > Add to Home Screen).
      "Later" hides it for 7 days; once installed (or opened as the app) it never shows. */
-  var deferred = null, KEY = "pwa-install-later", WAIT = 7 * 24 * 3600 * 1000;
+  var kindMeta = document.querySelector('meta[name="pwa-kind"]');
+  var KIND = (kindMeta && kindMeta.content) || "panel";          /* panel and portal are two separate apps */
+  var deferred = null, KEY = "pwa-install-later-" + KIND, WAIT = 7 * 24 * 3600 * 1000;
   var standalone = (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true;
   var ua = navigator.userAgent || "";
   var ios = /iphone|ipad|ipod/i.test(ua) || (/macintosh/i.test(ua) && navigator.maxTouchPoints > 1);

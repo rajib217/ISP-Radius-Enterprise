@@ -105,6 +105,8 @@ STRUCTURE = [
         _i("Templates", "templates_page", args={"kind": "sms"}),
         _i("Sent log", "messages", args={"channel": "sms"}),
     ]),
+    _g("appnotify", "App Notification", "bell", endpoint="notify_send", module="subscribers",
+       match=["notify_send", "notify_batch_delete"]),
     _g("logs", "Logs", "file", module="logs", items=[
         _i("Logs & System Health", "noc", ["noc", "noc_settings"]),
         _i("Login attempts", "logs", none_of=["tab"]),

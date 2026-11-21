@@ -753,3 +753,7 @@ ALTER TABLE sub_ledger ADD KEY IF NOT EXISTS idx_created (created_at);
 -- bKash Payments report reads these by date
 ALTER TABLE topups ADD KEY IF NOT EXISTS idx_created (created_at);
 ALTER TABLE portal_payments ADD KEY IF NOT EXISTS idx_created (created_at);
+
+-- bulk app notifications (Notifications > Send): one batch id per send, for the history and "take back"
+ALTER TABLE sub_notifications ADD COLUMN IF NOT EXISTS batch VARCHAR(12) NULL;
+ALTER TABLE sub_notifications ADD KEY IF NOT EXISTS idx_batch (batch);

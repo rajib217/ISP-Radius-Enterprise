@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Send app notification{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>App notification</h1><p class="sub">Send a message to customers' portal and installed app: one customer, a group, or everyone.</p></div>
+</div>
+{% if not portal_on %}
+<div class="state-banner warn" style="margin-bottom:16px">The customer portal is switched off, so customers will see these once it is on.{% if me.role == 'admin' %} <a href="{{ url_for('settings_subscriber') }}">Turn it on</a>.{% endif %}</div>
+{% endif %}
+<form method="post" id="notify-form" class="split">
+  {{ csrf_input() }}
+  <section class="panel">
+    <div class="panel-head"><h2>Message</h2></div>
+    <div class="panel-body stack">
+      <div class="field"><label class="lbl" for="nf-title">Title</label><input id="nf-title" name="title" maxlength="120" value="{{ form.title }}" required placeholder="যেমন: নেটওয়ার্ক মেইনটেনেন্স"></div>
+      <div class="field"><label class="lbl" for="nf-body">Message</label>
+        <textarea id="nf-body" name="body" rows="6" maxlength="600" required>{{ form.body }}</textarea>
+        <div class="counter" data-nf-count></div>
+        <div class="help">Click a name to put it in the message. It is replaced with each customer's own details.</div>
+        <div class="var-chips">{% for v in variables %}<button type="button" data-var="{{ v }}">{{ '{' + v + '}' }}</button>{% endfor %}</div></div>
+    </div>
+  </section>
+  <section class="panel">
+    <div class="panel-head"><h2>Send to</h2><span class="aside" data-nf-recipients></span></div>
+    <div class="panel-body stack">
+      <label class="check"><input type="radio" name="audience" value="filter" {{ 'checked' if form.audience == 'filter' }}> A group of customers (all, or filtered)</label>
+      <div data-aud="filter" class="stack">
+        <div class="field"><label class="lbl" for="nf-plan">Plan</label><select id="nf-plan" name="plan"><option value="">Any plan</option>{% for p in plans %}<option value="{{ p.id }}" {{ 'selected' if form.plan == p.id|string }}>{{ p.label }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="nf-area">Area</label><select id="nf-area" name="area"><option value="">Any area</option>{% for a in areas %}<option {{ 'selected' if form.area == a }}>{{ a }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="nf-status">Status</label><select id="nf-status" name="status">
+          {% for k, t in statuses %}<option value="{{ k }}" {{ 'selected' if form.status == k }}>{{ t }}</option>{% endfor %}</select></div>
+        <label class="check"><input type="checkbox" name="push_only" value="1" {{ 'checked' if form.push_only == '1' }}> Only customers whose phone allows notifications</label>
+      </div>
+      <label class="check"><input type="radio" name="audience" value="single" {{ 'checked' if form.audience == 'single' }}> One customer</label>
+      <div data-aud="single" class="field"><label class="lbl" for="nf-user">Username</label><input id="nf-user" name="username" value="{{ form.username }}" spellcheck="false"></div>
+      <button class="btn primary" type="submit" data-nf-send>{{ icon('bell') }}Send notification</button>
+      <p class="muted" style="margin:0">It shows at once in the portal's bell. Phones that allowed notifications also get a pop-up, sent in the background.</p>
+    </div>
+  </section>
+</form>
+
+<section class="panel" style="margin-top:16px">
+  <div class="panel-head"><h2>Sent</h2><span class="aside">Last 30 sends</span></div>
+  {% if history %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>When</th><th>Title</th><th>By</th><th class="num">Customers</th><th class="num">Read</th><th class="num">Pushed</th><th></th></tr></thead>
+    <tbody>{% for h in history %}
+      <tr><td data-label="When">{{ h.at.strftime('%d-%m-%Y %H:%M') }}</td>
+        <td data-label="Title"><b>{{ h.title }}</b><div class="muted" style="font-size:12px;max-width:420px;white-space:normal">{{ h.body|truncate(110) }}</div></td>
+        <td data-label="By">{{ h.created_by }}</td>
+        <td class="num" data-label="Customers">{{ h.n }}</td>
+        <td class="num" data-label="Read">{{ h.seen|int }}</td>
+        <td class="num" data-label="Pushed">{{ h.pushed|int }}</td>
+        <td><form method="post" action="{{ url_for('notify_batch_delete', batch=h.batch) }}" data-confirm="Take this notification back from {{ h.n }} customer(s)? Pop-ups already shown on phones stay.">{{ csrf_input() }}<button class="btn sm danger" type="submit">{{ icon('trash') }}Take back</button></form></td></tr>
+    {% endfor %}</tbody></table></div>
+  {% else %}<div class="empty"><p>Nothing sent from here yet.</p></div>{% endif %}
+</section>
+<script>
+(function () {
+  var f = document.getElementById("notify-form"); if (!f) return;
+  var body = f.elements.body, title = f.elements.title, cnt = f.querySelector("[data-nf-count]"), box = f.querySelector("[data-nf-recipients]");
+  var last = body, n = null;
+  function tally() { cnt.textContent = body.value.length + " / 600"; }
+  [title, body].forEach(function (el) { el.addEventListener("focus", function () { last = el; }); });
+  body.addEventListener("input", tally); tally();
+  f.querySelectorAll("[data-var]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var t = last, a = t.selectionStart || t.value.length, e = t.selectionEnd || a;
+      t.value = t.value.slice(0, a) + "{" + b.dataset.var + "}" + t.value.slice(e); t.focus(); tally();
+    });
+  });
+  function aud() { var r = f.querySelector("[name=audience]:checked"); return r ? r.value : "filter"; }
+  function recount() {
+    if (aud() !== "filter") { box.textContent = "1 customer"; n = 1; return; }
+    var p = new URLSearchParams();
+    ["plan", "area", "status"].forEach(function (k) { if (f.elements[k].value) p.set(k, f.elements[k].value); });
+    if (f.elements.push_only.checked) p.set("push_only", "1");
+    fetch("{{ url_for('notify_recipients') }}?" + p, { credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { if (d) { n = d.count; box.textContent = d.count.toLocaleString() + " customer" + (d.count === 1 ? "" : "s"); } });
+  }
+  function show() {
+    var v = aud();
+    f.querySelectorAll("[data-aud]").forEach(function (x) { x.classList.toggle("hide", x.dataset.aud !== v); });
+    recount();
+  }
+  f.querySelectorAll("[name=audience]").forEach(function (r) { r.addEventListener("change", show); });
+  ["plan", "area", "status", "push_only"].forEach(function (k) { f.elements[k].addEventListener("change", recount); });
+  f.addEventListener("submit", function (e) {
+    if (aud() === "filter" && n !== null && n > 1 && !confirm("Send this notification to " + n.toLocaleString() + " customers?")) e.preventDefault();
+  });
+  show();
+})();
+</script>
+{% endblock %}
