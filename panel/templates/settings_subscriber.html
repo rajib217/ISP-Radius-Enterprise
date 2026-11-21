@@ -4,7 +4,7 @@
 {% block ssub %}Rules for subscribers and the customer portal.{% endblock %}
 {% macro sw(key, label) %}<div class="field"><label class="lbl" for="x-{{ key }}">{{ label }}</label><span class="switch"><input id="x-{{ key }}" type="checkbox" name="{{ key }}" {{ 'checked' if s[key] == '1' }}><i></i></span></div>{% endmacro %}
 {% block sbody %}
-<form method="post" class="panel set-card">
+<form method="post" class="panel set-card" novalidate>
   {{ csrf_input() }}
   <div class="panel-head"><h2>Subscriber Settings</h2></div>
   <div class="set-form three">
@@ -14,7 +14,7 @@
     <div class="note-box wide">{{ icon('alert') }}<span>We recommend setting the grace period within 7 days for optimal account management.</span></div>
     <div class="grace-row wide">
       {{ sw('grace_on', 'Grace Period') }}
-      <div class="field"><label class="lbl" for="x-gd">Days</label><input id="x-gd" name="grace_days" type="number" min="1" max="90" value="{{ s.grace_days }}"></div>
+      <div class="field"><label class="lbl" for="x-gd">Days</label><input id="x-gd" name="grace_days" type="number" value="{{ s.grace_days }}"></div>
       <div class="field"><label class="lbl" for="x-gu">Unit</label><select id="x-gu" disabled><option>Day (*)</option></select></div>
     </div>
     <p class="help wide">When on, the Grace Period action on a subscriber starts with this number of days instead of 3.</p>
@@ -23,7 +23,7 @@
     <div class="serial-box wide">
       <h3>{{ icon('file') }}Serial Number</h3>
       <div class="serial-grid">
-        <div class="field"><label class="lbl" for="x-sp">Serial Number Start</label><input id="x-sp" name="serial_prefix" value="{{ s.serial_prefix }}" maxlength="20" spellcheck="false" placeholder="e.g. 2001000" inputmode="numeric" pattern="[0-9]*"><div class="help">Enter a starting number; new subscribers get the next numbers in sequence. Leave it empty for random numbers.</div></div>
+        <div class="field"><label class="lbl" for="x-sp">Serial Number Start</label><input id="x-sp" name="serial_prefix" value="{{ s.serial_prefix }}" maxlength="20" spellcheck="false" placeholder="e.g. 2001000" inputmode="numeric"><div class="help">Enter a starting number; new subscribers get the next numbers in sequence. Leave it empty for random numbers.</div></div>
         <div><div class="lbl">Examples</div>
           <table class="ex"><tr><td><code>2001000</code></td><td>2001001, 2001002, 2001003</td></tr><tr><td><code>100</code></td><td>101, 102, 103</td></tr><tr><td><code>0000</code></td><td>0001, 0002, 0003</td></tr><tr><td class="muted">empty</td><td class="muted">random numbers</td></tr></table></div>
       </div>

@@ -485,22 +485,26 @@ SUB_RULES = [("dup_phone", "Allow Duplicate Phone"), ("dup_nid", "Allow Duplicat
 def settings_subscriber():
     if request.method == "POST":
         f = request.form
-        try:
-            new = {"grace_days": _int(f, "grace_days", 1, 90)}
-        except ValueError:
-            flash("Grace period must be 1 to 90 days. Nothing was saved.", "error")
-            return redirect(url_for("settings_subscriber"))
-        prefix = f.get("serial_prefix", "").strip()
-        if not re.match(r"^[0-9]*$", prefix) or len(prefix) > 20:
-            flash("Serial number must be digits only (for example 2001000).", "error")
-            return redirect(url_for("settings_subscriber"))
-        new["serial_prefix"] = prefix
+        # the switches always save; a bad number only keeps its own old value (it never blocks Customer Portal & co.)
+        new, skipped = {}, []
         for key, _ in SUB_SWITCHES + SUB_RULES + [("grace_on", ""), ("portal_on", "")]:
             new[key] = "1" if f.get(key) else "0"
+        try:
+            new["grace_days"] = _int(f, "grace_days", 1, 90)
+        except ValueError:
+            skipped.append("Grace period days (must be 1 to 90)")
+        prefix = f.get("serial_prefix", "").strip()
+        if re.match(r"^[0-9]*$", prefix) and len(prefix) <= 20:
+            new["serial_prefix"] = prefix
+        else:
+            skipped.append("Serial Number Start (digits only, for example 2001000)")
         _save(new)
-        audit("settings_saved", "subscriber")
+        audit("settings_saved", "subscriber", "portal on" if new["portal_on"] == "1" else "portal off")
         commit()
-        flash("Settings saved.", "success")
+        if skipped:
+            flash("Saved, except: %s. That field kept its old value." % "; ".join(skipped), "warn")
+        else:
+            flash("Settings saved.", "success")
         return redirect(url_for("settings_subscriber"))
     return render_template("settings_subscriber.html", s=cfg(), switches=SUB_SWITCHES, rules=SUB_RULES, tab="subscriber")
 

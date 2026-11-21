@@ -609,6 +609,16 @@ def check_rules(flask_app, ids):
           and "Customer portal is switched off" in _off_staff.get_data(as_text=True)
           and "/settings/subscriber" in _off_staff.get_data(as_text=True),
           "a switched-off portal explains itself (customers: not available; staff: where to turn it on)")
+    # the Customer Portal switch saves even when another field on the form is bad (old serial prefix with letters)
+    run("REPLACE INTO settings (skey, svalue) VALUES ('portal_on', '0'), ('serial_prefix', 'RN-01')")
+    _sv = adm.post("/settings/subscriber", data={"_csrf": "ci", "portal_on": "on", "grace_days": "500", "serial_prefix": "RN-01"})
+    _sv_page = adm.get("/settings/subscriber").get_data(as_text=True)
+    check(_sv.status_code == 302 and one("SELECT svalue FROM settings WHERE skey = 'portal_on'")["svalue"] == "1"
+          and one("SELECT svalue FROM settings WHERE skey = 'serial_prefix'")["svalue"] == "RN-01"
+          and "Serial Number Start" in _sv_page and "novalidate" in _sv_page
+          and flask_app.test_client().get("/portal").status_code == 302,
+          "Settings > Subscriber: Customer Portal turns on even with a bad serial number / grace days (those keep their old value and are named)")
+    run("REPLACE INTO settings (skey, svalue) VALUES ('serial_prefix', '')")
 
     # ---- dashboard: Offline ONUs (Offline + LOS), sellers only see the ONUs on their own OLTs
     run("INSERT INTO net_devices (name, kind, ip, created_by) VALUES ('CI-OLT-Admin', 'olt', '10.9.0.1', 'admin')")
