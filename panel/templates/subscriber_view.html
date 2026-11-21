@@ -229,8 +229,28 @@
   <div class="panel-body"><p>Bound to: {% if sub.mac_bind %}<b class="mono">{{ sub.mac_bind }}</b>{% else %}<span class="muted">not bound{% if sub.auto_mac %} (Auto Mac Lock will bind the next device){% endif %}</span>{% endif %}</p></div>
   {% if t.macs %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Seen MAC</th><th class="num">Sessions</th><th>Last seen</th></tr></thead><tbody>{% for m in t.macs %}<tr><td class="mono">{{ m.mac }}</td><td class="num">{{ m.n }}</td><td>{{ m.last|dt }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}</section></div>
 
-{% if can('documents') %}<div class="sv-pane" id="tab-documents" hidden><section class="panel"><div class="panel-head"><h2>Documents</h2><a class="aside" href="{{ url_for('documents', sub=sub.id) }}">{{ 'Manage' if docs else 'Upload' }}</a></div>
-  {% if docs %}<ul class="list">{% for d in docs %}<li><a href="{{ url_for('document_download', did=d.id) }}">{{ icon('paperclip') }} {{ d.title }}</a><span class="grow"></span><span class="muted">{{ d.category }}</span></li>{% endfor %}</ul>{% else %}<div class="empty"><p>No documents for this customer.</p></div>{% endif %}</section></div>{% endif %}
+{% if can('documents') %}<div class="sv-pane" id="tab-documents" hidden><section class="panel"><div class="panel-head"><h2>Documents</h2><span class="aside">{{ docs|length }} file{{ '' if docs|length == 1 else 's' }} · <a href="{{ url_for('documents', sub=sub.id) }}">open in Documents</a></span></div>
+  {% if can('documents', 'edit') and doc_upload_on %}
+  <form class="sv-doc-up" method="post" action="{{ url_for('document_upload') }}" enctype="multipart/form-data">
+    {{ csrf_input() }}<input type="hidden" name="username" value="{{ sub.username }}"><input type="hidden" name="next" value="{{ url_for('subscriber_view', sid=sub.id) }}#documents">
+    <div class="field"><label class="lbl" for="sd-file">File</label><input id="sd-file" name="file" type="file" required></div>
+    <div class="field"><label class="lbl" for="sd-title">Title</label><input id="sd-title" name="title" maxlength="200" placeholder="Same as the file name if empty"></div>
+    <div class="field"><label class="lbl" for="sd-cat">Category</label><select id="sd-cat" name="category">{% for c in doc_categories %}<option>{{ c }}</option>{% endfor %}</select></div>
+    <div class="field sv-doc-btn"><button class="btn primary" type="submit">{{ icon('upload') }}Upload</button></div>
+  </form>
+  {% endif %}
+  {% if docs %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Document</th><th>Category</th><th class="num">Size</th><th>Uploaded</th><th></th></tr></thead><tbody>{% for d in docs %}<tr>
+    <td class="who-cell" data-card="title"><b>{{ d.title }}</b><small>{{ d.filename }}</small></td>
+    <td data-card="key">{{ d.category }}</td>
+    <td class="num">{{ d.size|bytes }}</td>
+    <td class="nowrap" data-card="key">{{ d.created_at|dt }}<small class="muted" style="display:block">{{ d.uploaded_by }}</small></td>
+    <td class="act" data-card="actions">
+      {% if d.inline %}<a class="btn sm icon" href="{{ url_for('document_download', did=d.id, inline=1) }}" target="_blank" rel="noopener" aria-label="View {{ d.title }}" title="View">{{ icon('eye') }}</a>{% endif %}
+      <a class="btn sm icon" href="{{ url_for('document_download', did=d.id) }}" aria-label="Download {{ d.title }}" title="Download">{{ icon('download') }}</a>
+      {% if can('documents', 'edit') and (me.role in ('admin', 'manager') or d.uploaded_by == me.username) %}<form method="post" action="{{ url_for('document_delete', did=d.id) }}" data-confirm="Delete {{ d.title }}?">{{ csrf_input() }}<input type="hidden" name="next" value="{{ url_for('subscriber_view', sid=sub.id) }}#documents"><button class="btn sm icon danger" type="submit" aria-label="Delete {{ d.title }}" title="Delete">{{ icon('trash') }}</button></form>{% endif %}</td>
+  </tr>{% endfor %}</tbody></table></div>
+  {% else %}<div class="empty"><p>No documents for this customer yet.{% if can('documents', 'edit') and not doc_upload_on %} Document upload is switched off in Settings &gt; Subscriber.{% endif %}</p></div>{% endif %}
+</section></div>{% endif %}
 
 <div class="sv-pane" id="tab-logins" hidden><section class="panel"><div class="panel-head"><h2>Login attempts</h2></div>
   {% if t.logins %}<ul class="list">{% for a in t.logins %}<li><span class="badge {{ 'ok' if a.reply == 'Access-Accept' else 'bad' }}">{{ 'Accepted' if a.reply == 'Access-Accept' else 'Refused' }}</span><span class="grow"></span><span class="muted">{{ a.authdate|dt }}</span></li>{% endfor %}</ul>{% else %}<div class="empty"><p>No login attempts logged.</p></div>{% endif %}</section></div>

@@ -12,6 +12,7 @@
     <select name="category" aria-label="Category"><option value="">All categories</option>{% for c in categories %}<option {{ 'selected' if request.args.get('category') == c }}>{{ c }}</option>{% endfor %}</select>
     <button class="btn" type="submit">Filter</button>
   </form>
+  {% if only %}<div class="panel-body muted" style="padding-top:8px;padding-bottom:0">Showing documents of <a class="mono" href="{{ url_for('subscriber_view', sid=only.id) }}">{{ only.username }}</a> · <a href="{{ url_for('documents') }}">show all</a></div>{% endif %}
   {% if rows %}
   <div class="tbl-wrap"><table class="tbl">
     <thead><tr><th>Document</th><th>Category</th><th>Customer</th><th class="num hide-sm">Size</th><th class="hide-sm">Uploaded</th><th></th></tr></thead>
@@ -38,7 +39,7 @@
       <div class="field"><label class="lbl" for="dc-title">Title</label><input id="dc-title" name="title" maxlength="200" placeholder="Same as the file name if empty"></div>
       <div class="grid-2">
         <div class="field"><label class="lbl" for="dc-cat">Category</label><select id="dc-cat" name="category">{% for c in categories %}<option>{{ c }}</option>{% endfor %}</select></div>
-        <div class="field"><label class="lbl" for="dc-user">Customer username</label><input id="dc-user" name="username" spellcheck="false" placeholder="Optional"></div>
+        <div class="field"><label class="lbl" for="dc-user">Customer username</label><input id="dc-user" name="username" spellcheck="false" placeholder="Optional" value="{{ only.username if only else '' }}"></div>
       </div>
     </div>
     <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Upload</button></div>

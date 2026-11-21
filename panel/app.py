@@ -843,8 +843,8 @@ def subscriber_view(sid):
     plans = core.filter_plans(q("SELECT id, label, price, validity_days FROM plans ORDER BY download_mbps"))
     tickets = q("SELECT id, subject, status, priority, updated_at FROM tickets WHERE subscriber_id = %s "
                 "ORDER BY id DESC LIMIT 5", (sid,))
-    docs = q("SELECT id, title, category, created_at FROM documents WHERE subscriber_id = %s "
-             "ORDER BY id DESC LIMIT 5", (sid,))
+    import mod_documents
+    docs = mod_documents.for_subscriber(sid) if core.can("documents") else []
     notes = q("SELECT id, title, body, author, created_at FROM notes WHERE subscriber_id = %s "
               "AND (user_id = %s OR shared = 1) ORDER BY id DESC LIMIT 3", (sid, g.me["id"]))
     extra = mod_subview.context(sub, sessions)
@@ -855,6 +855,7 @@ def subscriber_view(sid):
                            password=pw["value"] if pw else "",
                            sessions=sessions, history=history, month=month, usage=usage, auth=auth,
                            pays=pays, plans=plans, tickets=tickets, docs=docs, notes=notes,
+                           doc_categories=mod_documents.CATEGORIES, doc_upload_on=cfg().get("doc_upload") == "1",
                            open_renew=bool(request.args.get("renew")),
                            renew_amount=mod_policy.fee_total(mod_policy.seller_price(sub) or sub["price"], sub["plan_id"]),
                            charge=mod_subs.charge_info(sub))

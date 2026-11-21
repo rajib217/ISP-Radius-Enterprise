@@ -597,6 +597,32 @@ def check_rules(flask_app, ids):
           and 'href="/portal#invoices"' in p_html and 'id="invoices"' in p_html and 'id="usage"' in p_html,
           "customer portal and pay page open, with the bottom nav and its #usage / #invoices targets")
 
+    # ---- documents uploaded on a customer's page show there and in the main Documents menu; sellers see only their own
+    import io as _io3
+    run("REPLACE INTO settings (skey, svalue) VALUES ('doc_upload', '1')")
+    _own = one("SELECT id, username FROM subscribers WHERE created_by = 'karim' LIMIT 1")
+    _theirs = one("SELECT id, username FROM subscribers WHERE created_by NOT IN ('karim', 'karim_sub') LIMIT 1")
+    up = adm.post("/documents/upload", data={"_csrf": "ci", "username": _theirs["username"], "title": "CI NID copy",
+                                             "category": "NID / ID copy", "next": "/subscribers/%d#documents" % _theirs["id"],
+                                             "file": (_io3.BytesIO(b"%PDF-1.4 ci test"), "nid.pdf")},
+                  content_type="multipart/form-data")
+    sv_page = adm.get("/subscribers/%d" % _theirs["id"]).get_data(as_text=True)
+    menu_page = adm.get("/documents").get_data(as_text=True)
+    only_page = adm.get("/documents?sub=%d" % _theirs["id"]).get_data(as_text=True)
+    check(up.status_code == 302 and up.headers.get("Location", "").endswith("/subscribers/%d#documents" % _theirs["id"])
+          and "CI NID copy" in sv_page and 'class="sv-doc-up"' in sv_page and "CI NID copy" in menu_page
+          and "CI NID copy" in only_page and "Showing documents of" in only_page,
+          "a document uploaded on the customer's page shows there, in Documents, and in the customer filter")
+    _doc_id = one("SELECT id FROM documents WHERE title = 'CI NID copy'")["id"]
+    res_c = client(ids["reseller"])
+    bad_up = res_c.post("/documents/upload", data={"_csrf": "ci", "username": _theirs["username"], "next": "/documents",
+                                                   "file": (_io3.BytesIO(b"%PDF-1.4 x"), "x.pdf")}, content_type="multipart/form-data")
+    rlist = res_c.get("/documents")
+    check(one("SELECT COUNT(*) AS c FROM documents WHERE filename = 'x.pdf'")["c"] == 0
+          and res_c.get("/documents/%d/download" % _doc_id).status_code == 403
+          and (rlist.status_code != 200 or "CI NID copy" not in rlist.get_data(as_text=True)),
+          "a reseller cannot upload to, list or open another seller's customer's documents")
+
     # ---- subscriber Ledger (debit / credit / running balance) and Invoices (every activation + extra charges)
     import mod_subview as _sv
     from datetime import datetime as _dtm, timedelta as _td

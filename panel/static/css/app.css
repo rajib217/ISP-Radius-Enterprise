@@ -1642,3 +1642,8 @@ dialog.modal.confirm-dlg { width: min(420px, calc(100vw - 24px)); }
 .sv-ledger td.r { color: var(--offline-text); } .sv-ledger td.g { color: var(--online-text); }
 .sv-ledger b.r { color: var(--offline-text); }
 .sv-ledger-note { margin: 0; padding: 10px 18px 14px; font-size: 12.5px; }
+
+/* ---- subscriber page: document upload row ---- */
+.sv-doc-up { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.2fr) minmax(0, 1fr) auto; gap: 12px; align-items: end; padding: 16px 18px; border-bottom: 1px solid var(--rule); }
+.sv-doc-up input[type="file"] { padding-top: 6px; }
+@media (max-width: 900px) { .sv-doc-up { grid-template-columns: 1fr; } }
