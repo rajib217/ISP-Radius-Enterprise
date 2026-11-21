@@ -1,70 +1,205 @@
 {% extends "portal_base.html" %}
-{% block top %}<div class="pt-top"><b>{{ isp or 'My connection' }}</b>
-  <span class="pt-top-acts"><a class="notif-bell" href="{{ url_for('portal_notifications') }}" aria-label="Notifications{{ ' (%d unread)' % portal_unread if portal_unread }}" data-notif-link>{{ icon('bell') }}{% if portal_unread %}<b class="notif-dot" data-notif-count>{{ portal_unread if portal_unread < 100 else '99+' }}</b>{% else %}<b class="notif-dot" data-notif-count hidden></b>{% endif %}</a>
-  <form method="post" action="{{ url_for('portal_logout') }}">{{ csrf_input() }}<button class="btn sm">Sign out</button></form></span></div>{% endblock %}
+{% from "_macros.html" import icon %}
+{% block top %}{% include "_portal_top.html" %}{% endblock %}
 {% block content %}
 <div class="push-card" data-push-card="home" hidden></div>
-<section class="pt-hero {{ state }}">
-  <span class="muted">{{ sub.full_name or sub.username }} <span class="mono">({{ sub.username }})</span></span>
-  {% if state == 'suspended' %}<div class="pt-days">Suspended</div><span>Your account is switched off. Please contact us.</span>
-  {% elif state == 'expired' %}<div class="pt-days">Expired</div><span>Your connection ended on {{ sub.expiry_date|d }} ({{ -left }} day{{ '' if left == -1 else 's' }} ago).</span>
-  {% elif left is none %}<div class="pt-days">No expiry</div>
-  {% else %}<div class="pt-days">{{ left }} day{{ '' if left == 1 else 's' }} left</div><span>Valid until {{ sub.expiry_date|d }}</span>{% endif %}
-  <div class="row-gap" style="margin-top:6px">
-    {% if sub.plan_label or sub.plan_name %}<span class="badge info">{{ sub.plan_label or sub.plan_name }}{% if sub.download_mbps %} · {{ sub.download_mbps }}/{{ sub.upload_mbps }} Mbps{% endif %}</span>{% endif %}
-    <span class="badge {{ 'ok' if online else 'warn' }}">{{ 'Online' if online else 'Offline' }}</span>
+
+{# ---------------------------------------------------------------- profile card #}
+<section class="panel pp-head {{ state }}">
+  <div class="pp-top">
+    <div class="avatar-wrap">
+      {% if photo %}<img class="pavatar pp-av" src="{{ url_for('portal_photo') }}" alt="">{% else %}<span class="pavatar pp-av ph">{{ icon('user') }}</span>{% endif %}
+      <i class="dot {{ 'on' if online }}" title="{{ 'Online' if online else 'Offline' }}"></i>
+    </div>
+    <div class="pp-id">
+      <h1>{{ sub.full_name or sub.username }}{% if sub.full_name %} <small>({{ sub.username }})</small>{% endif %}</h1>
+      <div class="chips">
+        {% if sub.plan_label or sub.plan_name %}<span class="chip blue">{{ icon('package') }}{{ sub.plan_label or sub.plan_name }}{% if sub.download_mbps %} · {{ sub.download_mbps }}/{{ sub.upload_mbps }} Mbps{% endif %}</span>{% endif %}
+        <span class="chip {{ 'green' if online else 'gray' }}">{{ 'Online' if online else 'Offline' }}</span>
+        <span class="chip pp-state {{ state }}">{{ {'active': 'Active', 'expired': 'Expired', 'suspended': 'Suspended'}[state] }}</span>
+      </div>
+      <p class="pp-exp">
+        {% if state == 'suspended' %}{{ icon('alert') }}<span>Your account is switched off. Please contact us{% if phone %} at <a href="tel:{{ phone|replace(' ', '') }}">{{ phone }}</a>{% endif %}.</span>
+        {% elif state == 'expired' %}{{ icon('alert') }}<span>Your connection ended on <b>{{ sub.expiry_date|d }}</b> ({{ -left }} day{{ '' if left == -1 else 's' }} ago).</span>
+        {% elif left is none %}{{ icon('check') }}<span>No expiry date.</span>
+        {% else %}{{ icon('check') }}<span>Valid until <b>{{ sub.expiry_date|d }}</b></span>{% endif %}
+      </p>
+    </div>
+    {% if terms.ok %}<a class="btn-bkash pp-pay" href="{{ url_for('portal_pay') }}">{{ icon('wallet') }}Pay {{ cur }} {{ (terms.amount + terms.fee)|money }}</a>{% endif %}
   </div>
+
+  <div class="kpis ksv pp-kpis">
+    <div class="kpi pp-left {{ state }}"><div><small>{{ 'Days left' if state == 'active' else 'Status' }}</small><b>{% if state == 'active' %}{{ left if left is not none else '∞' }}{% else %}{{ state|capitalize }}{% endif %}</b><em>{{ ('until ' ~ sub.expiry_date|d) if sub.expiry_date else '' }}</em></div><i class="ki blue">{{ icon('pin') }}</i></div>
+    <div class="kpi"><div><small>Online Uptime</small><b>{{ uptime|dur if uptime is not none else '—' }}</b><em>{{ 'connected now' if online else 'offline' }}</em></div><i class="ki violet">{{ icon('activity') }}</i></div>
+    <div class="kpi"><div><small>Total</small><b>{{ ('%.0f' % sub.quota_total_gb|float) if sub.quota_total_gb else '∞' }}</b><em>GB</em></div><i class="ki green">{{ icon('archive') }}</i></div>
+    <div class="kpi"><div><small>Used</small><b>{{ '%.2f' % used_gb }}</b><em>GB this month</em></div><i class="ki red">{{ icon('chart') }}</i></div>
+    <div class="kpi"><div><small>Remaining</small><b>{{ ('%.2f' % ([sub.quota_total_gb|float - used_gb, 0]|max)) if sub.quota_total_gb else '∞' }}</b><em>GB</em></div><i class="ki amber">{{ icon('power') }}</i></div>
+    <div class="kpi"><div><small class="g">Balance</small><b class="g">{{ '%.2f' % sub.balance|float }}</b><em>{{ cur }}</em></div><i class="ki green">{{ icon('wallet') }}</i></div>
+    <div class="kpi"><div><small class="r">Due</small><b class="r">{{ '%.2f' % due }}</b><em>{{ cur }}</em></div><i class="ki red">{{ icon('card') }}</i></div>
+  </div>
+
+  <nav class="sv-tabs pp-tabs" aria-label="Sections">
+    {% for key, label, ic in [('overview', 'Overview', 'home'), ('usage', 'Usage', 'chart'), ('invoices', 'Invoices', 'file'), ('ledger', 'Ledger', 'table'), ('payments', 'Payments', 'card'), ('sessions', 'Sessions', 'activity'), ('account', 'My details', 'user')] %}
+    {% if (key != 'usage' or usage) and (key != 'sessions' or sessions is not none) %}<a href="#{{ key }}" data-tab="{{ key }}">{{ icon(ic) }}{{ label }}</a>{% endif %}
+    {% endfor %}
+  </nav>
 </section>
 
-<section class="panel" id="pay">
-  <h2>Renew</h2>
-  {% if terms.ok %}
-    <p>{{ sub.plan_label or sub.plan_name }} for {{ terms.days }} days: <b>{{ cur }} {{ terms.amount|money }}</b>{% if terms.fee %} + bKash fee {{ cur }} {{ terms.fee|money }}{% endif %}. Your expiry moves forward when bKash confirms the payment.</p>
-    <a class="btn-bkash" href="{{ url_for('portal_pay') }}" style="max-width:340px">Pay {{ cur }} {{ (terms.amount + terms.fee)|money }} with bKash</a>
-  {% else %}<p class="muted" style="margin:0">{{ terms.why }}</p>{% endif %}
-  {% if tries %}<div class="tbl-wrap pay-attempts" style="margin-top:12px"><table class="tbl"><thead><tr><th>Payment attempt</th><th class="num">Amount</th><th>Status</th></tr></thead><tbody>
-    {% for t in tries %}<tr><td class="nowrap"><a href="{{ url_for('portal_receipt', tid=t.id, key=t.token) }}">{{ t.created_at|dt }}</a></td><td class="num">{{ cur }} {{ (t.amount|float + t.fee|float)|money }}</td><td><span class="badge {{ 'ok' if t.status == 'completed' else ('warn' if t.status == 'pending' else 'bad') }}">{{ 'Confirming' if t.status == 'pending' else t.status|capitalize }}</span></td></tr>{% endfor %}
-  </tbody></table></div>{% endif %}
-</section>
+{# ---------------------------------------------------------------- overview #}
+<div class="pp-pane" id="overview">
+  <section class="panel" id="pay">
+    <div class="panel-head"><h2>{{ icon('wallet') }}Renew</h2></div>
+    <div class="pp-body">
+      {% if terms.ok %}
+        <p style="margin-top:0">{{ sub.plan_label or sub.plan_name }} for {{ terms.days }} days: <b>{{ cur }} {{ terms.amount|money }}</b>{% if terms.fee %} + bKash fee {{ cur }} {{ terms.fee|money }}{% endif %}. Your expiry moves forward as soon as bKash confirms the payment.</p>
+        <a class="btn-bkash" href="{{ url_for('portal_pay') }}" style="max-width:340px">Pay {{ cur }} {{ (terms.amount + terms.fee)|money }} with bKash</a>
+      {% else %}<p class="muted" style="margin:0">{{ terms.why }}</p>{% endif %}
+    </div>
+  </section>
 
+  <div class="pp-grid">
+    <section class="panel">
+      <div class="panel-head"><h2>{{ icon('package') }}My package</h2></div>
+      <dl class="pp-kv">
+        <dt>Package</dt><dd>{{ sub.plan_label or sub.plan_name or '—' }}</dd>
+        {% if sub.download_mbps %}<dt>Speed</dt><dd>{{ sub.download_mbps }} Mbps down / {{ sub.upload_mbps }} Mbps up</dd>{% endif %}
+        {% if sub.plan_price %}<dt>Price</dt><dd>{{ cur }} {{ sub.plan_price|money }}{% if sub.validity_days %} / {{ sub.validity_days }} days{% endif %}</dd>{% endif %}
+        <dt>Valid until</dt><dd>{{ sub.expiry_date|d if sub.expiry_date else '—' }}</dd>
+        <dt>Connection</dt><dd>{% if online %}<span class="badge ok">Online</span> since {{ online.acctstarttime|dt }}{% else %}<span class="badge warn">Offline</span>{% endif %}</dd>
+      </dl>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>{{ icon('file') }}Latest invoices</h2>{% if invoices %}<a class="aside" href="#invoices" data-tab-link="invoices">See all</a>{% endif %}</div>
+      {% if invoices %}<ul class="pp-mini">
+        {% for e in invoices[:4] %}<li><div><b>{{ e.text }}</b><span>{{ e.no }} · {{ e.at|d }}</span></div><div class="pp-mini-r"><b>{{ cur }} {{ e.amount|money }}</b><span class="badge {{ 'ok' if e.paid else 'bad' }}">{{ 'Paid' if e.paid else 'Unpaid' }}</span></div></li>{% endfor %}
+      </ul>{% else %}<div class="empty"><h3>No invoices yet</h3><p>Your bills appear here after your first renewal.</p></div>{% endif %}
+    </section>
+  </div>
+
+  {% if owner and owner.role != 'admin' and (owner.full_name or owner.phone) %}
+  <section class="panel"><div class="panel-head"><h2>{{ icon('phone') }}Your provider</h2></div>
+    <div class="pp-body"><b>{{ owner.full_name or owner.username }}</b>{% if owner.phone %} · <a href="tel:{{ owner.phone|replace(' ', '') }}">{{ owner.phone }}</a>{% endif %}</div></section>
+  {% elif phone %}
+  <section class="panel"><div class="panel-head"><h2>{{ icon('phone') }}Need help?</h2></div>
+    <div class="pp-body">Call us: <a href="tel:{{ phone|replace(' ', '') }}"><b>{{ phone }}</b></a></div></section>
+  {% endif %}
+</div>
+
+{# ---------------------------------------------------------------- usage #}
 {% if usage %}
-<section class="panel" id="usage"><h2>Usage this month</h2>
-  <div class="pt-grid" style="margin-bottom:14px">
-    <div><span class="muted">Download</span><div class="pt-days" style="font-size:26px">{{ usage.down|bytes }}</div></div>
-    <div><span class="muted">Upload</span><div class="pt-days" style="font-size:26px">{{ usage.up|bytes }}</div></div>
-    <div><span class="muted">Sessions</span><div class="pt-days" style="font-size:26px">{{ usage.n }}</div></div>
-  </div>
-  {% if usage.quota %}<div class="pt-meter" aria-label="{{ usage.pct }}% of the quota used"><i style="width:{{ usage.pct }}%"></i></div><p class="muted" style="margin:6px 0 14px">{{ usage.pct }}% of your {{ usage.quota|round(0)|int }} GB package volume used</p>{% endif %}
-  <span class="muted">Last 14 days (download + upload)</span>
-  <div class="pt-bars" role="img" aria-label="Daily usage, last 14 days">{% for b in usage.bars %}<i style="height:{{ b.h }}%" title="{{ b.day }}: {{ b.v|bytes }}"></i>{% endfor %}</div>
-</section>
+<div class="pp-pane" id="usage" hidden>
+  <section class="panel">
+    <div class="panel-head"><h2>{{ icon('chart') }}Usage this month</h2></div>
+    <div class="pp-body">
+      <div class="pp-usage">
+        <div class="pp-u rx"><small>{{ icon('arrow-down') }}Download</small><b>{{ usage.down|bytes }}</b></div>
+        <div class="pp-u tx"><small>{{ icon('arrow-up') }}Upload</small><b>{{ usage.up|bytes }}</b></div>
+        <div class="pp-u"><small>{{ icon('activity') }}Sessions</small><b>{{ usage.n }}</b></div>
+      </div>
+      {% if usage.quota %}<div class="pt-meter" aria-label="{{ usage.pct }}% of the quota used"><i style="width:{{ usage.pct }}%"></i></div><p class="muted" style="margin:6px 0 14px">{{ usage.pct }}% of your {{ usage.quota|round(0)|int }} GB package volume used</p>{% endif %}
+      <span class="muted">Last 14 days (download + upload)</span>
+      <div class="pt-bars pp-bars" role="img" aria-label="Daily usage, last 14 days">{% for b in usage.bars %}<i style="height:{{ b.h }}%" title="{{ b.day }}: {{ b.v|bytes }}"></i>{% endfor %}</div>
+      <div class="pp-bars-x"><span>{{ usage.bars[0].day }}</span><span>{{ usage.bars[-1].day }}</span></div>
+    </div>
+  </section>
+</div>
 {% endif %}
 
-<section class="panel" id="invoices"><h2>Invoices</h2>
-  {% if invoices %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th class="num">Amount</th><th>Method</th><th>Valid until</th><th></th></tr></thead><tbody>
-    {% for p in invoices %}<tr><td class="nowrap">{{ p.paid_at|dt }}</td><td class="num">{{ cur }} {{ p.amount|money }}</td><td>{{ p.method }}</td><td>{{ p.period_to|d }}</td><td><a class="btn sm" href="{{ url_for('portal_invoice', pid=p.id) }}">Invoice</a></td></tr>{% endfor %}
-  </tbody></table></div>{% else %}<div class="empty"><h3>No payments yet</h3><p>Your payment history will appear here after your first payment.</p></div>{% endif %}
-</section>
+{# ---------------------------------------------------------------- invoices #}
+<div class="pp-pane" id="invoices" hidden>
+  <section class="panel">
+    <div class="panel-head"><h2>{{ icon('file') }}Invoices</h2><span class="aside">{{ invoices|length }}</span></div>
+    {% if invoices %}<div class="tbl-wrap"><table class="tbl pp-tbl" data-cards="off"><thead><tr><th>Invoice</th><th>Date</th><th>Description</th><th class="num">Amount</th><th>Status</th><th></th></tr></thead><tbody>
+      {% for e in invoices %}<tr><td data-l="Invoice" class="mono nowrap">{{ e.no }}</td><td data-l="Date" class="nowrap">{{ e.at|dt }}</td><td data-l="Description">{{ e.text }}{% if e.via %}<div class="muted" style="font-size:12px">Paid by {{ e.via }}</div>{% endif %}</td><td data-l="Amount" class="num">{{ cur }} {{ e.amount|money }}</td><td data-l="Status"><span class="badge {{ 'ok' if e.paid else 'bad' }}">{{ 'Paid' if e.paid else 'Unpaid' }}</span></td><td data-l="">{% if e.receipt %}<a class="btn sm" href="{{ url_for('portal_invoice', pid=e.receipt) }}">{{ icon('printer') }}View</a>{% endif %}</td></tr>{% endfor %}
+    </tbody></table></div>{% else %}<div class="empty"><h3>No invoices yet</h3><p>Your bills appear here after your first renewal.</p></div>{% endif %}
+  </section>
+</div>
 
+{# ---------------------------------------------------------------- ledger #}
+<div class="pp-pane" id="ledger" hidden>
+  <section class="panel">
+    <div class="panel-head"><h2>{{ icon('table') }}Ledger</h2><span class="aside">Balance now: <b class="{{ 'g' if (sub.balance|float - due) >= 0 else 'r' }}">{{ cur }} {{ (sub.balance|float - due)|money }}</b></span></div>
+    {% if ledger %}<div class="tbl-wrap"><table class="tbl pp-ledger pp-tbl" data-cards="off"><thead><tr><th>Date</th><th>Type</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr></thead><tbody>
+      {% for r in ledger %}<tr><td data-l="Date" class="nowrap">{{ r.at|dt }}</td><td data-l="Type" class="nowrap">{{ r.kind }}{% if r.no %}<div class="muted mono" style="font-size:12px">{{ r.no }}</div>{% endif %}</td><td data-l="Description">{{ r.text }}</td><td data-l="Debit" class="num r">{{ (cur ~ ' ' ~ r.debit|money) if r.debit else '' }}</td><td data-l="Credit" class="num g">{{ (cur ~ ' ' ~ r.credit|money) if r.credit else '' }}</td><td data-l="Balance" class="num"><b class="{{ 'r' if r.balance < 0 }}">{{ r.balance|money }}</b></td></tr>{% endfor %}
+    </tbody></table></div>{% else %}<div class="empty"><h3>Nothing yet</h3><p>Bills and payments appear here.</p></div>{% endif %}
+  </section>
+</div>
+
+{# ---------------------------------------------------------------- payments #}
+<div class="pp-pane" id="payments" hidden>
+  <section class="panel">
+    <div class="panel-head"><h2>{{ icon('card') }}Payments</h2></div>
+    {% if payments %}<div class="tbl-wrap"><table class="tbl pp-tbl" data-cards="off"><thead><tr><th>Date</th><th>Method</th><th>For</th><th class="num">Amount</th><th></th></tr></thead><tbody>
+      {% for p in payments %}<tr><td data-l="Date" class="nowrap">{{ p.paid_at|dt }}</td><td data-l="Method">{{ p.method }}</td><td data-l="For">{% if p.days_added %}Package +{{ p.days_added }} days{% if p.period_to %} (until {{ p.period_to|d }}){% endif %}{% else %}Payment{% endif %}</td><td data-l="Amount" class="num">{{ cur }} {{ p.amount|money }}</td><td data-l="">{% if p.days_added %}<a class="btn sm" href="{{ url_for('portal_invoice', pid=p.id) }}">{{ icon('printer') }}Receipt</a>{% endif %}</td></tr>{% endfor %}
+    </tbody></table></div>{% else %}<div class="empty"><h3>No payments yet</h3><p>Your payment history will appear here after your first payment.</p></div>{% endif %}
+  </section>
+  {% if tries %}
+  <section class="panel">
+    <div class="panel-head"><h2>{{ icon('wallet') }}Online payments (bKash)</h2></div>
+    <div class="tbl-wrap pay-attempts"><table class="tbl pp-tbl" data-cards="off"><thead><tr><th>Date</th><th class="num">Amount</th><th>Status</th><th></th></tr></thead><tbody>
+      {% for t in tries %}<tr><td data-l="Date" class="nowrap">{{ t.created_at|dt }}</td><td data-l="Amount" class="num">{{ cur }} {{ (t.amount|float + t.fee|float)|money }}</td><td data-l="Status"><span class="badge {{ 'ok' if t.status == 'completed' else ('warn' if t.status == 'pending' else 'bad') }}">{{ 'Confirming' if t.status == 'pending' else t.status|capitalize }}</span></td><td data-l=""><a class="btn sm" href="{{ url_for('portal_receipt', tid=t.id, key=t.token) }}">Details</a></td></tr>{% endfor %}
+    </tbody></table></div>
+  </section>
+  {% endif %}
+</div>
+
+{# ---------------------------------------------------------------- sessions #}
 {% if sessions is not none %}
-<section class="panel"><h2>Recent sessions</h2>
-  {% if sessions %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Started</th><th>Length</th><th class="num">Download</th><th class="num">Upload</th><th>IP</th></tr></thead><tbody>
-    {% for r in sessions %}<tr><td class="nowrap">{{ r.acctstarttime|dt }}</td><td>{% if r.acctstoptime %}{{ r.acctsessiontime|dur }}{% else %}<span class="badge ok">Online</span>{% endif %}</td><td class="num">{{ r.acctoutputoctets|bytes }}</td><td class="num">{{ r.acctinputoctets|bytes }}</td><td class="mono">{{ r.framedipaddress or '—' }}</td></tr>{% endfor %}
-  </tbody></table></div>{% else %}<p class="muted" style="margin:0">No sessions yet.</p>{% endif %}
-</section>
+<div class="pp-pane" id="sessions" hidden>
+  <section class="panel">
+    <div class="panel-head"><h2>{{ icon('activity') }}Recent sessions</h2></div>
+    {% if sessions %}<div class="tbl-wrap"><table class="tbl pp-tbl" data-cards="off"><thead><tr><th>Started</th><th>Length</th><th class="num">Download</th><th class="num">Upload</th><th>IP</th></tr></thead><tbody>
+      {% for r in sessions %}<tr><td data-l="Started" class="nowrap">{{ r.acctstarttime|dt }}</td><td data-l="Length">{% if r.acctstoptime %}{{ r.acctsessiontime|dur }}{% else %}<span class="badge ok">Online</span>{% endif %}</td><td data-l="Download" class="num">{{ r.acctoutputoctets|bytes }}</td><td data-l="Upload" class="num">{{ r.acctinputoctets|bytes }}</td><td data-l="IP" class="mono">{{ r.framedipaddress or '—' }}</td></tr>{% endfor %}
+    </tbody></table></div>{% else %}<div class="empty"><h3>No sessions yet</h3></div>{% endif %}
+  </section>
+</div>
 {% endif %}
 
-<section class="panel" id="account"><h2>My details</h2>
-  <dl class="kv" style="display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:0 0 14px">
-    <dt class="muted">Phone</dt><dd style="margin:0">{{ sub.phone or '—' }}</dd><dt class="muted">Address</dt><dd style="margin:0">{{ sub.address or '—' }}{% if sub.area %}, {{ sub.area }}{% endif %}</dd>
-  </dl>
-  {% if can_pw %}<details><summary class="btn sm">Change password</summary>
-    <form method="post" action="{{ url_for('portal_password') }}" style="display:grid;gap:10px;max-width:320px;margin-top:12px" autocomplete="off">{{ csrf_input() }}
+{# ---------------------------------------------------------------- account #}
+<div class="pp-pane" id="account" hidden>
+  <section class="panel">
+    <div class="panel-head"><h2>{{ icon('user') }}My details</h2></div>
+    <dl class="pp-kv">
+      <dt>Name</dt><dd>{{ sub.full_name or '—' }}</dd>
+      <dt>Username</dt><dd class="mono">{{ sub.username }}</dd>
+      <dt>Phone</dt><dd>{{ sub.phone or '—' }}</dd>
+      {% if sub.email %}<dt>Email</dt><dd>{{ sub.email }}</dd>{% endif %}
+      <dt>Address</dt><dd>{{ sub.address or '—' }}{% if sub.area %}, {{ sub.area }}{% endif %}</dd>
+    </dl>
+  </section>
+  {% if can_pw %}
+  <section class="panel">
+    <div class="panel-head"><h2>{{ icon('lock') }}Change password</h2></div>
+    <form method="post" action="{{ url_for('portal_password') }}" class="pp-body" style="display:grid;gap:10px;max-width:360px" autocomplete="off">{{ csrf_input() }}
       <div class="field"><label class="lbl" for="pc">Current password</label><input id="pc" name="current" type="password" required autocomplete="current-password"></div>
       <div class="field"><label class="lbl" for="pn">New password</label><input id="pn" name="new" type="password" minlength="6" required autocomplete="new-password"></div>
       <div class="field"><label class="lbl" for="pa">New password again</label><input id="pa" name="again" type="password" minlength="6" required autocomplete="new-password"></div>
       <button class="btn primary" type="submit">Save password</button>
-      <p class="help">This is also your internet (PPPoE) password. Update it on your router after changing it.</p>
-    </form></details>{% endif %}
-</section>
+      <p class="help" style="margin:0">This is also your internet (PPPoE) password. Update it on your router after changing it.</p>
+    </form>
+  </section>
+  {% endif %}
+</div>
+
+<script>
+(function () {
+  var tabs = document.querySelectorAll("[data-tab]"), panes = document.querySelectorAll(".pp-pane");
+  function show(key, scroll) {
+    var el = document.getElementById(key);
+    if (!el || !el.classList.contains("pp-pane")) key = "overview";
+    panes.forEach(function (p) { p.hidden = p.id !== key; });
+    tabs.forEach(function (t) {
+      var on = t.dataset.tab === key;
+      t.classList.toggle("on", on);
+      if (on) { var nav = t.parentNode; nav.scrollLeft = t.offsetLeft - (nav.clientWidth - t.offsetWidth) / 2; }
+    });
+    if (scroll) window.scrollTo({ top: document.querySelector(".pp-tabs").getBoundingClientRect().top + window.scrollY - 70, behavior: "smooth" });
+  }
+  function go(key, scroll) { history.replaceState(null, "", "#" + key); show(key, scroll); }
+  tabs.forEach(function (t) { t.addEventListener("click", function (e) { e.preventDefault(); go(t.dataset.tab, false); }); });
+  document.querySelectorAll("[data-tab-link]").forEach(function (a) { a.addEventListener("click", function (e) { e.preventDefault(); go(a.dataset.tabLink, true); }); });
+  window.addEventListener("hashchange", function () { show(location.hash.slice(1), true); });
+  show((location.hash || "#overview").slice(1), !!location.hash);
+})();
+</script>
 {% endblock %}

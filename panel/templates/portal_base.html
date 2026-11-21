@@ -19,11 +19,12 @@
 </div>
 {% if sub is defined and sub %}<nav class="pt-bottom-nav" aria-label="Portal">
   <a href="{{ url_for('portal') }}" class="{{ 'on' if endpoint == 'portal' }}" {% if endpoint == 'portal' %}aria-current="page"{% endif %}>{{ icon('home') }}<span>Home</span></a>
-  <a href="{{ url_for('portal') }}#usage">{{ icon('chart') }}<span>Usage</span></a>
   <a href="{{ url_for('portal') }}#invoices">{{ icon('file') }}<span>Invoices</span></a>
+  <a href="{{ url_for('portal') }}#ledger">{{ icon('table') }}<span>Ledger</span></a>
   <a href="{{ url_for('portal_notifications') }}" class="{{ 'on' if endpoint == 'portal_notifications' }}" {% if endpoint == 'portal_notifications' %}aria-current="page"{% endif %} data-notif-link>{{ icon('bell') }}<span>Alerts</span>{% if portal_unread %}<b class="notif-dot" data-notif-count>{{ portal_unread if portal_unread < 100 else '99+' }}</b>{% else %}<b class="notif-dot" data-notif-count hidden></b>{% endif %}</a>
   <a href="{{ url_for('portal_pay') }}" class="{{ 'on' if endpoint == 'portal_pay' }}" {% if endpoint == 'portal_pay' %}aria-current="page"{% endif %}>{{ icon('wallet') }}<span>Pay</span></a>
 </nav>{% endif %}
+<script>document.addEventListener("click",function(e){if(!e.target.closest("[data-pp-theme]"))return;var r=document.documentElement,t=r.dataset.theme==="dark"?"light":"dark";r.dataset.theme=t;try{localStorage.setItem("isp-theme",t)}catch(x){}});</script>
 <script src="{{ asset('js/pwa.js') }}"></script>
 {% if sub is defined and sub %}<script src="{{ asset('js/portal-notify.js') }}" data-check="{{ url_for('portal_notifications_check') }}" data-list="{{ url_for('portal_notifications') }}" data-unread="{{ portal_unread }}" data-push-key="{{ url_for('portal_push_key') }}" data-push-sub="{{ url_for('portal_push_subscribe') }}" data-push-unsub="{{ url_for('portal_push_unsubscribe') }}" data-csrf="{{ session.get('csrf', '') }}"></script>{% endif %}
 </body>

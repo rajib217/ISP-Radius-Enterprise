@@ -596,6 +596,17 @@ def check_rules(flask_app, ids):
     check(p_home.status_code == 200 and p_pay.status_code in (200, 302) and 'class="pt-bottom-nav"' in p_html
           and 'href="/portal#invoices"' in p_html and 'id="invoices"' in p_html and 'id="usage"' in p_html,
           "customer portal and pay page open, with the bottom nav and its #usage / #invoices targets")
+    _psid = one("SELECT id FROM subscribers WHERE username = 'uttara.shop'")["id"]
+    run("INSERT INTO sub_charges (subscriber_id, name, amount, created_by) VALUES (%s, 'CI portal router fee', 250, 'admin')", (_psid,))
+    _ph = pc.get("/portal").get_data(as_text=True)
+    _photo_anon = flask_app.test_client().get("/portal/photo")
+    check(all('id="%s"' % k in _ph for k in ("overview", "invoices", "ledger", "payments", "account"))
+          and 'class="pp-logo"' in _ph and 'class="kpis ksv pp-kpis"' in _ph and "CI portal router fee" in _ph
+          and "Unpaid" in _ph and 'data-l="Debit"' in _ph and 'data-cards="off"' in _ph and 'href="/portal#ledger"' in _ph
+          and pc.get("/portal/photo").status_code == 404 and _photo_anon.status_code in (302, 404)
+          and 'class="pp-logo"' in flask_app.test_client().get("/portal/login").get_data(as_text=True),
+          "portal redesign: logo, profile tiles, Overview / Invoices / Ledger / Payments / My details tabs, extra charges show as unpaid")
+    run("DELETE FROM sub_charges WHERE name = 'CI portal router fee'")
     _slash = flask_app.test_client().get("/portal/")
     _junk = flask_app.test_client().get("/portal/nothing-here")
     check(_slash.status_code == 302 and _slash.headers.get("Location", "").endswith("/portal")

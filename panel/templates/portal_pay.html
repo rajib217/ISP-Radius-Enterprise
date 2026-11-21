@@ -1,7 +1,7 @@
 {% extends "portal_base.html" %}
 {% from "_macros.html" import icon %}
 {% block title %}Pay with bKash{% endblock %}
-{% block top %}<div class="pt-top"><b>{{ isp or 'My connection' }}</b><a class="btn sm" href="{{ url_for('portal') }}">Back</a></div>{% endblock %}
+{% block top %}{% include "_portal_top.html" %}{% endblock %}
 {% block content %}
 <div class="pay-wrap">
   <section class="pay-card" aria-labelledby="pay-h">

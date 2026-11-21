@@ -2,7 +2,7 @@
 {% from "_macros.html" import icon %}
 {% block title %}{{ 'Receipt' if row.status == 'completed' else 'Payment' }}{% endblock %}
 {% block head %}{% if row.status == 'pending' %}<meta http-equiv="refresh" content="10">{% endif %}{% endblock %}
-{% block top %}<div class="pt-top"><b>{{ inv.inv_name or isp or 'My connection' }}</b>{% if signed_in %}<a class="btn sm" href="{{ url_for('portal') }}">My account</a>{% endif %}</div>{% endblock %}
+{% block top %}<div class="pt-top"><span class="pp-brand">{% include "_portal_logo.html" %}<b>{{ inv.inv_name or isp or 'My connection' }}</b></span>{% if signed_in %}<a class="btn sm" href="{{ url_for('portal') }}">My account</a>{% endif %}</div>{% endblock %}
 {% block content %}
 <div class="pay-wrap">
   <section class="pay-card" aria-labelledby="rc-h" {% if row.status == 'pending' %}aria-live="polite"{% endif %}>

@@ -238,13 +238,41 @@ def portal():
     if s.get("sub_session_log") == "1":
         sessions = q("SELECT acctstarttime, acctstoptime, acctsessiontime, acctinputoctets, acctoutputoctets, framedipaddress "
                      "FROM radacct WHERE username = %s ORDER BY radacctid DESC LIMIT 10", (user,))
-    invoices = q("SELECT id, amount, days_added, method, period_to, paid_at FROM payments WHERE subscriber_id = %s "
-                 "ORDER BY id DESC LIMIT 50", (sub["id"],))
+    payments = q("SELECT * FROM payments WHERE subscriber_id = %s ORDER BY id DESC LIMIT 300", (sub["id"],))
+    charges = q("SELECT * FROM sub_charges WHERE subscriber_id = %s ORDER BY id DESC LIMIT 300", (sub["id"],))
+    balance_rows = q("SELECT id, amount, balance_after, note, created_by, created_at FROM sub_ledger WHERE subscriber_id = %s "
+                     "ORDER BY id DESC LIMIT 300", (sub["id"],))
     pending = q("SELECT id, token, amount, fee, status, message, created_at FROM portal_payments WHERE subscriber_id = %s "
-                "ORDER BY id DESC LIMIT 5", (sub["id"],))
+                "ORDER BY id DESC LIMIT 20", (sub["id"],))
+    due = sum(float(c["amount"] or 0) for c in charges if not c["paid"])
+    used_gb = ((usage["up"] + usage["down"]) / 1024 ** 3) if usage else None
+    if used_gb is None:
+        m = q("SELECT COALESCE(SUM(acctinputoctets + acctoutputoctets), 0) AS t FROM radacct WHERE username = %s "
+              "AND acctstarttime >= %s", (user, today.replace(day=1)), one=True)
+        used_gb = core.n(m["t"]) / 1024 ** 3
+    uptime = None
+    if online and online.get("acctstarttime"):
+        from datetime import datetime
+        uptime = max(0, int((datetime.now() - online["acctstarttime"]).total_seconds()))
+    import mod_subview as sv
     return render_template("portal.html", sub=sub, state=state, left=left, usage=usage, online=online, sessions=sessions,
-                           invoices=invoices, tries=pending, terms=pay_terms(sub), isp=s.get("isp_name", ""),
-                           cur=s.get("currency", ""), can_pw=s.get("sub_reset_pw") == "1")
+                           invoices=sv.invoices(payments, charges), ledger=sv.ledger(sub, payments, charges, balance_rows),
+                           payments=payments, tries=pending, terms=pay_terms(sub), isp=s.get("isp_name", ""),
+                           cur=s.get("currency", ""), can_pw=s.get("sub_reset_pw") == "1", due=due, used_gb=used_gb,
+                           uptime=uptime, photo=bool(sv._photo_path(sub["id"])), owner=_owner(sub),
+                           phone=s.get("support_phone", ""))
+
+
+@route("/portal/photo")
+def portal_photo():
+    """The signed-in customer's own profile photo (set by the office)."""
+    from flask import send_file
+    import mod_subview
+    sub = _need() or abort(404)
+    f = mod_subview._photo_path(sub["id"]) or abort(404)
+    resp = send_file(f, mimetype="image/png" if f.endswith(".png") else "image/jpeg", max_age=3600)
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp
 
 
 @route("/portal/invoice/<int:pid>")
