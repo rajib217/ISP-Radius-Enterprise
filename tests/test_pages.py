@@ -597,6 +597,37 @@ def check_rules(flask_app, ids):
           and 'href="/portal#invoices"' in p_html and 'id="invoices"' in p_html and 'id="usage"' in p_html,
           "customer portal and pay page open, with the bottom nav and its #usage / #invoices targets")
 
+    # ---- subscriber Ledger (debit / credit / running balance) and Invoices (every activation + extra charges)
+    import mod_subview as _sv
+    from datetime import datetime as _dtm, timedelta as _td
+    _t0 = _dtm(2026, 11, 1, 10, 0)
+    _pays = [  # newest first, as the page loads them
+        {"id": 3, "paid_at": _t0 + _td(days=2), "amount": 250, "days_added": 30, "method": "cash", "period_to": None,
+         "note": "Received 300.00, 50.00 added to the balance", "received_by": "admin"},
+        {"id": 2, "paid_at": _t0 + _td(days=1), "amount": 250, "days_added": 30, "method": "balance", "period_to": None,
+         "note": "Paid from the customer's balance", "received_by": "admin"}]
+    _bal = [
+        {"id": 3, "amount": 50, "balance_after": 100, "note": "Extra from activation payment (received 300.00, package 250.00)",
+         "created_by": "admin", "created_at": _t0 + _td(days=2)},
+        {"id": 2, "amount": -250, "balance_after": 50, "note": "Activation +30 days (Home 20)", "created_by": "admin",
+         "created_at": _t0 + _td(days=1)},
+        {"id": 1, "amount": 300, "balance_after": 300, "note": "", "created_by": "admin", "created_at": _t0}]
+    _chg = [{"id": 9, "created_at": _t0 + _td(days=3), "amount": 40, "paid": 0, "name": "Installation", "note": "",
+             "created_by": "admin"}]
+    _led = _sv.ledger({"balance": 100}, _pays, _chg, _bal)
+    check([r["balance"] for r in _led] == [60.0, 100.0, -200.0, 50.0, 300.0]
+          and [(r["debit"], r["credit"]) for r in _led] == [(40.0, 0.0), (0.0, 300.0), (250.0, 0.0), (250.0, 0.0), (0.0, 300.0)],
+          "ledger: invoices are debits, money received is credit, package halves of balance lines are not repeated, "
+          "and the running balance ends at balance minus dues")
+    _inv = _sv.invoices(_pays, _chg)
+    check([v["no"] for v in _inv] == ["CHG-9", "INV-3", "INV-2"] and _inv[1]["receipt"] == 3 and not _inv[0]["paid"]
+          and _inv[2]["via"] == "customer balance", "invoices list every activation (with a receipt) and every extra charge")
+    _sid = one("SELECT subscriber_id FROM payments WHERE subscriber_id IS NOT NULL AND days_added > 0 ORDER BY id DESC LIMIT 1")
+    if _sid:
+        _page = adm.get("/subscribers/%d" % _sid["subscriber_id"]).get_data(as_text=True)
+        check('class="tbl sv-ledger"' in _page and ">INV-" in _page and "/receipt" in _page,
+              "the customer's page shows the debit/credit ledger and printable invoices")
+
     # ---- Server tools: the web server is Caddy (install.sh), and logins are listed even when radius.log is empty
     import tempfile as _tf
     panel_app = sys.modules["app"]

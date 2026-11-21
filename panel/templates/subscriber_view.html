@@ -165,12 +165,30 @@
   {% if t.months %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Month</th><th class="num">Download</th><th class="num">Upload</th><th class="num">Sessions</th><th class="num">Online time</th></tr></thead><tbody>{% for m in t.months %}<tr><td>{{ m.m }}</td><td class="num">{{ m.down|bytes }}</td><td class="num">{{ m.up|bytes }}</td><td class="num">{{ m.sessions }}</td><td class="num">{{ m.secs|dur }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><p>No usage recorded yet.</p></div>{% endif %}</section>
 </div>
 
-<div class="sv-pane" id="tab-ledgers" hidden><section class="panel"><div class="panel-head"><h2>Ledger</h2><span class="aside">Balance {{ currency }} {{ '%.2f' % sub.balance|float }}</span></div>
-  {% if t.ledger %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Type</th><th>Description</th><th class="num">Amount</th><th>By</th></tr></thead><tbody>{% for e in t.ledger %}<tr><td class="nowrap">{{ e.at|dt }}</td><td>{{ e.kind }}</td><td>{{ e.text }}</td><td class="num {{ 'g' if e.amount >= 0 else 'r' }}">{{ '%+.2f' % e.amount|float }}</td><td class="muted">{{ e.by }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><p>Nothing in the ledger yet.</p></div>{% endif %}</section></div>
-
+<div class="sv-pane" id="tab-ledgers" hidden><section class="panel"><div class="panel-head"><h2>Ledger</h2><span class="aside">Balance {{ currency }} {{ '%.2f' % sub.balance|float }}{% if x.due|float %} · Due {{ currency }} {{ '%.2f' % x.due|float }}{% endif %}</span></div>
+  {% if t.ledger %}<div class="tbl-wrap"><table class="tbl sv-ledger"><thead><tr><th>Date</th><th>Type</th><th>Ref</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th><th>By</th></tr></thead><tbody>{% for e in t.ledger %}<tr>
+    <td class="nowrap" data-card="key">{{ e.at|dt }}</td>
+    <td data-card="title"><span class="pill {{ 'warn' if e.kind == 'Invoice' else ('ok' if e.credit else 'bad') }}">{{ e.kind }}</span></td>
+    <td class="mono muted">{{ e.no }}</td>
+    <td>{{ e.text }}</td>
+    <td class="num r" data-card="key">{{ '%.2f' % e.debit if e.debit else '' }}</td>
+    <td class="num g" data-card="key">{{ '%.2f' % e.credit if e.credit else '' }}</td>
+    <td class="num"><b class="{{ 'r' if e.balance < 0 else '' }}">{{ '%.2f' % e.balance }}</b></td>
+    <td class="muted">{{ e.by }}</td></tr>{% endfor %}</tbody></table></div>
+  <p class="muted sv-ledger-note">Debit = bills and money taken off the balance. Credit = money received. Balance = the customer's balance minus unpaid extra charges (below zero means they owe).</p>
+  {% else %}<div class="empty"><p>Nothing in the ledger yet.</p></div>{% endif %}</section></div>
 <div class="sv-pane" id="tab-invoices" hidden><section class="panel"><div class="panel-head"><h2>Invoices</h2><span class="aside">Due {{ currency }} {{ '%.2f' % x.due|float }}</span></div>
-  {% if t.charges %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Name</th><th class="num">Amount</th><th>Status</th><th>Note</th><th></th></tr></thead><tbody>{% for c in t.charges %}<tr><td class="nowrap">{{ c.created_at|dt }}</td><td>{{ c.name }}</td><td class="num">{{ c.amount|money }}</td><td><span class="pill {{ 'ok' if c.paid else 'warn' }}">{{ 'Paid' if c.paid else 'Unpaid' }}</span></td><td class="muted">{{ c.note }}</td>
-    <td class="act">{% if edit and not c.paid and can('accounting', 'edit') %}<form method="post" action="{{ url_for('charge_paid', cid=c.id) }}">{{ csrf_input() }}<button class="btn sm" type="submit">Mark paid</button></form>{% endif %}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><p>No invoices. Use New Invoice to add an extra charge.</p></div>{% endif %}</section></div>
+  {% if t.invoices %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Invoice</th><th>Date</th><th>Description</th><th class="num">Amount</th><th>Status</th><th>Paid by</th><th>Note</th><th></th></tr></thead><tbody>{% for v in t.invoices %}<tr>
+    <td class="mono" data-card="title">{{ v.no }}</td>
+    <td class="nowrap" data-card="key">{{ v.at|dt }}</td>
+    <td>{{ v.text }}</td>
+    <td class="num" data-card="key"><b>{{ v.amount|money }}</b></td>
+    <td data-card="key"><span class="pill {{ 'ok' if v.paid else 'warn' }}">{{ 'Paid' if v.paid else 'Unpaid' }}</span></td>
+    <td class="muted">{{ v.via }}</td>
+    <td class="muted">{{ v.note }}</td>
+    <td class="act">{% if v.receipt %}<a class="btn sm" href="{{ url_for('receipt', pid=v.receipt) }}" target="_blank" rel="noopener" title="Open and print">{{ icon('printer') }}Print</a>{% elif v.charge and edit and not v.paid and can('accounting', 'edit') %}<form method="post" action="{{ url_for('charge_paid', cid=v.charge) }}" data-confirm="Mark {{ v.no }} as paid and record the payment?">{{ csrf_input() }}<button class="btn sm" type="submit">Mark paid</button></form>{% endif %}</td>
+  </tr>{% endfor %}</tbody></table></div>
+  {% else %}<div class="empty"><p>No invoices yet. Activations, renewals and extra charges (New Invoice) show up here.</p></div>{% endif %}</section></div>
 
 <div class="sv-pane" id="tab-payments" hidden><section class="panel"><div class="panel-head"><h2>Payments</h2></div>
   {% if t.payments %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th class="num">Amount</th><th>Method</th><th class="num">Days</th><th>Until</th><th>Received by</th><th>Note</th></tr></thead><tbody>{% for p in t.payments %}<tr><td class="nowrap">{{ p.paid_at|dt }}</td><td class="num">{{ currency }} {{ p.amount|money }}</td><td>{{ p.method }}</td><td class="num">{{ p.days_added or '' }}</td><td>{{ p.period_to|d if p.period_to else '' }}</td><td class="muted">{{ p.received_by }}</td><td class="muted">{{ p.note }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><p>No payments recorded. Use Activation to add one.</p></div>{% endif %}</section></div>

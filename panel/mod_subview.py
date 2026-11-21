@@ -79,8 +79,8 @@ def context(sub, sessions):
 def tabs(sub, sessions):
     sid, user = sub["id"], sub["username"]
     t = {}
-    t["payments"] = q("SELECT * FROM payments WHERE subscriber_id = %s ORDER BY id DESC LIMIT 100", (sid,))
-    t["charges"] = q("SELECT * FROM sub_charges WHERE subscriber_id = %s ORDER BY id DESC LIMIT 100", (sid,))
+    t["payments"] = q("SELECT * FROM payments WHERE subscriber_id = %s ORDER BY id DESC LIMIT 300", (sid,))
+    t["charges"] = q("SELECT * FROM sub_charges WHERE subscriber_id = %s ORDER BY id DESC LIMIT 300", (sid,))
     t["messages"] = q("SELECT channel, to_addr, subject, body, status, error, created_at, sent_at FROM outbox "
                       "WHERE subscriber_id = %s ORDER BY id DESC LIMIT 50", (sid,))
     attrs = []
@@ -109,20 +109,91 @@ def tabs(sub, sessions):
                     (user, (date.today().replace(day=1) - timedelta(days=150)).replace(day=1)))
     t["fees"] = q("SELECT f.name, f.kind, f.mode, f.value FROM fees f JOIN plan_fees pf ON pf.fee_id = f.id "
                   "WHERE f.active = 1 AND pf.plan_id = %s ORDER BY f.name", (sub["plan_id"],)) if sub["plan_id"] else []
-    # ledger: balance top-ups and payments (credits) and charges (debits), newest first
-    ledger = []
-    for r in q("SELECT amount, balance_after, note, created_by, created_at FROM sub_ledger WHERE subscriber_id = %s "
-               "ORDER BY id DESC LIMIT 100", (sid,)):
-        ledger.append({"at": r["created_at"], "kind": "Balance", "text": r["note"] or ("Added" if r["amount"] >= 0 else "Used"),
-                       "amount": r["amount"], "by": r["created_by"]})
-    for p in t["payments"]:
-        ledger.append({"at": p["paid_at"], "kind": "Payment", "text": "%s%s" % (p["method"], (" · " + p["note"]) if p["note"] else ""),
-                       "amount": p["amount"], "by": p["received_by"]})
-    for c in t["charges"]:
-        ledger.append({"at": c["created_at"], "kind": "Invoice", "text": c["name"] + (" (paid)" if c["paid"] else " (unpaid)"),
-                       "amount": -c["amount"], "by": c["created_by"]})
-    t["ledger"] = sorted(ledger, key=lambda e: e["at"], reverse=True)[:150]
+    balance_rows = q("SELECT id, amount, balance_after, note, created_by, created_at FROM sub_ledger WHERE subscriber_id = %s "
+                     "ORDER BY id DESC LIMIT 300", (sid,))
+    t["invoices"] = invoices(t["payments"], t["charges"])
+    t["ledger"] = ledger(sub, t["payments"], t["charges"], balance_rows)
     return t
+
+
+# ===================================================================== invoices and the customer's ledger
+# balance lines that are only the other half of a package payment (already shown as that invoice's payment)
+_PACKAGE_BALANCE = ("Activation +", "Mass activation +", "Auto renew +", "Renewal +",
+                    "Extra from activation payment", "Rest of activation from balance")
+_RECEIVED = re.compile(r"Received ([0-9]+(?:\.[0-9]+)?)")
+
+
+def _f(v):
+    return round(float(v or 0), 2)
+
+
+def invoices(payments, charges):
+    """Every bill of the customer, newest first: each package activation / renewal (a payment row with days) and each
+    extra service charge."""
+    out = []
+    for p in payments:
+        if not p["days_added"]:
+            continue
+        paid_by = "customer balance" if p["method"] == "balance" else p["method"]
+        out.append({"no": "INV-%d" % p["id"], "at": p["paid_at"], "kind": "package",
+                    "text": "Package +%d day%s" % (p["days_added"], "" if p["days_added"] == 1 else "s")
+                            + (" (until %s)" % p["period_to"].strftime("%d %b %Y") if p["period_to"] else ""),
+                    "amount": _f(p["amount"]), "paid": True, "via": paid_by, "note": p["note"] or "",
+                    "receipt": p["id"], "charge": None, "by": p["received_by"]})
+    for c in charges:
+        out.append({"no": "CHG-%d" % c["id"], "at": c["created_at"], "kind": "charge", "text": c["name"],
+                    "amount": _f(c["amount"]), "paid": bool(c["paid"]), "via": "", "note": c["note"] or "",
+                    "receipt": None, "charge": c["id"], "by": c["created_by"]})
+    return sorted(out, key=lambda e: e["at"], reverse=True)
+
+
+def ledger(sub, payments, charges, balance_rows):
+    """The customer's account, newest first, with Debit (bills, money taken off) and Credit (money in) and the
+    running balance. The balance is what the customer has in hand: their stored balance minus unpaid extra charges
+    (negative = they owe). It is worked out backwards from today's figure, so the newest line always matches it.
+
+      package invoice  debit  = the price;  its payment credit = the money received (none when paid from the balance)
+      extra charge     debit  = the charge; paying it later is a credit (a payment without days)
+      balance top-up / deduct (Add Balance, Mass Payment, ...)  credit / debit
+    Balance lines written as the other half of a package payment are not repeated."""
+    rows = []
+    for p in payments:
+        amt = _f(p["amount"])
+        if p["days_added"]:
+            rows.append({"at": p["paid_at"], "seq": 1, "kind": "Invoice", "no": "INV-%d" % p["id"],
+                         "text": "Package +%d days%s%s" % (p["days_added"],
+                                                          " until %s" % p["period_to"].strftime("%d %b %Y") if p["period_to"] else "",
+                                                          ", paid from the balance" if p["method"] == "balance" else ""),
+                         "debit": amt, "credit": 0.0, "by": p["received_by"]})
+            if p["method"] != "balance":
+                m = _RECEIVED.search(p["note"] or "")
+                got = _f(m.group(1)) if m else amt
+                rows.append({"at": p["paid_at"], "seq": 2, "kind": "Payment", "no": "INV-%d" % p["id"],
+                             "text": "Received by %s%s" % (p["method"], (" · " + p["note"]) if p["note"] else ""),
+                             "debit": 0.0, "credit": got, "by": p["received_by"]})
+        else:
+            rows.append({"at": p["paid_at"], "seq": 2, "kind": "Payment", "no": "PAY-%d" % p["id"],
+                         "text": "Received by %s%s" % (p["method"], (" · " + p["note"]) if p["note"] else ""),
+                         "debit": 0.0, "credit": amt, "by": p["received_by"]})
+    for c in charges:
+        rows.append({"at": c["created_at"], "seq": 0, "kind": "Invoice", "no": "CHG-%d" % c["id"],
+                     "text": c["name"] + ("" if c["paid"] else " (unpaid)"), "debit": _f(c["amount"]), "credit": 0.0,
+                     "by": c["created_by"]})
+    for b in balance_rows:
+        note = b["note"] or ""
+        if note.startswith(_PACKAGE_BALANCE):
+            continue
+        amt = _f(b["amount"])
+        rows.append({"at": b["created_at"], "seq": 3, "kind": "Balance top-up" if amt >= 0 else "Balance deduct",
+                     "no": "", "text": note or ("Balance added" if amt >= 0 else "Balance taken off"),
+                     "debit": -amt if amt < 0 else 0.0, "credit": amt if amt > 0 else 0.0, "by": b["created_by"]})
+    rows.sort(key=lambda e: (e["at"], e["seq"]), reverse=True)
+    due = sum(_f(c["amount"]) for c in charges if not c["paid"])
+    running = round(_f(sub["balance"]) - due, 2)
+    for r in rows:
+        r["balance"] = running
+        running = round(running - r["credit"] + r["debit"], 2)
+    return rows[:200]
 
 
 # ===================================================================== actions
