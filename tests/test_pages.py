@@ -717,6 +717,10 @@ def check_rules(flask_app, ids):
           and 'rel="manifest" href="/manifest.webmanifest"' in _login and "pwa.js" in _login
           and 'rel="manifest" href="/portal/manifest.webmanifest"' in _portal_html and "pwa.js" in _portal_html,
           "every layout (panel, login, customer portal) links its app manifest, splash and loading script")
+    _pjs = open(os.path.join(ROOT, "panel", "static", "js", "pwa.js"), encoding="utf-8").read()
+    check("beforeinstallprompt" in _pjs and "Add to Home Screen" in _pjs and "pwa-install-later" in _pjs
+          and ".pwa-sheet-card" in open(os.path.join(ROOT, "panel", "static", "css", "app.css"), encoding="utf-8").read(),
+          "phones get an install sheet (Android one-tap install, iPhone steps) that 'Later' hides for a week")
 
     # ---- expired notice: expired customers stay online in the notice group and see the unpaid-bill page
     import radius as _rad
