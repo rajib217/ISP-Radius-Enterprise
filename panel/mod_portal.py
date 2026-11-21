@@ -22,8 +22,13 @@ LOGIN_TRIES = 8
 
 
 def _on():
+    """The portal is switched off (Settings > Subscriber > Customer Portal): a clear page instead of a bare 404."""
     if core.cfg().get("portal_on") != "1":
-        abort(404)
+        from flask import Response
+        s = core.cfg()
+        staff = bool(session.get("uid"))
+        abort(Response(render_template("portal_off.html", isp=s.get("isp_name", ""), staff=staff,
+                                       phone=s.get("support_phone", "")), 404))
 
 
 def _sub():
@@ -103,6 +108,12 @@ def portal_login():
             commit()
             error = "Wrong username or password."
     return render_template("portal_login.html", error=error, isp=core.cfg().get("isp_name", ""))
+
+
+@route("/portal/")
+def portal_slash():
+    """/portal/ (with the slash people often type) is the same page as /portal."""
+    return redirect(url_for("portal"))
 
 
 @route("/portal/logout", methods=["POST"])

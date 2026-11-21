@@ -596,6 +596,19 @@ def check_rules(flask_app, ids):
     check(p_home.status_code == 200 and p_pay.status_code in (200, 302) and 'class="pt-bottom-nav"' in p_html
           and 'href="/portal#invoices"' in p_html and 'id="invoices"' in p_html and 'id="usage"' in p_html,
           "customer portal and pay page open, with the bottom nav and its #usage / #invoices targets")
+    _slash = flask_app.test_client().get("/portal/")
+    _junk = flask_app.test_client().get("/portal/nothing-here")
+    check(_slash.status_code == 302 and _slash.headers.get("Location", "").endswith("/portal")
+          and "/login" not in _junk.headers.get("Location", ""),
+          "/portal/ (with the slash) goes to the portal, and unknown portal addresses never land on the staff sign-in")
+    run("REPLACE INTO settings (skey, svalue) VALUES ('portal_on', '0')")
+    _off_anon = flask_app.test_client().get("/portal")
+    _off_staff = adm.get("/portal")
+    run("REPLACE INTO settings (skey, svalue) VALUES ('portal_on', '1')")
+    check(_off_anon.status_code == 404 and "গ্রাহক পোর্টাল এখন বন্ধ" in _off_anon.get_data(as_text=True)
+          and "Customer portal is switched off" in _off_staff.get_data(as_text=True)
+          and "/settings/subscriber" in _off_staff.get_data(as_text=True),
+          "a switched-off portal explains itself (customers: not available; staff: where to turn it on)")
 
     # ---- dashboard: Offline ONUs (Offline + LOS), sellers only see the ONUs on their own OLTs
     run("INSERT INTO net_devices (name, kind, ip, created_by) VALUES ('CI-OLT-Admin', 'olt', '10.9.0.1', 'admin')")

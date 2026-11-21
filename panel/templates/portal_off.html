@@ -1,0 +1,17 @@
+{% extends "portal_base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Portal off{% endblock %}
+{% block content %}
+<section class="panel" style="max-width:440px;margin:10vh auto 0;width:100%;text-align:center;padding:28px 22px">
+  <div style="display:grid;place-items:center;width:56px;height:56px;margin:0 auto 12px;border-radius:16px;background:var(--warn-soft);color:var(--warn)">{{ icon('power') }}</div>
+  {% if staff %}
+  <h1 style="margin:0 0 6px;font-size:20px">Customer portal is switched off</h1>
+  <p class="muted" style="margin:0 0 16px">Customers see a "not available" page until you turn it on.</p>
+  <a class="btn primary" href="{{ url_for('settings_subscriber') }}">Settings &gt; Subscriber &gt; Customer Portal</a>
+  {% else %}
+  <h1 style="margin:0 0 6px;font-size:20px">{{ isp or 'Customer portal' }}</h1>
+  <p class="muted" style="margin:0">গ্রাহক পোর্টাল এখন বন্ধ আছে। প্রয়োজনে অফিসে যোগাযোগ করুন{% if phone %}: <a href="tel:{{ phone|replace(' ', '') }}">{{ phone }}</a>{% endif %}।</p>
+  <p class="muted" style="margin:8px 0 0;font-size:13px">The customer portal is not available right now.</p>
+  {% endif %}
+</section>
+{% endblock %}
