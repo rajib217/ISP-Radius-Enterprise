@@ -7,7 +7,7 @@ radgroupreply tables so FreeRADIUS never has to know about the panel.
 import ipaddress
 import re
 import subprocess
-from datetime import date
+from datetime import date, datetime, time
 
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -56,6 +56,69 @@ def remove_plan(cur, name):
 
 
 # ----------------------------------------------------------- subscribers
+# Expired customers who should see the unpaid-bill page instead of being refused (Settings > Expired notice)
+EXPIRED_GROUP = "expired-notice"
+EXPIRED_LIST = "expired"           # the MikroTik address list the routers redirect to the notice page
+
+# the moment a customer's package ends, in SQL (needs the aliases s = subscribers and p = plans)
+END_MOMENT = ("(CASE WHEN s.grace_until IS NOT NULL AND s.grace_until > s.expiry_date "
+              "THEN TIMESTAMP(s.grace_until, COALESCE(NULLIF(p.fixed_expire_time, ''), '23:59:59')) "
+              "ELSE TIMESTAMP(s.expiry_date, COALESCE(NULLIF(s.expiry_time, ''), NULLIF(p.fixed_expire_time, ''), '23:59:59')) END)")
+
+
+def _clock_time(text):
+    try:
+        parts = [int(x) for x in (text or "").split(":")[:3]]
+        return time(*parts) if len(parts) >= 2 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def account_end(sub, plan):
+    """The moment this customer's package ends (grace period included), or None when there is no expiry date.
+    Same rule as END_MOMENT and the Expiration attribute."""
+    plan = plan or {}
+    expiry, at = sub.get("expiry_date"), sub.get("expiry_time") or plan.get("fixed_expire_time")
+    grace = sub.get("grace_until")
+    if grace and expiry and grace > expiry:
+        expiry, at = grace, plan.get("fixed_expire_time")
+    if not expiry:
+        return None
+    return datetime.combine(expiry, _clock_time(at) or time(23, 59, 59))
+
+
+def expired_notice_group(cur):
+    """EXPIRED_GROUP when Settings > Expired notice is on, else ""."""
+    cur.execute("SELECT svalue FROM settings WHERE skey = 'expired_notice_on'")
+    row = cur.fetchone()
+    return EXPIRED_GROUP if row and row["svalue"] == "1" else ""
+
+
+def ensure_expired_group(cur, rate=""):
+    """(Re)write the RADIUS reply of the notice group: put the customer in the router's "expired" address list, at a
+    small speed so the notice page and bKash still open."""
+    cur.execute("DELETE FROM radgroupreply WHERE groupname = %s", (EXPIRED_GROUP,))
+    rows = [("Mikrotik-Address-List", ":=", EXPIRED_LIST)]
+    if rate:
+        rows.append(("Mikrotik-Rate-Limit", ":=", rate))
+    cur.executemany("INSERT INTO radgroupreply (groupname, attribute, op, value) VALUES (%s, %s, %s, %s)",
+                    [(EXPIRED_GROUP,) + r for r in rows])
+
+
+def resync_username(cur, username):
+    """Rewrite one customer's RADIUS rows from the database (used just before an expired session is dropped, so the
+    reconnect already lands in the expired policy / notice group)."""
+    cur.execute("SELECT * FROM subscribers WHERE username = %s", (username,))
+    s = cur.fetchone()
+    if not s:
+        return
+    plan = None
+    if s.get("plan_id"):
+        cur.execute("SELECT * FROM plans WHERE id = %s", (s["plan_id"],))
+        plan = cur.fetchone()
+    sync_subscriber(cur, s["username"], plan, s["status"], s["expiry_date"], s["static_ip"])
+
+
 def sync_subscriber(cur, username, plan, status, expiry, static_ip, password=None):
     """Rewrite the RADIUS rows for one subscriber.
 
@@ -86,7 +149,10 @@ def sync_subscriber(cur, username, plan, status, expiry, static_ip, password=Non
             (username, password),
         )
     plan = plan or {}
-    expired = bool(expiry and expiry < date.today())
+    # ended = the package's own end moment has passed (not only the date: an account that ends at 14:00 is expired at
+    # 14:00, so its next login already lands in the expired policy / notice page)
+    expired = bool(expiry and datetime.combine(expiry, _clock_time(at) or time(23, 59, 59)) <= datetime.now())
+    expired_policy = plan.get("expired_policy") or expired_notice_group(cur)
     restricted, reject = "", False       # a policy that replaces the plan's group, or an outright refusal
     if status == "suspended":
         restricted = plan.get("disabled_policy") or ""
@@ -94,8 +160,8 @@ def sync_subscriber(cur, username, plan, status, expiry, static_ip, password=Non
     elif hit in ("total", "daily", "weekly"):
         restricted = plan.get("quota_%s_policy" % hit) if plan.get("quota_%s_action" % hit) == "policy" else ""
         reject = not restricted
-    elif expired and plan.get("expired_policy"):
-        restricted = plan["expired_policy"]
+    elif expired and expired_policy:
+        restricted = expired_policy
     if extra.get("net_disabled"):
         restricted, reject = "", True      # "Disable Net": login refused, profile stays active
     rows = [("Simultaneous-Use", ":=", str(plan.get("simultaneous_use") or 1))]

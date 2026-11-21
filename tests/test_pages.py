@@ -680,6 +680,61 @@ def check_rules(flask_app, ids):
     run("DELETE FROM onus WHERE name LIKE 'ONU-CI-%%'")
     run("DELETE FROM net_devices WHERE name LIKE 'CI-OLT-%%'")
 
+    # ---- expired notice: expired customers stay online in the notice group and see the unpaid-bill page
+    import radius as _rad
+    _ex = one("SELECT s.id, s.username FROM subscribers s JOIN radacct r ON r.username = s.username AND r.acctstoptime IS NULL "
+              "WHERE s.plan_id IS NOT NULL AND s.status = 'active' AND s.created_by NOT IN ('karim', 'karim_sub') LIMIT 1")
+    run("UPDATE subscribers SET expiry_date = CURDATE() - INTERVAL 1 DAY, expiry_time = '10:00', grace_until = NULL, "
+        "net_disabled = 0, quota_hit = '' WHERE id = %s", (_ex["id"],))
+    _set = client(ids["admin"])
+    _set.post("/settings/expired-notice", data={"_csrf": "ci", "expired_notice_on": "1", "expired_notice_bkash": "1",
+                                                "expired_notice_phone": "01700000999", "expired_notice_rate": "256k/256k",
+                                                "expired_notice_msg": "", "expired_notice_server": "10.20.30.40"})
+
+    def _rad_rows(u):
+        _c = db.connect()
+        try:
+            with _c.cursor() as cur:
+                _rad.resync_username(cur, u)
+                _c.commit()
+                cur.execute("SELECT groupname FROM radusergroup WHERE username = %s", (u,))
+                groups = [r["groupname"] for r in cur.fetchall()]
+                cur.execute("SELECT attribute, value FROM radcheck WHERE username = %s", (u,))
+                checks = {r["attribute"]: r["value"] for r in cur.fetchall()}
+            return groups, checks
+        finally:
+            _c.close()
+    _g_on, _c_on = _rad_rows(_ex["username"])
+    _reply = {r["attribute"]: r["value"] for r in run_q("SELECT attribute, value FROM radgroupreply WHERE groupname = 'expired-notice'")}
+    check(_g_on == ["expired-notice"] and "Expiration" not in _c_on and "Auth-Type" not in _c_on
+          and _reply.get("Mikrotik-Address-List") == "expired" and _reply.get("Mikrotik-Rate-Limit") == "256k/256k",
+          "expired notice on: an expired customer is kept online in the notice group (address list 'expired', low speed)")
+    _ip = one("SELECT framedipaddress FROM radacct WHERE username = %s AND acctstoptime IS NULL LIMIT 1", (_ex["username"],))["framedipaddress"]
+    _anon = flask_app.test_client()
+    _pg = _anon.get("/expired-notice", environ_base={"REMOTE_ADDR": _ip})
+    _pg_html = _pg.get_data(as_text=True)
+    _gen = _anon.get("/expired-notice", environ_base={"REMOTE_ADDR": "192.0.2.77"}).get_data(as_text=True)
+    check(_pg.status_code == 200 and "বিল অপরিশোধিত" in _pg_html and _ex["username"] in _pg_html and "01700000999" in _pg_html
+          and "পরিশোধ করতে হবে" in _pg_html and "no-store" in _pg.headers.get("Cache-Control", ""),
+          "the unpaid-bill page opens without sign-in and shows the customer found by their session IP, with the phone")
+    check("বিল অপরিশোধিত" in _gen and _ex["username"] not in _gen and "ইউজার আইডি" not in _gen,
+          "an unknown address gets the general message only (no customer details)")
+    _sp = _set.get("/settings/expired-notice").get_data(as_text=True)
+    check("to-addresses=10.20.30.40 to-ports=8099" in _sp and "src-address-list=expired" in _sp and "pay.bka.sh" in _sp,
+          "Settings > Expired notice shows the MikroTik commands for this server")
+    # the exact moment: an account ending later today keeps its Expiration; one that ended a minute ago is expired
+    run("UPDATE subscribers SET expiry_date = CURDATE(), expiry_time = %s WHERE id = %s",
+        ((datetime.now() + timedelta(hours=2)).strftime("%H:%M") if datetime.now().hour < 21 else "23:59", _ex["id"]))
+    _g_later, _c_later = _rad_rows(_ex["username"])
+    check("expired-notice" not in _g_later and "Expiration" in _c_later, "before the end moment the account is normal")
+    _set.post("/settings/expired-notice", data={"_csrf": "ci", "expired_notice_server": "", "expired_notice_rate": "256k/256k"})
+    run("UPDATE subscribers SET expiry_date = CURDATE() - INTERVAL 1 DAY WHERE id = %s", (_ex["id"],))
+    _g_off, _c_off = _rad_rows(_ex["username"])
+    check("expired-notice" not in _g_off and "Expiration" in _c_off,
+          "expired notice off: expired customers are refused again (Expiration back, no notice group)")
+    run("UPDATE subscribers SET expiry_date = CURDATE() + INTERVAL 20 DAY, expiry_time = NULL WHERE id = %s", (_ex["id"],))
+    _rad_rows(_ex["username"])
+
     # ---- timezone: Settings warns when the server clock is on another zone; noc.py follows the panel setting
     import tempfile as _tf2
     _core = sys.modules["core"]

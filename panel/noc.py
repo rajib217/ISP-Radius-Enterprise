@@ -210,9 +210,7 @@ def _disconnect(row, secret, port):
 
 # When an account ends, exactly as FreeRADIUS's Expiration sees it (radius.sync_subscriber): the subscriber's own time,
 # else the package's fixed time, else the END of the day (23:59:59). A grace period runs to the end of its day.
-END_MOMENT = ("(CASE WHEN s.grace_until IS NOT NULL AND s.grace_until > s.expiry_date "
-              "THEN TIMESTAMP(s.grace_until, COALESCE(NULLIF(p.fixed_expire_time, ''), '23:59:59')) "
-              "ELSE TIMESTAMP(s.expiry_date, COALESCE(NULLIF(s.expiry_time, ''), NULLIF(p.fixed_expire_time, ''), '23:59:59')) END)")
+END_MOMENT = radius.END_MOMENT        # one definition, shared with maintenance.py
 
 def coa_round(conn, cur, s, down_routers):
     """Send queued disconnects and drop sessions of customers whose package ran out. Returns (sent, failed)."""
@@ -242,6 +240,10 @@ def coa_round(conn, cur, s, down_routers):
             "AND " + END_MOMENT + " <= NOW() AND ra.acctstarttime < " + END_MOMENT + " "
             "ORDER BY ra.radacctid LIMIT %s", (KICK_BATCH * 2,))
         todo += [dict(r, why="expired") for r in cur.fetchall()]
+        # rewrite their RADIUS rows first: the reconnect then lands in the expired policy / notice page at once,
+        # instead of being refused until the next maintenance run
+        for uname in sorted({r["username"] for r in todo if r["why"] == "expired"}):
+            radius.resync_username(cur, uname)
     conn.commit()
 
     now, seen, jobs = time.time(), set(), []

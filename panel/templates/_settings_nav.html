@@ -17,6 +17,7 @@
   {{ link('email', 'Email', 'mail', url_for('settings_email')) }}
   {{ link('automation', 'Automatic messages', 'send', url_for('settings_automation')) }}
   {{ link('alerts', 'Alerts (Telegram)', 'alert', url_for('settings_alerts')) }}
+  {{ link('expired', 'Expired notice', 'power', url_for('settings_expired')) }}
   <h6>Payment gateways</h6>
   {% for slug, name, ic in gateways %}{{ link('gw-' ~ slug, name, ic, url_for('settings_gateway', slug=slug)) }}{% endfor %}
 </nav>

@@ -64,3 +64,21 @@ __SITES__ {
 	import panel
 }
 __FALLBACK__
+
+# expired customers: the MikroTik sends their plain-HTTP web requests here (any site name, any path) and they get
+# the unpaid-bill page (Settings > Expired notice)
+http://:8099 {
+	handle_path /static/* {
+		root * __APP__/static
+		file_server
+	}
+	@branding path /branding/*
+	handle @branding {
+		reverse_proxy 127.0.0.1:8000
+	}
+	handle {
+		header Cache-Control "no-store"
+		rewrite * /expired-notice
+		reverse_proxy 127.0.0.1:8000
+	}
+}

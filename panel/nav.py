@@ -118,7 +118,7 @@ STRUCTURE = [
     _g("docs", "Documents", "folder", endpoint="documents", module="documents"),
     _g("zones", "Department/Zone", "briefcase", endpoint="org", module="zones"),
     _g("settings", "Settings", "sliders", endpoint="settings", admin=True,
-       match=["settings", "settings_email", "settings_sms", "settings_automation", "settings_software", "settings_logs", "settings_modules", "settings_gateway", "settings_subscriber", "settings_user", "settings_partners", "settings_backup"]),
+       match=["settings", "settings_email", "settings_sms", "settings_automation", "settings_software", "settings_logs", "settings_modules", "settings_gateway", "settings_subscriber", "settings_user", "settings_partners", "settings_backup", "settings_expired"]),
 ]
 
 

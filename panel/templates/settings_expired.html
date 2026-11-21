@@ -1,0 +1,43 @@
+{% extends "settings_base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Expired notice{% endblock %}
+{% block ssub %}Show expired customers an "unpaid bill" page instead of cutting them off without a word.{% endblock %}
+{% block sbody %}
+<form method="post" class="stack" style="max-width:860px" autocomplete="off">
+  {{ csrf_input() }}
+  <section class="panel">
+    <div class="panel-head"><h2>Unpaid-bill page</h2>
+      <span class="aside">{% if s.expired_notice_on == '1' %}<span class="badge ok">On</span> · {{ '{:,}'.format(in_group) }} customer{{ '' if in_group == 1 else 's' }} on it now{% else %}<span class="badge mute">Off</span>{% endif %}</span></div>
+    <div class="panel-body stack">
+      <p class="muted" style="margin:0">When it is on, a customer whose package ran out is not refused. They stay connected at a very low speed in the
+        MikroTik address list <code>expired</code>, and any web page they open over HTTP shows the unpaid-bill page with your phone number
+        {%- if pay_url %} and a bKash button{% endif %}. Phones and laptops show it as "Sign in to network" as soon as they connect. Nothing else on
+        the internet opens (no YouTube, no Facebook). After they pay or are renewed, they get full internet again.</p>
+      <label class="check"><input type="checkbox" name="expired_notice_on" value="1" {{ 'checked' if s.expired_notice_on == '1' }}> Show the unpaid-bill page to expired customers (all packages that have no other <i>Next Expired Action</i>)</label>
+      <div class="grid-2">
+        <div class="field"><label class="lbl" for="en-phone">Office phone on the page</label><input id="en-phone" name="expired_notice_phone" value="{{ s.expired_notice_phone }}" maxlength="32" placeholder="{{ s.support_phone or '01XXXXXXXXX' }}"><div class="help">Empty: the support phone from Settings &gt; General.</div></div>
+        <div class="field"><label class="lbl" for="en-rate">Speed while expired</label><input id="en-rate" name="expired_notice_rate" value="{{ s.expired_notice_rate }}" maxlength="64" placeholder="256k/256k"><div class="help">Enough for the page and bKash. Upload/Download, MikroTik format.</div></div>
+      </div>
+      <div class="field"><label class="lbl" for="en-msg">Message (Bangla is fine)</label><textarea id="en-msg" name="expired_notice_msg" rows="3" maxlength="500" placeholder="{{ default_msg }}">{{ s.expired_notice_msg }}</textarea><div class="help">Empty: the text shown as the example.</div></div>
+      <label class="check"><input type="checkbox" name="expired_notice_bkash" value="1" {{ 'checked' if s.expired_notice_bkash == '1' }}> Let them pay with bKash from the page (opens the customer portal; only this server and bKash's own websites are allowed)</label>
+      {% if s.expired_notice_bkash == '1' and not pay_url %}<div class="note warn">The bKash button is hidden for now: it needs the customer portal and bKash switched on (Settings &gt; Subscriber, Settings &gt; bKash) and the bKash callback address set.</div>{% endif %}
+      <div class="field" style="max-width:360px"><label class="lbl" for="en-server">This server's IP for the routers</label><input id="en-server" name="expired_notice_server" value="{{ s.expired_notice_server }}" maxlength="64" placeholder="{{ server if server != 'SERVER_IP' else '103.x.x.x' }}" spellcheck="false"><div class="help">The address your MikroTik reaches this server on.{% if server == 'SERVER_IP' %} <b>Fill this in</b>: the commands below say SERVER_IP until you do.{% else %} Empty: {{ server }}.{% endif %}</div></div>
+      <div class="row-gap"><button class="btn primary" type="submit">Save</button><a class="btn" href="{{ url_for('expired_notice', preview=1) }}" target="_blank" rel="noopener">{{ icon('eye') }}Preview the page</a></div>
+    </div>
+  </section>
+</form>
+
+<section class="panel" style="max-width:860px;margin-top:16px">
+  <div class="panel-head"><h2>MikroTik commands</h2><span class="aside">Paste once on every router (Winbox &gt; New Terminal)</span></div>
+  <div class="panel-body stack">
+    <pre class="pre mono" id="en-cmds" style="margin:0">{{ commands }}</pre>
+    <div class="row-gap"><button class="btn" type="button" data-copy="#en-cmds" onclick="navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('en-cmds').textContent)">{{ icon('copy') }}Copy</button></div>
+    <ul class="muted" style="margin:0;padding-left:18px;display:grid;gap:4px;font-size:13px">
+      <li>The routers send the expired customers' HTTP requests to <code>{{ server }}:{{ port }}</code>. That port is opened and served by the installer: run <code>sudo ./install.sh</code> once after this update.</li>
+      <li>The page recognises the customer by their IP address. If this server is on the internet and the router hides customer addresses (masquerade), the page shows the general message without their name and amount.</li>
+      <li>HTTPS sites cannot be redirected without a browser warning; customers see the page on HTTP sites and in the phone's "Sign in to network" notice.</li>
+      <li>The MikroTik must have RADIUS accounting on (it already does for the panel). The <code>expired</code> list is filled by RADIUS when the customer connects.</li>
+    </ul>
+  </div>
+</section>
+{% endblock %}

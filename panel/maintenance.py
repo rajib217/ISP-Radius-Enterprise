@@ -282,17 +282,28 @@ def apply_plan_states(conn, cur, s):
     plans = {p["id"]: p for p in cur.fetchall()}
     changed = 0
 
-    # 1. expired customers whose plan keeps them online in a restricted policy
+    # 1. expired customers whose plan keeps them online in a restricted policy, or (Settings > Expired notice)
+    #    in the notice group that shows them the unpaid-bill page; counted from the package's end moment
+    notice = radius.EXPIRED_GROUP if s.get("expired_notice_on") == "1" else ""
+    if notice:
+        radius.ensure_expired_group(cur, s.get("expired_notice_rate", ""))
     for p in plans.values():
-        if not p["expired_policy"]:
+        group = p["expired_policy"] or notice
+        if not group:
             continue
         cur.execute(
-            "SELECT s.id FROM subscribers s LEFT JOIN radusergroup g ON g.username = s.username "
-            "AND g.groupname = %s WHERE s.plan_id = %s AND s.status = 'active' AND s.expiry_date < CURDATE() "
-            "AND (s.grace_until IS NULL OR s.grace_until < CURDATE()) AND g.username IS NULL LIMIT 2000",
-            (p["expired_policy"], p["id"]))
+            "SELECT s.id FROM subscribers s JOIN plans p ON p.id = s.plan_id LEFT JOIN radusergroup g "
+            "ON g.username = s.username AND g.groupname = %s WHERE s.plan_id = %s AND s.status = 'active' "
+            "AND s.expiry_date IS NOT NULL AND " + radius.END_MOMENT + " <= NOW() AND g.username IS NULL LIMIT 2000",
+            (group, p["id"]))
         for sub in cur.fetchall():
             _resync(cur, sub, p)
+            changed += 1
+    if not notice:                 # switched off: customers still in the notice group go back to being refused
+        cur.execute("SELECT DISTINCT s.id, s.plan_id FROM radusergroup g JOIN subscribers s ON s.username = g.username "
+                    "WHERE g.groupname = %s LIMIT 2000", (radius.EXPIRED_GROUP,))
+        for sub in cur.fetchall():
+            _resync(cur, sub, plans.get(sub["plan_id"]))
             changed += 1
     conn.commit()
 

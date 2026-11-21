@@ -21,7 +21,7 @@ DB_RADIUS_USER=radius
 DB_PANEL_USER=radius_panel
 # Raise when a change needs this installer (new service, unit change, FreeRADIUS or Caddy config): update.sh then
 # refuses to deploy and asks for "sudo ./install.sh" once, instead of half-applying it.
-INSTALLER_VERSION=2
+INSTALLER_VERSION=3
 ADMIN_USER="${ADMIN_USER:-}"
 TIMEZONE="${TIMEZONE-Asia/Dhaka}"
 
@@ -892,6 +892,7 @@ done
 ufw allow 80/tcp  comment "http - lets encrypt and redirect" >/dev/null
 ufw allow 443/tcp comment "https" >/dev/null
 ufw allow 443/udp comment "https - http3" >/dev/null
+ufw allow 8099/tcp comment "expired customer notice page" >/dev/null
 # the older installer opened RADIUS to the whole internet; now only the routers in the panel may reach it
 ufw delete allow 1812/udp >/dev/null 2>&1 || true
 ufw delete allow 1813/udp >/dev/null 2>&1 || true
