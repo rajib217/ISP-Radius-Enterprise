@@ -2020,3 +2020,7 @@ html.hover-menu:not(.menu-ready) .nav-group[open] > summary > .i:last-child { tr
 
 /* a green notice (New subscriber filled in from a PPPoE request) */
 .state-banner.ok { background: var(--ok-soft); color: var(--ok); border: 1px solid color-mix(in srgb, var(--ok) 25%, transparent); border-radius: 12px; }
+
+/* collapsed menu (rail): the sidebar is its own layer above the page, so a group's flyout is never painted under the
+   sticky top bar, dashboard cards, chart tooltips or pop-up menus (its z-index was trapped inside a z-index:auto side) */
+@media (min-width: 768px) { .side { z-index: 50; } }

@@ -263,6 +263,14 @@
   var groups = $$(".nav-group");
   groups.forEach(function (d) { d.dataset.wasOpen = d.open ? "1" : ""; });   /* the server's choice (current group) */
   function closeOthers(d) { groups.forEach(function (o) { if (o !== d && o.open) o.open = false; }); }
+  function placeSub(d) {        /* a flyout of a low group would run off the bottom of the screen: lift it up */
+    var sub = $(".nav-sub", d);
+    if (!sub) return;
+    sub.style.top = "";
+    if (getComputedStyle(sub).position !== "absolute" || getComputedStyle(sub).display === "none") return;
+    var r = sub.getBoundingClientRect(), over = r.bottom - (window.innerHeight - 8);
+    if (over > 0) sub.style.top = -Math.min(over, Math.max(r.top - 8, 0)) + "px";
+  }
   function applyMode() {        /* entering hover mode: all closed; leaving it: the current group open again */
     var hover = desktop();
     document.documentElement.classList.toggle("hover-menu", hover);
@@ -278,6 +286,7 @@
     d.addEventListener("mouseenter", function () {
       if (!desktop()) return;
       stop();
+      placeSub(d);
       /* a short pause first, so sliding the mouse past a group on the way to another does not open it */
       intent = setTimeout(function () { intent = null; closeOthers(d); d.open = true; }, 150);
     });
@@ -288,6 +297,7 @@
     });
     d.addEventListener("toggle", function () {
       if (!d.open) { stop(); return; }
+      placeSub(d);
       if (desktop()) closeOthers(d);
       else groups.forEach(function (o) { if (o !== d && o.open && !$(".on", o)) o.open = false; });
     });
