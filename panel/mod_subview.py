@@ -354,6 +354,22 @@ def subscriber_photo(sid):
     return resp
 
 
+def save_photo(sid, data):
+    """Store a PNG / JPG profile photo for the customer. Returns an error sentence, or None when saved."""
+    kind = next((v for k, v in PHOTO_TYPES.items() if data.startswith(k)), None)
+    if not data or len(data) > 2 * 1024 * 1024 or not kind:
+        return "Choose a PNG or JPG photo up to 2 MB."
+    d = os.path.join(core.DATA_DIR, "photos")
+    os.makedirs(d, exist_ok=True)
+    old = _photo_path(sid)
+    if old:
+        os.remove(old)
+    with open(os.path.join(d, "%d.%s" % (sid, kind[0])), "wb") as fh:
+        fh.write(data)
+    x("UPDATE subscribers SET photo = %s WHERE id = %s", (kind[0], sid))
+    return None
+
+
 @route("/subscribers/<int:sid>/photo/save", module="subscribers", methods=["POST"])
 def subscriber_photo_save(sid):
     sub = _sub(sid)
@@ -366,18 +382,10 @@ def subscriber_photo_save(sid):
         flash("Photo removed.", "success")
         return _back(sid)
     up = request.files.get("file")
-    data = up.read(2 * 1024 * 1024 + 1) if up else b""
-    kind = next((v for k, v in PHOTO_TYPES.items() if data.startswith(k)), None)
-    if not data or len(data) > 2 * 1024 * 1024 or not kind:
-        flash("Choose a PNG or JPG photo up to 2 MB.", "error")
+    why = save_photo(sid, up.read(2 * 1024 * 1024 + 1) if up else b"")
+    if why:
+        flash(why, "error")
         return _back(sid)
-    d = os.path.join(core.DATA_DIR, "photos")
-    os.makedirs(d, exist_ok=True)
-    if old:
-        os.remove(old)
-    with open(os.path.join(d, "%d.%s" % (sid, kind[0])), "wb") as fh:
-        fh.write(data)
-    x("UPDATE subscribers SET photo = %s WHERE id = %s", (kind[0], sid))
     audit("photo_saved", sub["username"])
     commit()
     flash("Photo saved.", "success")
@@ -391,6 +399,12 @@ def subscriber_rate(sid):
     The speed is worked out by the 5-minute traffic job from the router's byte counters, and routers send new counters
     only at each interim update (5 minutes on MikroTik by default), so the value changes in steps, not every second."""
     sub = q("SELECT username FROM subscribers WHERE id = %s", (sid,), one=True) or abort(404)
+    return rate_response(sub["username"])
+
+
+def rate_response(username):
+    """The live-speed JSON for one username (admin page and customer portal)."""
+    sub = {"username": username}
     sessions = q("SELECT radacctid, COALESCE(acctupdatetime, acctstarttime) AS upd FROM radacct "
                  "WHERE username = %s AND acctstoptime IS NULL", (sub["username"],))
     down = up = 0

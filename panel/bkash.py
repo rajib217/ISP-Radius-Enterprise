@@ -280,8 +280,9 @@ def settle_portal(row, data):
         return False
     sub = core.q("SELECT * FROM subscribers WHERE id = %s", (row["subscriber_id"],), one=True)
     old_me = getattr(g, "me", None)
-    g.me = {"username": "portal:" + sub["username"]}          # written as "received by"
+    g.me = {"username": "portal:" + sub["username"], "role": "staff", "id": 0}     # "received by"; never a seller
     try:
+        _credit_seller(sub, row, trx)
         mod_subs.do_renew(sub, int(row["days"]), float(row["amount"]), "bkash", ("bKash %s" % trx)[:255])
         core.x("UPDATE portal_payments SET payment_ref = %s WHERE id = %s", (g.get("last_payment"), row["id"]))
         core.audit("portal_payment", sub["username"], "%.2f bKash %s" % (float(row["amount"]), trx), who=sub["username"])
@@ -292,6 +293,29 @@ def settle_portal(row, data):
             g.me = old_me
     core.commit()
     return True
+
+
+def _credit_seller(sub, row, trx):
+    """A reseller's customer paid in the portal: the money (without the bKash fee) goes into the seller's balance,
+    then the seller's own package price is taken from it, as when the seller activates the customer themself.
+    If the seller's price is above what is in their balance even after the credit, the customer is still renewed
+    (they paid) and the shortfall is written in the audit log for the office."""
+    import mod_subs
+    owner = core.q("SELECT id, username, role FROM panel_admins WHERE username = %s", (sub.get("created_by") or "",), one=True)
+    if not owner or owner["role"] not in core.SELLER_ROLES:
+        return
+    amount = float(row["amount"])
+    with core.get_db().cursor() as cur:
+        cur.execute("UPDATE panel_admins SET balance = balance + %s WHERE id = %s", (amount, owner["id"]))
+        cur.execute("SELECT balance FROM panel_admins WHERE id = %s", (owner["id"],))
+        after = cur.fetchone()["balance"]
+        cur.execute("INSERT INTO user_ledger (user_id, amount, balance_after, method, note, created_by) "
+                    "VALUES (%s, %s, %s, 'bkash', %s, %s)",
+                    (owner["id"], amount, after, ("Customer %s paid in the portal, bKash %s" % (sub["username"], trx))[:255],
+                     "portal:" + sub["username"][:56]))
+    why = mod_subs.charge_me(sub, "Portal bKash renewal %s +%d days" % (sub["username"], int(row["days"])))
+    if why:
+        core.audit("portal_seller_short", sub["username"], why[:500], who="bkash")
 
 
 def settle_topup(row, data):

@@ -2,8 +2,9 @@
 
 Customers sign in with their PPPoE username and password and see their expiry, usage, sessions and invoices.
 They can renew with bKash when the customer belongs to the ISP itself (created by an administrator or staff).
-Customers of a reseller / sub-reseller / retailer are asked to pay that seller, because the seller's own price and
-balance rules decide that money; the portal never changes a seller's balance.
+Customers of a reseller / sub-reseller / retailer can pay with bKash too: the money is credited to that seller's
+balance and the seller's own package price is then taken from it, exactly as if the seller had activated the customer
+(the seller keeps the difference as balance). See bkash.settle_portal.
 
 The portal has its own session key ("cid"); it never gives access to anything in the admin panel."""
 import secrets
@@ -61,9 +62,6 @@ def pay_terms(sub):
     owner = _owner(sub)
     if owner and owner["role"] in core.SELLER_ROLES:
         out["seller"] = owner
-        out["why"] = "Please pay your provider %s%s." % (owner["full_name"] or owner["username"],
-                                                       (" (" + owner["phone"] + ")") if owner["phone"] else "")
-        return out
     if s.get("sub_self_activation") != "1" or not bkash.configured():
         out["why"] = "Online payment is not available. Please contact us to renew."
         return out
@@ -73,7 +71,11 @@ def pay_terms(sub):
     if sub["status"] == "suspended":
         out["why"] = "Your account is suspended. Please contact us."
         return out
-    out["amount"] = round(float(sub["plan_price"]), 2)
+    plan = mod_subs._plan(sub["plan_id"])
+    out["amount"] = mod_subs.customer_price(sub, plan) if plan else round(float(sub["plan_price"]), 2)
+    if out["amount"] <= 0:
+        out["why"] = "Your package has no price set. Please contact us to renew."
+        return out
     out["fee"] = bkash.fee_for(out["amount"])
     out["ok"] = True
     return out
@@ -259,8 +261,50 @@ def portal():
                            invoices=sv.invoices(payments, charges), ledger=sv.ledger(sub, payments, charges, balance_rows),
                            payments=payments, tries=pending, terms=pay_terms(sub), isp=s.get("isp_name", ""),
                            cur=s.get("currency", ""), can_pw=s.get("sub_reset_pw") == "1", due=due, used_gb=used_gb,
-                           uptime=uptime, photo=bool(sv._photo_path(sub["id"])), owner=_owner(sub),
+                           uptime=uptime, photo=_photo_v(sv._photo_path(sub["id"])), owner=_owner(sub),
                            phone=s.get("support_phone", ""))
+
+
+@route("/portal/rate")
+def portal_rate():
+    """Live download / upload speed of the signed-in customer (JSON for the chart on the portal)."""
+    import mod_subview
+    sub = _need() or abort(404)
+    return mod_subview.rate_response(sub["username"])
+
+
+@route("/portal/photo/save", methods=["POST"])
+def portal_photo_save():
+    """The customer sets or removes their own profile photo."""
+    from flask import jsonify
+    import mod_subview
+    sub = _need()
+    if not sub:
+        return redirect(url_for("portal_login"))
+    ajax = request.headers.get("X-Requested-With") == "fetch"
+    if request.form.get("remove"):
+        old = mod_subview._photo_path(sub["id"])
+        if old:
+            import os
+            os.remove(old)
+        x("UPDATE subscribers SET photo = '' WHERE id = %s", (sub["id"],))
+        why = None
+    else:
+        up = request.files.get("file")
+        why = mod_subview.save_photo(sub["id"], up.read(2 * 1024 * 1024 + 1) if up else b"")
+    if not why:
+        audit("portal_photo", sub["username"], who=sub["username"])
+        commit()
+    if ajax:
+        return jsonify({"ok": not why, "error": why}), (400 if why else 200)
+    flash(why or "Photo saved.", "error" if why else "success")
+    return redirect(url_for("portal"))
+
+
+def _photo_v(path):
+    """Version number for the photo URL (its file time), so a new photo shows at once; 0 = no photo."""
+    import os
+    return int(os.path.getmtime(path)) if path else 0
 
 
 @route("/portal/photo")

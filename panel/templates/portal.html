@@ -8,8 +8,13 @@
 <section class="panel pp-head {{ state }}">
   <div class="pp-top">
     <div class="avatar-wrap">
-      {% if photo %}<img class="pavatar pp-av" src="{{ url_for('portal_photo') }}" alt="">{% else %}<span class="pavatar pp-av ph">{{ icon('user') }}</span>{% endif %}
+      {% if photo %}<img class="pavatar pp-av" src="{{ url_for('portal_photo', v=photo) }}" alt="">{% else %}<span class="pavatar pp-av ph">{{ icon('user') }}</span>{% endif %}
       <i class="dot {{ 'on' if online }}" title="{{ 'Online' if online else 'Offline' }}"></i>
+      <form method="post" action="{{ url_for('portal_photo_save') }}" enctype="multipart/form-data" class="pp-photo-form" data-pp-photo>
+        {{ csrf_input() }}
+        <label class="pp-cam" title="Change photo" aria-label="Change photo">{{ icon('camera') }}<input type="file" name="file" accept="image/png,image/jpeg,image/*" hidden></label>
+        {% if photo %}<button class="pp-cam pp-cam-x" type="submit" name="remove" value="1" title="Remove photo" aria-label="Remove photo">{{ icon('x') }}</button>{% endif %}
+      </form>
     </div>
     <div class="pp-id">
       <h1>{{ sub.full_name or sub.username }}{% if sub.full_name %} <small>({{ sub.username }})</small>{% endif %}</h1>
@@ -47,6 +52,23 @@
 
 {# ---------------------------------------------------------------- overview #}
 <div class="pp-pane" id="overview">
+  <section class="panel live-rate" data-rate-src="{{ url_for('portal_rate') }}" aria-label="Live speed">
+    <div class="panel-head"><h2>{{ icon('activity') }}Live speed</h2><span class="aside" data-lr-note>Loading…</span></div>
+    <div class="lr-body">
+      <div class="lr-now">
+        <div class="lr-stat rx"><small>{{ icon('arrow-down') }}Download</small><b data-lr-down>–</b></div>
+        <div class="lr-stat tx"><small>{{ icon('arrow-up') }}Upload</small><b data-lr-up>–</b></div>
+      </div>
+      <div class="lr-chart-wrap">
+        <svg class="lr-chart" viewBox="0 0 600 150" preserveAspectRatio="none" role="img" aria-label="Download and upload speed while this page is open">
+          <g data-lr-grid></g>
+          <polyline class="lr-line rx" data-lr-rx points=""></polyline>
+          <polyline class="lr-line tx" data-lr-tx points=""></polyline>
+        </svg>
+        <div class="lr-scale"><span data-lr-max></span><span>while this page is open · updates every 30 s</span></div>
+      </div>
+    </div>
+  </section>
   <section class="panel" id="pay">
     <div class="panel-head"><h2>{{ icon('wallet') }}Renew</h2></div>
     <div class="pp-body">
@@ -181,6 +203,41 @@
   {% endif %}
 </div>
 
+<script src="{{ asset('js/live-rate.js') }}"></script>
+<script>
+/* profile photo: shrink on the phone (max 640 px JPEG) before upload, so big camera photos fit the 2 MB limit */
+(function () {
+  var form = document.querySelector("[data-pp-photo]");
+  if (!form) return;
+  var input = form.querySelector('input[type="file"]');
+  function send(blob, name) {
+    var fd = new FormData(form);
+    fd.delete("file"); fd.append("file", blob, name);
+    form.classList.add("busy");
+    fetch(form.action, { method: "POST", body: fd, credentials: "same-origin", headers: { "X-Requested-With": "fetch" } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d.ok) location.reload(); else { alert(d.error || "Photo not saved."); form.classList.remove("busy"); } })
+      .catch(function () { form.classList.remove("busy"); form.submit(); });
+  }
+  input.addEventListener("change", function () {
+    var f = input.files && input.files[0];
+    if (!f) return;
+    var img = new Image(), url = URL.createObjectURL(f);
+    img.onload = function () {
+      var k = Math.min(1, 640 / Math.max(img.width, img.height)), c = document.createElement("canvas");
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      c.toBlob(function (b) { if (b) send(b, "photo.jpg"); else form.submit(); }, "image/jpeg", 0.86);
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); alert("This picture could not be read. Choose a JPG or PNG photo."); };
+    img.src = url;
+  });
+  form.addEventListener("submit", function (e) {
+    if (e.submitter && e.submitter.name === "remove" && !confirm("Remove your photo?")) e.preventDefault();
+  });
+})();
+</script>
 <script>
 (function () {
   var tabs = document.querySelectorAll("[data-tab]"), panes = document.querySelectorAll(".pp-pane");

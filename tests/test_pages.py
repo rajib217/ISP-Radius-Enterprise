@@ -598,6 +598,7 @@ def check_rules(flask_app, ids):
           "customer portal and pay page open, with the bottom nav and its #usage / #invoices targets")
     _psid = one("SELECT id FROM subscribers WHERE username = 'uttara.shop'")["id"]
     run("INSERT INTO sub_charges (subscriber_id, name, amount, created_by) VALUES (%s, 'CI portal router fee', 250, 'admin')", (_psid,))
+    pc.post("/portal/photo/save", data={"_csrf": "ci", "remove": "1"})      # no photo left from an earlier run
     _ph = pc.get("/portal").get_data(as_text=True)
     _photo_anon = flask_app.test_client().get("/portal/photo")
     check(all('id="%s"' % k in _ph for k in ("overview", "invoices", "ledger", "payments", "account"))
@@ -607,6 +608,52 @@ def check_rules(flask_app, ids):
           and 'class="pp-logo"' in flask_app.test_client().get("/portal/login").get_data(as_text=True),
           "portal redesign: logo, profile tiles, Overview / Invoices / Ledger / Payments / My details tabs, extra charges show as unpaid")
     run("DELETE FROM sub_charges WHERE name = 'CI portal router fee'")
+    # ---- portal: live speed JSON, own photo upload / remove
+    _rate = pc.get("/portal/rate")
+    _png = b"\x89PNG\r\n\x1a\n" + b"\0" * 64
+    import io as _io
+    _up = pc.post("/portal/photo/save", data={"_csrf": "ci", "file": (_io.BytesIO(_png), "me.png")},
+                  content_type="multipart/form-data", headers={"X-Requested-With": "fetch"})
+    _got = pc.get("/portal/photo")
+    _got_ok = _got.status_code == 200 and _got.data[1:4] == b"PNG"
+    _got.close()
+    _bad = pc.post("/portal/photo/save", data={"_csrf": "ci", "file": (_io.BytesIO(b"GIF89a....."), "x.gif")},
+                   content_type="multipart/form-data", headers={"X-Requested-With": "fetch"})
+    _home_ph = pc.get("/portal").get_data(as_text=True)
+    _rm = pc.post("/portal/photo/save", data={"_csrf": "ci", "remove": "1"})
+    check(_rate.status_code == 200 and set(_rate.get_json()) >= {"online", "known", "down", "up"}
+          and flask_app.test_client().get("/portal/rate").status_code in (302, 404)
+          and _up.get_json() == {"ok": True, "error": None} and _got.status_code == 200 and _got.data.startswith(b"\x89PNG")
+          and _bad.status_code == 400 and 'data-rate-src="/portal/rate"' in _home_ph and 'src="/portal/photo?v=' in _home_ph and _rm.status_code == 302 and pc.get("/portal/photo").status_code == 404,
+          "portal: live speed chart data, and the customer can upload (PNG/JPG only) and remove their own photo")
+
+    # ---- a reseller's customer pays in the portal with bKash: money to the reseller's balance, reseller cost taken, renewed
+    import bkash as _bk
+    _sh = one("SELECT * FROM subscribers WHERE username = 'uttara.shop'")
+    _res_before = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
+    _cost = float(one("SELECT price FROM user_plans WHERE user_id = %s AND plan_id = %s", (ids["reseller"], _sh["plan_id"]))["price"])
+    run("REPLACE INTO settings (skey, svalue) VALUES ('bkash_on', '1'), ('bkash_key', 'k'), ('bkash_secret', 's'), "
+        "('bkash_user', 'u'), ('bkash_pass', 'p'), ('sub_self_activation', '1')")
+    _terms_html = pc.get("/portal").get_data(as_text=True)
+    with flask_app.test_request_context("/portal"):
+        import mod_portal as _mp
+        _t = _mp.pay_terms(dict(_sh, plan_price=one("SELECT price FROM plans WHERE id = %s", (_sh["plan_id"],))["price"],
+                                validity_days=30))
+    run("INSERT INTO portal_payments (subscriber_id, amount, fee, days, token, payment_id) VALUES (%s, %s, 0, 30, 'citok', 'CIPAY1')",
+        (_sh["id"], _t["amount"]))
+    _row = one("SELECT * FROM portal_payments WHERE token = 'citok'")
+    with flask_app.test_request_context("/portal"):
+        _done = _bk.settle_portal(_row, {"trxID": "CITRX1", "amount": "%.2f" % _t["amount"]})
+        _again = _bk.settle_portal(_row, {"trxID": "CITRX1", "amount": "%.2f" % _t["amount"]})
+    _res_after = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
+    _sh2 = one("SELECT expiry_date, status FROM subscribers WHERE id = %s", (_sh["id"],))
+    _led = run_q("SELECT amount, method FROM user_ledger WHERE user_id = %s ORDER BY id DESC LIMIT 2", (ids["reseller"],))
+    check(_t["ok"] and _t["seller"] and "btn-bkash" in _terms_html and _done and not _again
+          and abs(_res_after - (_res_before + _t["amount"] - _cost)) < 0.01
+          and sorted((float(r["amount"]), r["method"]) for r in _led) == sorted([(_t["amount"], "bkash"), (-_cost, "activation")])
+          and _sh2["status"] == "active" and _sh2["expiry_date"] > (_sh["expiry_date"] or date.today()),
+          "a reseller's customer pays by bKash in the portal: reseller balance +%.2f -%.2f (cost), customer renewed, paid only once" % (_t["amount"], _cost))
+    run("DELETE FROM settings WHERE skey IN ('bkash_on', 'bkash_key', 'bkash_secret', 'bkash_user', 'bkash_pass')")
     _slash = flask_app.test_client().get("/portal/")
     _junk = flask_app.test_client().get("/portal/nothing-here")
     check(_slash.status_code == 302 and _slash.headers.get("Location", "").endswith("/portal")

@@ -1952,3 +1952,22 @@ dialog.modal.confirm-dlg { width: min(420px, calc(100vw - 24px)); }
   table.tbl.pp-tbl > tbody > tr > td > div { text-align: right; }
 }
 
+/* portal: change-photo buttons on the avatar, live speed panel */
+.pp-photo-form { position: absolute; left: 6px; bottom: 6px; display: flex; gap: 6px; margin: 0; }
+.pp-cam { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; border: 0; cursor: pointer;
+  background: var(--accent); color: #fff; box-shadow: 0 2px 6px rgb(15 23 42 / .35); padding: 0; }
+.pp-cam .i { width: 15px; height: 15px; }
+.pp-cam:hover { filter: brightness(1.1); }
+.pp-cam-x { background: var(--surface); color: var(--offline-text); border: 1px solid var(--border); }
+.pp-photo-form.busy { opacity: .5; pointer-events: none; }
+.pp-pane .live-rate .lr-body { padding: 16px 20px; }
+@media (max-width: 640px) {
+  .pp-cam { width: 26px; height: 26px; } .pp-cam .i { width: 13px; height: 13px; }
+  .pp-photo-form { left: 3px; bottom: 3px; gap: 4px; }
+  .pp-pane .live-rate .lr-body { padding: 14px 16px; }
+}
+
+
+/* bKash buttons that are links keep white text (the link colour won over it) */
+a.btn-bkash, a.btn-bkash:hover, a.btn-bkash:visited { color: #fff; text-decoration: none; }
+a.btn-bkash .i { color: #fff; }
