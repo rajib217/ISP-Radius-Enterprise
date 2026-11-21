@@ -451,24 +451,37 @@ def _notices():
     return mod_notices.active_notices()
 
 
-OFFLINE_ONU_LIMIT = 20
+OFFLINE_ONU_PER = 10          # ONUs a page in the dashboard's Offline ONUs section (the owner's choice)
 
 
 def offline_onus():
-    """ONUs that are Offline or LOS (no light), newest drop first, for the dashboard. None when this person may not see
-    ONUs (Network module and the ONU View tick); a seller only gets the ONUs on their own OLTs (core.onu_scope)."""
+    """ONUs that are Offline or LOS (no light), newest drop first, for the dashboard: 10 a page (?onu_page=), optionally
+    only one status (?onu_st=los / offline). None when this person may not see ONUs (Network module and the ONU View
+    tick); a seller only gets the ONUs on their own OLTs (core.onu_scope)."""
     if not (core.can("network") and core.can_fn("onu.view")):
         return None
     sc, sp = core.onu_scope("o")
     counts = {r["status"]: int(r["c"]) for r in q(
         "SELECT o.status, COUNT(*) AS c FROM onus o WHERE o.status IN ('offline', 'los')" + sc + " GROUP BY o.status", sp)}
+    los, offline = counts.get("los", 0), counts.get("offline", 0)
+    only = request.args.get("onu_st") if request.args.get("onu_st") in ("los", "offline") else ""
+    total = {"los": los, "offline": offline}.get(only, los + offline)
+    pages = max((total + OFFLINE_ONU_PER - 1) // OFFLINE_ONU_PER, 1)
+    page = min(max(request.args.get("onu_page", 1, type=int) or 1, 1), pages)
+    status_sql, status_args = ("o.status = %s", [only]) if only else ("o.status IN ('offline', 'los')", [])
     rows = q("SELECT o.id, o.name, o.serial, o.mac, o.username, o.pon_port, o.rx_dbm, o.status, o.last_seen, "
-             "d.name AS olt, s.id AS sid FROM onus o LEFT JOIN net_devices d ON d.id = o.olt_id "
+             "d.name AS olt, s.id AS sid, s.full_name FROM onus o LEFT JOIN net_devices d ON d.id = o.olt_id "
              "LEFT JOIN subscribers s ON s.username = o.username AND o.username <> '' "
-             "WHERE o.status IN ('offline', 'los')" + sc +
-             " ORDER BY o.last_seen IS NULL, o.last_seen DESC, o.id DESC LIMIT %s", sp + [OFFLINE_ONU_LIMIT])
-    return {"rows": rows, "offline": counts.get("offline", 0), "los": counts.get("los", 0),
-            "total": counts.get("offline", 0) + counts.get("los", 0)}
+             "WHERE " + status_sql + sc +
+             " ORDER BY o.last_seen IS NULL, o.last_seen DESC, o.id DESC LIMIT %s OFFSET %s",
+             status_args + sp + [OFFLINE_ONU_PER, (page - 1) * OFFLINE_ONU_PER])
+    for r in rows:              # optical signal: around -8 to -25 dBm is healthy, weaker than -27 dBm is a problem
+        v = float(r["rx_dbm"]) if r["rx_dbm"] is not None else None
+        r["rx_class"] = "" if v is None else ("bad" if v <= -27 or v > -8 else ("warn" if v <= -25 else "ok"))
+    keep = {k: v for k, v in request.args.items() if k not in ("onu_page", "onu_st")}
+    return {"rows": rows, "offline": offline, "los": los, "all": los + offline, "only": only, "total": total,
+            "page": page, "pages": pages, "per": OFFLINE_ONU_PER, "keep": keep,
+            "first": (page - 1) * OFFLINE_ONU_PER + 1 if total else 0, "last": min(page * OFFLINE_ONU_PER, total)}
 
 
 @app.route("/")

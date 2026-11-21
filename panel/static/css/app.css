@@ -1655,3 +1655,50 @@ dialog.modal.confirm-dlg { width: min(420px, calc(100vw - 24px)); }
 /* a filter bar at the top of a panel gets breathing room above its divider line (templates set padding-bottom: 0) */
 .panel > form.filters.panel-body { padding-bottom: 14px !important; margin-bottom: 0; }
 
+/* ---- dashboard: Offline ONUs ---- */
+.onu-off { margin-bottom: 16px; overflow: hidden; }
+.onu-off-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 16px 18px 12px; }
+.onu-off-title { display: flex; align-items: center; gap: 12px; }
+.onu-off-title h2 { margin: 0; font-size: 16px; }
+.onu-off-title p { margin: 2px 0 0; font-size: 13px; }
+.onu-off-ic { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; flex: none; }
+.onu-off-ic .i { width: 20px; height: 20px; }
+.onu-off-ic.bad { background: var(--offline-soft); color: var(--offline-text); }
+.onu-off-ic.mute { background: var(--neutral-soft); color: var(--neutral-text); }
+.onu-off-ic.ok { background: var(--online-soft); color: var(--online-text); }
+.onu-off-tabs { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 18px 14px; border-bottom: 1px solid var(--border); }
+.onu-off-tabs a { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: 99px; border: 1px solid var(--border);
+  color: var(--text-muted); font-size: 13px; font-weight: 500; text-decoration: none; background: var(--surface); }
+.onu-off-tabs a b { font-variant-numeric: tabular-nums; color: var(--text); }
+.onu-off-tabs a:hover { background: var(--surface-2); }
+.onu-off-tabs a.on { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+.onu-off-tabs .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.onu-off-tabs .dot.bad, .onu-off-list li.los .onu-off-stripe { background: var(--offline); }
+.onu-off-tabs .dot.mute, .onu-off-list li.offline .onu-off-stripe { background: var(--neutral); }
+.onu-off-list { list-style: none; margin: 0; padding: 0; }
+.onu-off-list li { position: relative; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 310px; gap: 16px; align-items: center;
+  padding: 12px 18px 12px 22px; border-bottom: 1px solid var(--border); }
+.onu-off-list li:hover { background: var(--surface-2); }
+.onu-off-stripe { position: absolute; left: 0; top: 10px; bottom: 10px; width: 4px; border-radius: 0 4px 4px 0; }
+.onu-off-main, .onu-off-cust { display: grid; gap: 2px; min-width: 0; }
+.onu-off-name { font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.onu-off-meta, .onu-off-cust small { font-size: 12.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.onu-off-meta .i, .onu-off-cust .i { width: 13px; height: 13px; vertical-align: -2px; margin-right: 4px; }
+.onu-off-cust a, .onu-off-cust > span { display: inline-flex; align-items: center; min-width: 0; }
+.onu-off-facts { display: grid; grid-template-columns: 64px 96px 1fr; align-items: center; gap: 10px; justify-items: start; white-space: nowrap; }
+.onu-off-facts .badge { justify-self: start; }
+.onu-off-rx { font: 12px/1 var(--mono); padding: 5px 8px; border-radius: 6px; background: var(--surface-2); color: var(--text-muted); }
+.onu-off-rx.ok { background: var(--online-soft); color: var(--online-text); }
+.onu-off-rx.warn { background: var(--warn-soft); color: var(--warn); }
+.onu-off-rx.bad { background: var(--offline-soft); color: var(--offline-text); }
+.onu-off-seen { font-size: 12.5px; color: var(--text-muted); min-width: 92px; text-align: right; justify-self: end; }
+.onu-off-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 18px; }
+.onu-off-foot .pager { border: 0; padding: 0; }
+.onu-off-ok { display: flex; gap: 12px; align-items: center; margin: 0 18px 18px; padding: 14px 16px; border-radius: var(--r-md); background: var(--online-soft); color: var(--online-text); }
+.onu-off-ok .i { width: 22px; height: 22px; flex: none; }
+.onu-off-ok p { margin: 2px 0 0; color: var(--text-muted); font-size: 13px; }
+@media (max-width: 860px) {
+  .onu-off-list li { grid-template-columns: 1fr; gap: 6px; }
+  .onu-off-facts { display: flex; justify-content: flex-start; flex-wrap: wrap; }
+  .onu-off-seen { text-align: left; min-width: 0; }
+}

@@ -614,6 +614,20 @@ def check_rules(flask_app, ids):
     check(_sec and "ONU-CI-LOS" in _sec and "ONU-CI-OFF" in _sec and "ONU-CI-KARIM" in _sec and "ONU-CI-UP" not in _sec
           and _sec.index("ONU-CI-KARIM") < _sec.index("ONU-CI-LOS") < _sec.index("ONU-CI-OFF"),
           "admin dashboard lists Offline and LOS ONUs (newest drop first), not the online ones")
+    # 10 a page, and the LOS / Offline filter
+    for _n in range(12):
+        run("INSERT INTO onus (olt_id, name, serial, status, last_seen) VALUES (%s, %s, '', 'offline', NOW() - INTERVAL %s DAY)",
+            (_olt_a, "ONU-CI-PG%02d" % _n, 2 + _n))
+
+    def _onu_items(html):
+        sec = html.split('id="offline-onus"', 1)[-1].split("</section>", 1)[0]
+        return re.findall(r'class="onu-off-name"[^>]*>([^<]+)<', sec), sec
+    _p1, _s1 = _onu_items(adm.get("/").get_data(as_text=True))
+    _p2, _s2 = _onu_items(adm.get("/?onu_page=2").get_data(as_text=True))
+    _pl, _sl = _onu_items(adm.get("/?onu_st=los").get_data(as_text=True))
+    check(len(_p1) == 10 and len(_p2) == 5 and not set(_p1) & set(_p2) and "1–10 of 15" in _s1 and "onu_page=2" in _s1
+          and "#offline-onus" in _s1, "Offline ONUs shows 10 a page with page links that come back to the section")
+    check(_pl == ["ONU-CI-LOS"] and 'aria-current="true"' in _sl, "the LOS filter shows only LOS ONUs")
     _res_home = client(ids["reseller"]).get("/").get_data(as_text=True)
     check('id="offline-onus"' not in _res_home and "ONU-CI-LOS" not in _res_home,
           "a reseller without ONU access gets no Offline ONUs section")
