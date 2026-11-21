@@ -3,6 +3,32 @@
 {% block title %}General settings{% endblock %}
 {% block ssub %}Company details and defaults for the whole panel.{% endblock %}
 {% block sbody %}
+<section class="panel set-card brand-card" id="branding">
+  <div class="panel-head"><h2>{{ icon('star') }}Logo &amp; Favicon</h2></div>
+  <div class="brand-grid">
+    {% for kind, title, help in [('logo', 'Logo', 'Shown in the menu, sign-in page, customer portal, invoices, the expired-customer page and as the phone app icon. Square PNG, 512×512 or larger, works best.'),
+                                 ('favicon', 'Favicon', 'The small icon on the browser tab and bookmarks. Square PNG or ICO, 64×64 or larger.')] %}
+    <div class="brand-item">
+      <div class="brand-prev {{ kind }}">
+        {% if brand[kind] %}<img src="{{ brand[kind] }}" alt="Current {{ kind }}">
+        {% else %}<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13" fill="none" stroke="#2563eb" stroke-width="3"/><circle cx="16" cy="16" r="7.6" fill="none" stroke="#10b981" stroke-width="3"/><circle cx="16" cy="16" r="2.4" fill="#2563eb"/></svg>{% endif %}
+        {% if kind == 'favicon' %}<span class="brand-tab">{% if brand.favicon %}<img src="{{ brand.favicon }}" alt="">{% else %}<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13" fill="none" stroke="#2563eb" stroke-width="3"/><circle cx="16" cy="16" r="2.4" fill="#2563eb"/></svg>{% endif %}<b>{{ s.isp_name or 'Panel' }}</b></span>{% endif %}
+      </div>
+      <div class="brand-info">
+        <h3>{{ title }} <span class="badge {{ 'ok' if brand[kind] else 'mute' }}">{{ 'Custom' if brand[kind] else 'Built-in' }}</span></h3>
+        <p class="help">{{ help }} PNG, JPG, GIF, WebP or ICO, up to 1 MB.</p>
+        <div class="brand-acts">
+          <form method="post" action="{{ url_for('settings_brand', kind=kind) }}" enctype="multipart/form-data">{{ csrf_input() }}
+            <label class="btn sm primary">{{ icon('upload') }}{{ 'Change' if brand[kind] else 'Upload' }} {{ kind }}<input type="file" name="file" accept="image/png,image/jpeg,image/gif,image/webp,image/x-icon,.ico" hidden data-autosubmit></label>
+          </form>
+          {% if brand[kind] %}<form method="post" action="{{ url_for('settings_brand', kind=kind) }}" data-confirm="Remove the custom {{ kind }}? The built-in one is used again.">{{ csrf_input() }}<button class="btn sm" type="submit" name="remove" value="1">{{ icon('trash') }}Remove</button></form>{% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+<script>document.querySelectorAll("[data-autosubmit]").forEach(function (i) { i.addEventListener("change", function () { if (i.files.length) i.form.submit(); }); });</script>
 <form method="post" class="panel set-card">
   {{ csrf_input() }}
   <div class="panel-head"><h2>General Settings</h2></div>

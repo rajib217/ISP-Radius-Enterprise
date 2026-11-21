@@ -4,40 +4,9 @@
 {% block content %}
 <div class="page-head">
   <div><h1>Settings</h1><p class="sub">{% block ssub %}System settings{% endblock %}</p></div>
-  {% if tab == 'general' %}<div class="actions">
-    <button class="btn violet" data-open="brand-dlg" data-kind="logo">{{ icon('upload') }}Logo</button>
-    <button class="btn blue" data-open="brand-dlg" data-kind="favicon">{{ icon('upload') }}Favicon</button>
-  </div>{% endif %}
 </div>
 <div class="set-layout">
   {% include "_settings_nav.html" %}
   <div class="set-body">{% block sbody %}{% endblock %}</div>
 </div>
-{% if tab == 'general' %}
-<dialog class="modal" id="brand-dlg" aria-labelledby="brand-title">
-  <form method="post" action="" id="brand-form" enctype="multipart/form-data">
-    {{ csrf_input() }}
-    <div class="modal-head"><h2 id="brand-title">Upload</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
-    <div class="modal-body">
-      <div class="field"><label class="lbl" for="brand-file">Image (PNG, JPG, GIF, WebP or ICO, up to 1 MB)</label><input id="brand-file" type="file" name="file" accept="image/png,image/jpeg,image/gif,image/webp,image/x-icon"></div>
-      <div id="brand-now" class="help"></div>
-    </div>
-    <div class="modal-foot"><button type="submit" class="btn danger" name="remove" value="1" id="brand-remove">Remove current</button><span style="flex:1"></span><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Upload</button></div>
-  </form>
-</dialog>
-<script>
-(function () {
-  var f = document.getElementById("brand-form"), urls = {{ {"logo": brand.logo, "favicon": brand.favicon}|tojson }};
-  document.querySelectorAll("[data-kind]").forEach(function (b) {
-    b.addEventListener("click", function () {
-      var k = b.dataset.kind;
-      f.action = "{{ url_for('settings_brand', kind='logo')|replace('logo', '') }}" + k;
-      document.getElementById("brand-title").textContent = k === "logo" ? "Upload logo" : "Upload favicon";
-      document.getElementById("brand-now").textContent = urls[k] ? "A custom " + k + " is set." : "Using the built-in " + k + ".";
-      document.getElementById("brand-remove").hidden = !urls[k];
-    });
-  });
-})();
-</script>
-{% endif %}
 {% endblock %}

@@ -247,18 +247,31 @@
   }
 
   /* sidebar groups
-     Desktop (mouse, 768 px and wider): a group's submenu opens when the mouse is over it and stays while the mouse is
-     on it; 5 s after the mouse leaves it closes again. Pages open with every group closed (the current group's title
-     stays highlighted).
+     Desktop with the menu collapsed to icons (the << button, or a tablet-width screen): a group's submenu opens when
+     the mouse is over it and stays while the mouse is on it; 5 s after the mouse leaves it closes again. Pages open
+     with every group closed (the current group's icon stays highlighted).
+     Desktop with the full menu shown: as before, groups open and close by click and the current group stays open.
      Phone (menu drawer): the menu stays open while it is being used and hides by itself 5 s after the last touch,
      scroll or key press in it. Picking an item opens that page, which starts with the menu hidden. */
   var MENU_WAIT = 5000;
   var hoverMenu = window.matchMedia && matchMedia("(hover: hover) and (pointer: fine) and (min-width: 768px)");
-  function desktop() { return !!(hoverMenu && hoverMenu.matches); }
+  var railWidth = window.matchMedia && matchMedia("(max-width: 1023px)");
+  function desktop() {          /* hover mode: a mouse, and the menu shows icons only */
+    return !!(hoverMenu && hoverMenu.matches) &&
+      (document.documentElement.classList.contains("side-off") || !!(railWidth && railWidth.matches));
+  }
   var groups = $$(".nav-group");
+  groups.forEach(function (d) { d.dataset.wasOpen = d.open ? "1" : ""; });   /* the server's choice (current group) */
   function closeOthers(d) { groups.forEach(function (o) { if (o !== d && o.open) o.open = false; }); }
-  if (desktop()) groups.forEach(function (d) { d.open = false; });
+  function applyMode() {        /* entering hover mode: all closed; leaving it: the current group open again */
+    var hover = desktop();
+    document.documentElement.classList.toggle("hover-menu", hover);
+    groups.forEach(function (d) { d.open = hover ? false : d.dataset.wasOpen === "1"; });
+  }
+  applyMode();
   document.documentElement.classList.add("menu-ready");
+  $$("[data-side-toggle]").forEach(function (b) { b.addEventListener("click", function () { setTimeout(applyMode, 0); }); });
+  if (railWidth && railWidth.addEventListener) railWidth.addEventListener("change", applyMode);
   groups.forEach(function (d) {
     var timer = null, intent = null;
     function stop() { if (timer) { clearTimeout(timer); timer = null; } }
@@ -306,6 +319,7 @@
     if (!e.persisted) return;
     document.body.classList.toggle("nav-open", false);
     if (desktop()) groups.forEach(function (d) { d.open = false; });
+    else groups.forEach(function (d) { d.open = d.dataset.wasOpen === "1"; });
   });
 
   /* compose pages (SMS / email) */

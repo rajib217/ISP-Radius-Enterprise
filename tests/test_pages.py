@@ -700,6 +700,19 @@ def check_rules(flask_app, ids):
     check("var MENU_WAIT = 5000;" in _js and '"mouseenter"' in _js and "navIdle" in _js and "hover-menu" in _base
           and 'id="i-users3"' in _base and re.search(r'data-key="subs"[^>]*>\s*<summary[^>]*><svg class="i"[^>]*><use href="#i-users3"', _base),
           "menu: submenus open on hover and close 5 s later (desktop), the phone menu hides 5 s after the last touch; Subscribers has the three-person icon")
+    # ---- Settings > General: Logo & Favicon card (upload shows "Custom", remove goes back to built-in)
+    import io as _bio
+    _set0 = adm.get("/settings").get_data(as_text=True)
+    _png1 = bytes([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) + bytes(64)
+    _upl = adm.post("/settings/brand/favicon", data={"_csrf": "ci", "file": (_bio.BytesIO(_png1), "f.png")},
+                    content_type="multipart/form-data")
+    _set1 = adm.get("/settings").get_data(as_text=True)
+    _rmv = adm.post("/settings/brand/favicon", data={"_csrf": "ci", "remove": "1"})
+    _set2 = adm.get("/settings").get_data(as_text=True)
+    check('id="branding"' in _set0 and _set0.count('enctype="multipart/form-data"') >= 2 and "brand-dlg" not in _set0
+          and _upl.status_code == 302 and 'src="/branding/favicon?v=' in _set1 and _rmv.status_code == 302
+          and 'src="/branding/favicon?v=' not in _set2,
+          "Settings > General has a Logo & Favicon card: upload shows the new icon, Remove goes back to the built-in one")
 
     # ---- dashboard: Offline ONUs (Offline + LOS), sellers only see the ONUs on their own OLTs
     run("INSERT INTO net_devices (name, kind, ip, created_by) VALUES ('CI-OLT-Admin', 'olt', '10.9.0.1', 'admin')")

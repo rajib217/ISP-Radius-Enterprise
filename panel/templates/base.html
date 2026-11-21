@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block title %}{{ isp_name }}{% endblock %} · RADIUS Panel</title>
   {% if brand.favicon %}<link rel="icon" href="{{ brand.favicon }}">{% else %}<link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">{% endif %}
-  <script>try{var t=localStorage.getItem("isp-theme");if(!t&&window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches)t="dark";if(t)document.documentElement.dataset.theme=t;if(localStorage.getItem("isp-side")==="off")document.documentElement.classList.add("side-off")}catch(e){}try{if(matchMedia("(hover: hover) and (pointer: fine) and (min-width: 768px)").matches)document.documentElement.classList.add("hover-menu")}catch(e){}</script>
+  <script>try{var t=localStorage.getItem("isp-theme");if(!t&&window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches)t="dark";if(t)document.documentElement.dataset.theme=t;if(localStorage.getItem("isp-side")==="off")document.documentElement.classList.add("side-off")}catch(e){}try{var h=document.documentElement;if(matchMedia("(hover: hover) and (pointer: fine) and (min-width: 768px)").matches&&(h.classList.contains("side-off")||matchMedia("(max-width: 1023px)").matches))h.classList.add("hover-menu")}catch(e){}</script>
   <link rel="stylesheet" href="{{ asset('css/app.css') }}">
   {% include "_pwa_head.html" %}
 </head>
