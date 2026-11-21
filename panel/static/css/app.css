@@ -1647,3 +1647,11 @@ dialog.modal.confirm-dlg { width: min(420px, calc(100vw - 24px)); }
 .sv-doc-up { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.2fr) minmax(0, 1fr) auto; gap: 12px; align-items: end; padding: 16px 18px; border-bottom: 1px solid var(--rule); }
 .sv-doc-up input[type="file"] { padding-top: 6px; }
 @media (max-width: 900px) { .sv-doc-up { grid-template-columns: 1fr; } }
+
+/* ---- filter bars: the search input fills its search box ----
+   ".filters input { width: auto }" also shrank the input inside .search, so the box stayed wide but the field was
+   small and the Find / Filter button ended up far away (Receive payment, Ledger, bKash Payments, Documents ...) */
+.filters .search input { width: 100%; min-width: 0; }
+/* a filter bar at the top of a panel gets breathing room above its divider line (templates set padding-bottom: 0) */
+.panel > form.filters.panel-body { padding-bottom: 14px !important; margin-bottom: 0; }
+
