@@ -8,7 +8,15 @@
   {{ csrf_input() }}
   <div class="panel-head"><h2>Subscriber Settings</h2></div>
   <div class="set-form three">
-    {{ sw('portal_on', 'Customer Portal') }}
+    <div class="field portal-sw wide">
+      <label class="lbl" for="x-portal_on">Customer Portal</label>
+      <div class="portal-sw-row">
+        <span class="switch"><input id="x-portal_on" type="checkbox" name="portal_on" data-save="{{ url_for('settings_subscriber_portal') }}" {{ 'checked' if s.portal_on == '1' }}><i></i></span>
+        <span class="portal-state {{ 'on' if s.portal_on == '1' }}" id="portal-state">{% if s.portal_on == '1' %}On &middot; customers can sign in{% else %}Off &middot; customers see "not available"{% endif %}</span>
+        <a class="btn sm" href="{{ url_for('portal') }}" target="_blank" rel="noopener" id="portal-open"{{ '' if s.portal_on == '1' else ' hidden' }}>{{ icon('link') }}Open /portal</a>
+      </div>
+      <div class="help">Saves as soon as you flip it.</div>
+    </div>
     <p class="help wide">When on, customers sign in at <b>/portal</b> on this panel with their PPPoE username and password to see their expiry, usage and invoices. <b>Self Activation</b> lets them pay for renewal with bKash (needs bKash switched on under Payment Gateway). <b>See Volume Info</b>, <b>Session Log</b> and <b>Reset Password</b> show or hide the usage, sessions and change-password parts. The other switches below are saved only: they are not built yet (verification, self registration, update data, login log, all packages, two-factor).</p>
     {% for key, label in switches %}{{ sw(key, label) }}{% endfor %}
     <div class="note-box wide">{{ icon('alert') }}<span>We recommend setting the grace period within 7 days for optimal account management.</span></div>
@@ -31,4 +39,29 @@
   </div>
   <div class="set-foot"><button class="btn primary" type="submit">Submit</button></div>
 </form>
+<script>
+(function () {
+  var box = document.getElementById("x-portal_on"), state = document.getElementById("portal-state"), open = document.getElementById("portal-open");
+  var csrf = (document.querySelector('input[name="_csrf"]') || {}).value || "";
+  function paint(on) {
+    state.className = "portal-state" + (on ? " on" : "");
+    state.textContent = on ? "On · customers can sign in" : "Off · customers see “not available”";
+    open.hidden = !on;
+  }
+  box.addEventListener("change", function () {
+    var want = box.checked, body = new URLSearchParams({ _csrf: csrf, on: want ? "1" : "0" });
+    box.disabled = true; state.textContent = "Saving…";
+    fetch(box.getAttribute("data-save"), { method: "POST", credentials: "same-origin", body: body,
+      headers: { "X-Requested-With": "fetch", "X-CSRF-Token": csrf } })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function (d) { box.checked = !!d.on; paint(!!d.on); })
+      .catch(function (code) {
+        box.checked = !want; paint(!want);
+        state.textContent = "Not saved (" + (code === 403 ? "only an admin can change this" : code === 400 ? "page expired: reload and try again" : "error " + code) + ")";
+        state.className = "portal-state bad";
+      })
+      .then(function () { box.disabled = false; });
+  });
+})();
+</script>
 {% endblock %}

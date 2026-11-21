@@ -619,6 +619,19 @@ def check_rules(flask_app, ids):
           and flask_app.test_client().get("/portal").status_code == 302,
           "Settings > Subscriber: Customer Portal turns on even with a bad serial number / grace days (those keep their old value and are named)")
     run("REPLACE INTO settings (skey, svalue) VALUES ('serial_prefix', '')")
+    # the switch alone saves on flip (fetch), only for admins
+    _st = flask_app.test_client()
+    with _st.session_transaction() as _s:
+        _s["csrf"] = "ci"; _s["uid"] = ids["staff"]
+    _f_off = adm.post("/settings/subscriber/portal", data={"_csrf": "ci", "on": "0"}, headers={"X-Requested-With": "fetch"})
+    _off_db = one("SELECT svalue FROM settings WHERE skey = 'portal_on'")["svalue"]
+    _f_staff = _st.post("/settings/subscriber/portal", data={"_csrf": "ci", "on": "1"}, headers={"X-Requested-With": "fetch"})
+    _f_on = adm.post("/settings/subscriber/portal", data={"_csrf": "ci", "on": "1"}, headers={"X-Requested-With": "fetch"})
+    check(_f_off.get_json() == {"ok": True, "on": False} and _off_db == "0" and _f_staff.status_code == 403
+          and _f_on.get_json() == {"ok": True, "on": True}
+          and one("SELECT svalue FROM settings WHERE skey = 'portal_on'")["svalue"] == "1"
+          and 'data-save="/settings/subscriber/portal"' in adm.get("/settings/subscriber").get_data(as_text=True),
+          "Settings > Subscriber: the Customer Portal switch saves the moment it is flipped (admins only)")
 
     # ---- dashboard: Offline ONUs (Offline + LOS), sellers only see the ONUs on their own OLTs
     run("INSERT INTO net_devices (name, kind, ip, created_by) VALUES ('CI-OLT-Admin', 'olt', '10.9.0.1', 'admin')")

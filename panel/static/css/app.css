@@ -1811,3 +1811,10 @@ dialog.modal.confirm-dlg { width: min(420px, calc(100vw - 24px)); }
 @keyframes push-ring { 0%, 70%, 100% { transform: rotate(0); } 75% { transform: rotate(14deg); } 80% { transform: rotate(-12deg); } 85% { transform: rotate(8deg); } 90% { transform: rotate(-5deg); } }
 @media (prefers-reduced-motion: reduce) { .push-ic { animation: none; } }
 
+/* ---- Settings > Subscriber: the Customer Portal switch (saves on flip) ---- */
+.portal-sw-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
+.set-form .portal-sw .switch { display: inline-block; margin-top: 0; }
+.portal-state { font-size: 13.5px; color: var(--text-muted); }
+.portal-state.on { color: var(--online); font-weight: 600; }
+.portal-state.bad { color: var(--danger, #dc2626); font-weight: 600; }
+

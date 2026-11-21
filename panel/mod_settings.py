@@ -509,6 +509,21 @@ def settings_subscriber():
     return render_template("settings_subscriber.html", s=cfg(), switches=SUB_SWITCHES, rules=SUB_RULES, tab="subscriber")
 
 
+@route("/settings/subscriber/portal", methods=["POST"])
+@admin_required
+def settings_subscriber_portal():
+    """The Customer Portal switch saves the moment it is flipped (no Submit needed)."""
+    from flask import jsonify
+    on = "1" if request.form.get("on") in ("1", "on", "true") else "0"
+    _save({"portal_on": on})
+    audit("settings_saved", "subscriber", "portal on" if on == "1" else "portal off")
+    commit()
+    if request.headers.get("X-Requested-With") == "fetch":
+        return jsonify({"ok": True, "on": on == "1"})
+    flash("Customer Portal is %s." % ("on" if on == "1" else "off"), "success")
+    return redirect(url_for("settings_subscriber"))
+
+
 MODULE_SWITCHES = [   # key, label, module it controls (None = not built yet)
     ("voucher", "Voucher Module Status", None),
     ("prepaid", "Prepaid Card Module Status", None),
