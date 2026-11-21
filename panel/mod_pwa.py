@@ -40,8 +40,8 @@ def _ring_icon(size, maskable):
     """The panel's mark (two rings and a dot) on a white tile, drawn pixel by pixel with soft edges."""
     c = (size - 1) / 2.0
     tile_r = size * 0.22                      # rounded corners of the tile (a maskable icon fills the square)
-    rings = [(size * 0.30, size * 0.055, (37, 99, 235)), (size * 0.17, size * 0.055, (16, 185, 129))]
-    dot = size * 0.055
+    rings = [(size * 0.31, size * 0.036, (37, 99, 235)), (size * 0.18, size * 0.036, (16, 185, 129))]
+    dot = size * 0.06
     out = bytearray(size * size * 4)
     for y in range(size):
         for x in range(size):
