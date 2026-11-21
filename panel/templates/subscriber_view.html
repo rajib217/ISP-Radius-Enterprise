@@ -21,6 +21,7 @@
   <a class="btn sm primary" href="{{ url_for('diagnose_page', user=sub.username) }}">{{ icon('search') }}Why Refused?</a>
   <a class="btn sm primary" href="#reports" data-tab-link="reports">{{ icon('chart') }}Usage Graph</a>
   <button class="btn sm primary" data-open="invoice-dlg">{{ icon('file') }}New Invoice</button>
+  <button class="btn sm primary" data-open="notify-dlg">{{ icon('bell') }}Send Notification</button>
   <button class="btn sm primary" data-open="photo-dlg">{{ icon('upload') }}Photo</button>
   <button class="btn sm primary" data-open="pw-dlg">{{ icon('user') }}Password</button>
   <button class="btn sm primary" type="button" data-reveal="pw" data-reveal-label>{{ icon('eye') }}Toggle Password</button>
@@ -61,7 +62,7 @@
     <div class="kpi"><div><small>Tickets</small><b>{{ x.open_tickets }}</b></div><i class="ki blue">{{ icon('ticket') }}</i></div>
   </div>
   <nav class="sv-tabs" aria-label="Sections">
-    {% for key, label, ic in [('profile','Profile','user'),('reports','Reports','chart'),('ledgers','Ledgers','file'),('invoices','Invoices','file'),('payments','Payments','card'),('online','Online Payments','wallet'),('messages','SMS Deliveries','phone'),('services','Services','sliders'),('fees','Extra Service Fee','dollar'),('attributes','Attributes','grid'),('mac','MAC Address','server'),('documents','Documents','folder'),('logins','Login Log','shield'),('sessions','Session Log','activity'),('coa','CoA Logs','power'),('activity','Activities','chart'),('tickets','Tickets','ticket')] %}
+    {% for key, label, ic in [('profile','Profile','user'),('reports','Reports','chart'),('ledgers','Ledgers','file'),('invoices','Invoices','file'),('payments','Payments','card'),('online','Online Payments','wallet'),('messages','SMS Deliveries','phone'),('notifications','App Notifications','bell'),('services','Services','sliders'),('fees','Extra Service Fee','dollar'),('attributes','Attributes','grid'),('mac','MAC Address','server'),('documents','Documents','folder'),('logins','Login Log','shield'),('sessions','Session Log','activity'),('coa','CoA Logs','power'),('activity','Activities','chart'),('tickets','Tickets','ticket')] %}
     {% if key not in ('documents',) or can('documents') %}{% if key != 'tickets' or can('tickets') %}<a href="#{{ key }}" data-tab="{{ key }}">{{ icon(ic) }}{{ label }}</a>{% endif %}{% endif %}
     {% endfor %}
   </nav>
@@ -195,6 +196,17 @@
 
 <div class="sv-pane" id="tab-messages" hidden><section class="panel"><div class="panel-head"><h2>SMS and email deliveries</h2></div>
   {% if t.messages %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Channel</th><th>To</th><th>Message</th><th>Status</th></tr></thead><tbody>{% for m in t.messages %}<tr><td class="nowrap">{{ m.created_at|dt }}</td><td>{{ m.channel|upper }}</td><td class="mono">{{ m.to_addr }}</td><td>{{ (m.subject ~ ' · ' if m.subject) }}{{ m.body|truncate(90) }}</td><td><span class="pill {{ {'sent': 'ok', 'failed': 'bad'}.get(m.status, 'warn') }}">{{ m.status|capitalize }}</span>{% if m.error %} <small class="muted">{{ m.error }}</small>{% endif %}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><p>No messages sent to this customer.</p></div>{% endif %}</section></div>
+
+<div class="sv-pane" id="tab-notifications" hidden><section class="panel"><div class="panel-head"><h2>App notifications</h2>
+  <span class="aside">{% set unread_n = t.notifs|selectattr('read_at', 'none')|list|length %}{{ unread_n }} unread{% if edit %} · <a href="#" data-open="notify-dlg">Send one</a>{% endif %}</span></div>
+  {% if t.notifs %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Sent</th><th>Type</th><th>Title</th><th>Message</th><th>Status</th><th>By</th></tr></thead><tbody>{% for n in t.notifs %}<tr>
+    <td class="nowrap" data-card="key">{{ n.created_at|dt }}</td>
+    <td data-card="key"><span class="pill {{ {'payment': 'ok', 'balance': 'ok', 'expiring': 'warn', 'expired': 'bad'}.get(n.kind, 'info') }}">{{ n.kind|capitalize }}</span></td>
+    <td data-card="title"><b>{{ n.title }}</b></td>
+    <td class="muted">{{ n.body }}</td>
+    <td data-card="key">{% if n.read_at %}<span class="badge ok" title="Read {{ n.read_at|dt }}">Read</span>{% else %}<span class="badge warn">Unread</span>{% endif %}</td>
+    <td class="muted">{{ n.created_by or 'system' }}</td></tr>{% endfor %}</tbody></table></div>
+  {% else %}<div class="empty"><p>No app notifications yet. Payments, balance top-ups and expiry warnings are sent automatically{% if edit %}; use Send Notification for your own message{% endif %}.</p></div>{% endif %}</section></div>
 
 <div class="sv-pane" id="tab-online" hidden><section class="panel"><div class="panel-head"><h2>Online payments</h2></div>
   <div class="empty"><h3>No online payments</h3><p>Payments made through a payment gateway (bKash) will be listed here once the gateway is connected. Cash and manual payments are under Payments.</p></div></section></div>
@@ -335,6 +347,14 @@
   <div class="modal-head"><h2 id="pw-title">Change password</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
   <div class="modal-body"><div class="field"><label class="lbl" for="pw-new">New password</label><input id="pw-new" name="password" maxlength="64" autocomplete="off" spellcheck="false" required><div class="help">4 to 64 characters, no spaces. The customer's router must use the new one.</div></div></div>
   <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Change</button></div></form></dialog>
+<dialog class="modal" id="notify-dlg" aria-labelledby="nt-title"><form method="post" action="{{ url_for('subscriber_notify', sid=sub.id) }}">{{ csrf_input() }}
+  <div class="modal-head"><h2 id="nt-title">Send notification</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
+  <div class="modal-body stack">
+    <p class="muted" style="margin:0">Shows in {{ sub.full_name or sub.username }}'s customer app with the red unread mark, and pops up while the app is open.</p>
+    <div class="field"><label class="lbl" for="nt-title-in">Title</label><input id="nt-title-in" name="title" maxlength="120" required placeholder="যেমন: নেটওয়ার্ক রক্ষণাবেক্ষণ"></div>
+    <div class="field"><label class="lbl" for="nt-body">Message</label><textarea id="nt-body" name="body" rows="4" maxlength="600" required placeholder="আজ রাত ২টা থেকে ৪টা পর্যন্ত লাইনের কাজ চলবে..."></textarea><div class="help">Up to 600 characters. Bangla is fine.</div></div>
+  </div>
+  <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">{{ icon('send') }}Send</button></div></form></dialog>
 <dialog class="modal" id="invoice-dlg" aria-labelledby="iv-title"><form method="post" action="{{ url_for('subscriber_invoice', sid=sub.id) }}">{{ csrf_input() }}
   <div class="modal-head"><h2 id="iv-title">New invoice</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
   <div class="modal-body stack"><div class="field"><label class="lbl" for="iv-name">Name</label><input id="iv-name" name="name" maxlength="64" placeholder="Router, installation..." required></div>

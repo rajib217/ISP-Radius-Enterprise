@@ -260,6 +260,8 @@ def subscriber_automation(conn, cur):
                     (s["id"], s["username"], amount, (new_expiry - base).days, new_expiry, paid_by, cost if paid_by else None))
         cur.execute("INSERT INTO sub_ledger (subscriber_id, amount, balance_after, note, created_by) VALUES (%s, %s, %s, %s, 'auto')",
                     (s["id"], -amount, left, "Auto renew +%d days" % (new_expiry - base).days))
+        import appnotify
+        appnotify.payment(cur, s["id"], amount, new_expiry, cfgs.get("currency"), "auto:%s:%s" % (s["id"], new_expiry), "auto")
         radius.sync_subscriber(cur, s["username"], plan, "active", new_expiry, s["static_ip"])
         done += 1
     conn.commit()
@@ -485,6 +487,16 @@ def main():
         if n_enc:
             conn.commit()
             print("encrypted %d secret settings" % n_enc)
+    # in-app notifications for the customer portal / app: "expires in 3 / 1 / 0 days" and "expired"
+    if s.get("portal_on") == "1":
+        import appnotify
+        try:
+            made = appnotify.run_expiry(conn, cur)
+            if made:
+                print("app notifications: %d" % made)
+        except Exception as exc:          # the table appears after update.sh has applied the schema
+            conn.rollback()
+            print("app notifications skipped: %s" % exc)
     # expiry reminders once a day at the configured hour (the unique key stops duplicates if it runs again)
     cur.execute("SELECT svalue FROM settings WHERE skey = 'last_reminder'")
     rem = cur.fetchone()

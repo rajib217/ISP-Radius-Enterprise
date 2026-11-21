@@ -81,6 +81,11 @@ def tabs(sub, sessions):
     t = {}
     t["payments"] = q("SELECT * FROM payments WHERE subscriber_id = %s ORDER BY id DESC LIMIT 300", (sid,))
     t["charges"] = q("SELECT * FROM sub_charges WHERE subscriber_id = %s ORDER BY id DESC LIMIT 300", (sid,))
+    try:
+        t["notifs"] = q("SELECT kind, title, body, created_by, created_at, read_at FROM sub_notifications "
+                        "WHERE subscriber_id = %s ORDER BY id DESC LIMIT 50", (sid,))
+    except Exception:
+        t["notifs"] = []
     t["messages"] = q("SELECT channel, to_addr, subject, body, status, error, created_at, sent_at FROM outbox "
                       "WHERE subscriber_id = %s ORDER BY id DESC LIMIT 50", (sid,))
     attrs = []
@@ -243,6 +248,11 @@ def subscriber_balance(sid):
     insert("INSERT INTO sub_ledger (subscriber_id, amount, balance_after, note, created_by) VALUES (%s, %s, %s, %s, %s)",
            (sid, amount, new, request.form.get("note", "").strip()[:255], g.me["username"]))
     audit("balance_changed", sub["username"], "%+.2f -> %.2f" % (amount, new))
+    if amount > 0:
+        import appnotify
+        with get_db().cursor() as cur:
+            appnotify.balance(cur, sid, amount, new, core.cfg().get("currency"), "%s:%s" % (sid, q(
+                "SELECT MAX(id) AS m FROM sub_ledger WHERE subscriber_id = %s", (sid,), one=True)["m"]), g.me["username"])
     commit()
     flash("Balance is now %.2f." % new, "success")
     return _back(sid, "ledgers")
@@ -399,3 +409,22 @@ def subscriber_rate(sid):
                    updated=newest.strftime("%H:%M") if newest else "")
     resp.headers["Cache-Control"] = "no-store"
     return resp
+
+
+@route("/subscribers/<int:sid>/notify", module="subscribers", methods=["POST"])
+def subscriber_notify(sid):
+    """Send this customer an in-app notification (their portal / app shows it with the unread mark)."""
+    sub = _sub(sid)
+    title = request.form.get("title", "").strip()[:120]
+    body = request.form.get("body", "").strip()[:600]
+    if not title or not body:
+        flash("Write a title and a message.", "error")
+        return _back(sid, "notifications")
+    import appnotify
+    with get_db().cursor() as cur:
+        appnotify.add(cur, sid, "custom", title, body, by=g.me["username"])
+    audit("app_notification_sent", sub["username"], title)
+    commit()
+    flash("Notification sent to %s. It shows in their app%s." % (
+        sub["username"], "" if core.cfg().get("portal_on") == "1" else " once the customer portal is switched on"), "success")
+    return _back(sid, "notifications")

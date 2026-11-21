@@ -21,8 +21,10 @@
   <a href="{{ url_for('portal') }}" class="{{ 'on' if endpoint == 'portal' }}" {% if endpoint == 'portal' %}aria-current="page"{% endif %}>{{ icon('home') }}<span>Home</span></a>
   <a href="{{ url_for('portal') }}#usage">{{ icon('chart') }}<span>Usage</span></a>
   <a href="{{ url_for('portal') }}#invoices">{{ icon('file') }}<span>Invoices</span></a>
+  <a href="{{ url_for('portal_notifications') }}" class="{{ 'on' if endpoint == 'portal_notifications' }}" {% if endpoint == 'portal_notifications' %}aria-current="page"{% endif %} data-notif-link>{{ icon('bell') }}<span>Alerts</span>{% if portal_unread %}<b class="notif-dot" data-notif-count>{{ portal_unread if portal_unread < 100 else '99+' }}</b>{% else %}<b class="notif-dot" data-notif-count hidden></b>{% endif %}</a>
   <a href="{{ url_for('portal_pay') }}" class="{{ 'on' if endpoint == 'portal_pay' }}" {% if endpoint == 'portal_pay' %}aria-current="page"{% endif %}>{{ icon('wallet') }}<span>Pay</span></a>
 </nav>{% endif %}
 <script src="{{ asset('js/pwa.js') }}"></script>
+{% if sub is defined and sub %}<script src="{{ asset('js/portal-notify.js') }}" data-check="{{ url_for('portal_notifications_check') }}" data-list="{{ url_for('portal_notifications') }}" data-unread="{{ portal_unread }}"></script>{% endif %}
 </body>
 </html>

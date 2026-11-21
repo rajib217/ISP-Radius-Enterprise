@@ -111,6 +111,36 @@ def portal_logout():
     return redirect(url_for("portal_login"))
 
 
+# ===================================================================== notifications (bell, list, live check)
+@route("/portal/notifications")
+def portal_notifications():
+    sub = _need()
+    if not sub:
+        return redirect(url_for("portal_login"))
+    rows = q("SELECT id, kind, title, body, link, created_at, read_at FROM sub_notifications WHERE subscriber_id = %s "
+             "ORDER BY id DESC LIMIT 100", (sub["id"],))
+    # opening the list reads them all (the page still shows which were new this time)
+    x("UPDATE sub_notifications SET read_at = NOW() WHERE subscriber_id = %s AND read_at IS NULL", (sub["id"],))
+    commit()
+    return render_template("portal_notifications.html", sub=sub, rows=rows, isp=core.cfg().get("isp_name", ""),
+                           portal_unread=0)
+
+
+@route("/portal/notifications/check")
+def portal_notifications_check():
+    """For the app: unread count and the newest notification (a toast pops up when a new one arrives)."""
+    from flask import jsonify
+    sid = session.get("cid")
+    if not sid or core.cfg().get("portal_on") != "1":
+        return jsonify({"unread": 0, "latest": None})
+    n = q("SELECT COUNT(*) AS c FROM sub_notifications WHERE subscriber_id = %s AND read_at IS NULL", (sid,), one=True)["c"]
+    latest = q("SELECT id, title, body FROM sub_notifications WHERE subscriber_id = %s AND read_at IS NULL "
+               "ORDER BY id DESC LIMIT 1", (sid,), one=True)
+    resp = jsonify({"unread": int(n), "latest": latest})
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 # ===================================================================== the customer's page
 @route("/portal")
 def portal():

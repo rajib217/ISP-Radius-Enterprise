@@ -680,6 +680,41 @@ def check_rules(flask_app, ids):
     run("DELETE FROM onus WHERE name LIKE 'ONU-CI-%%'")
     run("DELETE FROM net_devices WHERE name LIKE 'CI-OLT-%%'")
 
+    # ---- in-app notifications for customers: payment, balance, expiring, custom; unread mark, list, live check
+    import appnotify as _an
+    _nsid = one("SELECT id FROM subscribers WHERE username = 'uttara.shop'")["id"]
+    check(one("SELECT COUNT(*) AS c FROM sub_notifications WHERE kind = 'payment'")["c"] > 0,
+          "every activation / renewal creates a payment notification in the customer's app")
+    run("DELETE FROM sub_notifications WHERE subscriber_id = %s", (_nsid,))
+    adm.post("/subscribers/%d/balance" % _nsid, data={"_csrf": "ci", "amount": "150", "note": "ci"})
+    adm.post("/subscribers/%d/notify" % _nsid, data={"_csrf": "ci", "title": "CI লাইনের কাজ", "body": "আজ রাতে লাইনের কাজ চলবে।"})
+    run("UPDATE subscribers SET expiry_date = CURDATE() + INTERVAL 3 DAY, status = 'active', grace_until = NULL WHERE id = %s", (_nsid,))
+    _c2 = db.connect()
+    try:
+        with _c2.cursor() as cur:
+            _made1 = _an.run_expiry(_c2, cur)
+            _made2 = _an.run_expiry(_c2, cur)
+    finally:
+        _c2.close()
+    _kinds = sorted(r["kind"] for r in run_q("SELECT kind FROM sub_notifications WHERE subscriber_id = %s", (_nsid,)))
+    check(_kinds == ["balance", "custom", "expiring"] and _made1 >= 1 and _made2 == 0,
+          "balance top-up, the admin's custom message and 'expires in 3 days' arrive once each (no duplicates)")
+    _home_p = pc.get("/portal").get_data(as_text=True)
+    _chk = pc.get("/portal/notifications/check").get_json() or {}
+    check('class="notif-dot" data-notif-count>3<' in _home_p and _chk.get("unread") == 3 and _chk.get("latest", {}).get("title")
+          and "portal-notify.js" in _home_p, "the portal shows the red unread number (3) and the app can check for new ones")
+    _list = pc.get("/portal/notifications").get_data(as_text=True)
+    _after = pc.get("/portal/notifications/check").get_json() or {}
+    check("CI লাইনের কাজ" in _list and "মেয়াদ শেষ হতে চলেছে" in _list and "ব্যালেন্সে টাকা যোগ হয়েছে" in _list
+          and _list.count('class="notif-new"') == 3 and _after.get("unread") == 0,
+          "opening the list shows the new ones marked and then clears the unread number")
+    _sv = adm.get("/subscribers/%d" % _nsid).get_data(as_text=True)
+    check('id="tab-notifications"' in _sv and "CI লাইনের কাজ" in _sv and ">Read<" in _sv and 'data-open="notify-dlg"' in _sv,
+          "the customer page lists sent app notifications with read / unread status and a Send button")
+    check(pc.get("/portal/notifications/check").status_code == 200
+          and (flask_app.test_client().get("/portal/notifications/check").get_json() or {}).get("unread") == 0,
+          "the live check gives nothing to someone who is not signed in")
+
     # ---- installable app (PWA): manifests, icons, service worker, offline page, tags on every layout
     import struct as _st
     import mod_pwa as _pwa

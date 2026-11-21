@@ -435,6 +435,23 @@ CREATE TABLE IF NOT EXISTS coa_log (
   KEY idx_user (username, id),
   KEY idx_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- In-app notifications for customers (portal / its app): payment, balance, expiring, expired, custom (appnotify.py)
+CREATE TABLE IF NOT EXISTS sub_notifications (
+  id            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  subscriber_id INT UNSIGNED NOT NULL,
+  kind          VARCHAR(16)  NOT NULL DEFAULT 'custom',
+  title         VARCHAR(120) NOT NULL DEFAULT '',
+  body          VARCHAR(600) NOT NULL DEFAULT '',
+  link          VARCHAR(255) NOT NULL DEFAULT '',
+  dedupe        VARCHAR(120) NULL,
+  created_by    VARCHAR(64)  NOT NULL DEFAULT '',
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  read_at       DATETIME NULL,
+  UNIQUE KEY uq_dedupe (subscriber_id, dedupe),
+  KEY idx_sub (subscriber_id, id),
+  KEY idx_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS sub_ledger (
   id            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   subscriber_id INT UNSIGNED NOT NULL,

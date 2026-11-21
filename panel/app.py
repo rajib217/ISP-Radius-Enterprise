@@ -194,6 +194,17 @@ def _sees_live():
     return me["role"] == "admin" or (me["role"] not in core.SELLER_ROLES and core.can("online"))
 
 
+def _portal_unread():
+    """Unread in-app notifications of the signed-in customer (portal pages only)."""
+    if not session.get("cid") or not (request.endpoint or "").startswith("portal"):
+        return 0
+    try:
+        return q("SELECT COUNT(*) AS c FROM sub_notifications WHERE subscriber_id = %s AND read_at IS NULL",
+                 (session["cid"],), one=True)["c"]
+    except Exception:
+        return 0
+
+
 def _pwa_name():
     try:
         return cfg().get("isp_name") or "ISP Panel"
@@ -234,6 +245,7 @@ def inject():
         "today": date.today(),
         "asset": asset_url,
         "pwa_name": _pwa_name(),
+        "portal_unread": _portal_unread(),
         "pwa_icon_key": _pwa_icon_key(),
         "can": core.can,
         "can_fn": core.can_fn,

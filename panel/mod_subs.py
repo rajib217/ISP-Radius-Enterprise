@@ -108,6 +108,9 @@ def do_renew(sub, days, amount, method="cash", note="", notify=True, exact=False
                 pass
     if notify:
         core.notify("payment", sub["id"], {"amount": core.fmt_money(amount)}, key=pay_id)
+    import appnotify             # in the customer's app, always (the SMS / email switch above is separate)
+    with get_db().cursor() as cur:
+        appnotify.payment(cur, sub["id"], amount, new_expiry, core.cfg().get("currency"), pay_id, g.me["username"])
     return new_expiry
 
 
@@ -496,6 +499,11 @@ def subscribers_mass_payment():
             cur.execute("INSERT INTO sub_ledger (subscriber_id, amount, balance_after, note, created_by) VALUES (%s, %s, %s, %s, %s)",
                         (sub["id"], amount, after, ("Mass payment (%s)" % method)[:255], g.me["username"]))
         audit("balance_changed", sub["username"], "%+.2f -> %.2f (mass payment, %s)" % (amount, after, method))
+        import appnotify
+        with get_db().cursor() as cur:
+            cur.execute("SELECT MAX(id) AS m FROM sub_ledger WHERE subscriber_id = %s", (sub["id"],))
+            appnotify.balance(cur, sub["id"], amount, after, core.cfg().get("currency"),
+                              "%s:%s" % (sub["id"], cur.fetchone()["m"]), g.me["username"])
         commit()
         done.append(sub["username"])
     if done:

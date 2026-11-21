@@ -1,6 +1,7 @@
 {% extends "portal_base.html" %}
 {% block top %}<div class="pt-top"><b>{{ isp or 'My connection' }}</b>
-  <form method="post" action="{{ url_for('portal_logout') }}">{{ csrf_input() }}<button class="btn sm">Sign out</button></form></div>{% endblock %}
+  <span class="pt-top-acts"><a class="notif-bell" href="{{ url_for('portal_notifications') }}" aria-label="Notifications{{ ' (%d unread)' % portal_unread if portal_unread }}" data-notif-link>{{ icon('bell') }}{% if portal_unread %}<b class="notif-dot" data-notif-count>{{ portal_unread if portal_unread < 100 else '99+' }}</b>{% else %}<b class="notif-dot" data-notif-count hidden></b>{% endif %}</a>
+  <form method="post" action="{{ url_for('portal_logout') }}">{{ csrf_input() }}<button class="btn sm">Sign out</button></form></span></div>{% endblock %}
 {% block content %}
 <section class="pt-hero {{ state }}">
   <span class="muted">{{ sub.full_name or sub.username }} <span class="mono">({{ sub.username }})</span></span>

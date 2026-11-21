@@ -1,0 +1,26 @@
+{% extends "portal_base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Notifications{% endblock %}
+{% block top %}<div class="pt-top"><b>নোটিফিকেশন</b><a class="btn sm" href="{{ url_for('portal') }}">Home</a></div>{% endblock %}
+{% block content %}
+{% set icons = {'payment': 'check', 'balance': 'wallet', 'expiring': 'alert', 'expired': 'power', 'custom': 'bell'} %}
+<section class="panel notif-list-wrap">
+  {% if rows %}
+  <ul class="notif-list">
+    {% for n in rows %}
+    <li class="{{ n.kind }} {{ 'new' if not n.read_at }}">
+      <span class="notif-ic" aria-hidden="true">{{ icon(icons.get(n.kind, 'bell')) }}</span>
+      <div class="notif-main">
+        <div class="notif-title"><b>{{ n.title }}</b>{% if not n.read_at %}<span class="notif-new">নতুন</span>{% endif %}</div>
+        <p>{{ n.body }}</p>
+        <div class="notif-meta"><span>{{ n.created_at.strftime('%d-%m-%Y, %I:%M %p') }}</span>
+          {% if n.link %}<a href="{{ n.link }}">{{ 'বিল দিন' if n.kind in ('expiring', 'expired') else 'দেখুন' }} &rarr;</a>{% endif %}</div>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty"><h3>কোনো নোটিফিকেশন নেই</h3><p>পেমেন্ট, মেয়াদ শেষের আগাম বার্তা আর অফিসের খবর এখানে আসবে।</p></div>
+  {% endif %}
+</section>
+{% endblock %}
