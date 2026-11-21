@@ -451,52 +451,6 @@ def _notices():
     return mod_notices.active_notices()
 
 
-def _mac12(text):
-    h = re.sub(r"[^0-9A-Fa-f]", "", text or "").upper()
-    return ":".join(h[i:i + 2] for i in range(0, 12, 2)) if len(h) == 12 else ""
-
-
-def match_onu_customers(rows):
-    """For ONUs not linked to a customer, guess who uses them, so the dashboard can show the customer ID:
-      * the ONU's name or serial on the OLT is the customer's PPPoE username (ISPs often write it in the ONU
-        description), or
-      * the ONU's MAC is the customer's bound MAC (MAC binding).
-    Sets r["guess"] = {"sid", "username", "full_name", "how"}. Only customers this person may see are used. Nothing is
-    saved: the dashboard offers a Link button for that."""
-    todo = [r for r in rows if not r.get("sid") and not r.get("username")]
-    if not todo:
-        return
-    ssc, ssp = core.scope_sql("s")
-    keys = {}
-    for r in todo:
-        for t in (r.get("name"), r.get("serial")):
-            t = (t or "").strip().lower()
-            if t:
-                keys.setdefault(t, r)
-    by_name = {}
-    if keys:
-        for s in q("SELECT s.id, s.username, s.full_name FROM subscribers s WHERE LOWER(s.username) IN (%s)"
-                   % ",".join(["%s"] * len(keys)) + ssc, list(keys) + ssp):
-            by_name[s["username"].lower()] = s
-    macs = {m: r for r in todo for m in [_mac12(r.get("mac"))] if m}
-    by_mac = {}
-    if macs:
-        for s in q("SELECT s.id, s.username, s.full_name, s.mac_bind FROM subscribers s WHERE s.mac_bind IN (%s)"
-                   % ",".join(["%s"] * len(macs)) + ssc, list(macs) + ssp):
-            by_mac[s["mac_bind"]] = s
-    for r in todo:
-        hit, how = None, ""
-        for t in (r.get("name"), r.get("serial")):
-            s = by_name.get((t or "").strip().lower())
-            if s:
-                hit, how = s, "ONU name"
-                break
-        if not hit and _mac12(r.get("mac")) in by_mac:
-            hit, how = by_mac[_mac12(r.get("mac"))], "MAC"
-        if hit:
-            r["guess"] = {"sid": hit["id"], "username": hit["username"], "full_name": hit["full_name"] or "", "how": how}
-
-
 OFFLINE_ONU_PER = 10          # ONUs a page in the dashboard's Offline ONUs section (the owner's choice)
 
 
@@ -524,7 +478,8 @@ def offline_onus():
     for r in rows:              # optical signal: around -8 to -25 dBm is healthy, weaker than -27 dBm is a problem
         v = float(r["rx_dbm"]) if r["rx_dbm"] is not None else None
         r["rx_class"] = "" if v is None else ("bad" if v <= -27 or v > -8 else ("warn" if v <= -25 else "ok"))
-    match_onu_customers(rows)
+    import mod_nas
+    mod_nas.match_onu_customers(rows)
     keep = {k: v for k, v in request.args.items() if k not in ("onu_page", "onu_st")}
     return {"rows": rows, "offline": offline, "los": los, "all": los + offline, "only": only, "total": total,
             "page": page, "pages": pages, "per": OFFLINE_ONU_PER, "keep": keep,

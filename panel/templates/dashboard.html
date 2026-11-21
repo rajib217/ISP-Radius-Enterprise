@@ -165,7 +165,7 @@
         {% elif o.username %}<span>{{ icon('user') }}<span class="mono">{{ o.username }}</span></span>
         {% elif o.guess %}<span class="onu-off-guess"><a href="{{ url_for('subscriber_view', sid=o.guess.sid) }}">{{ icon('user') }}<span class="mono">{{ o.guess.username }}</span></a>
           {% if can_fn('onu.edit') %}<form method="post" action="{{ url_for('onu_map', oid=o.id) }}" class="inline">{{ csrf_input() }}<input type="hidden" name="username" value="{{ o.guess.username }}"><input type="hidden" name="next" value="{{ url_for('dashboard', _anchor='offline-onus', **oo.keep) }}"><button class="onu-off-link" type="submit" title="Save this ONU as {{ o.guess.username }}'s">{{ icon('link') }}Link</button></form>{% endif %}</span>
-          <small title="Not linked yet: found by the {{ 'ONU name on the OLT' if o.guess.how == 'ONU name' else 'MAC binding' }}. Press Link to save it.">{{ o.guess.full_name ~ ' · ' if o.guess.full_name else '' }}auto by {{ o.guess.how }}</small>
+          <small title="Not linked yet: found by {{ {'ONU name': 'the ONU name on the OLT', 'MAC': 'the customer\'s MAC binding', 'live session': 'the MAC of the customer\'s live PPPoE session'}[o.guess.how] }}. Press Link to save it.">{{ o.guess.full_name ~ ' · ' if o.guess.full_name else '' }}auto by {{ o.guess.how }}</small>
         {% else %}<span class="muted">{{ icon('link') }}Not linked to a customer</span>{% endif %}
       </div>
       <div class="onu-off-facts">

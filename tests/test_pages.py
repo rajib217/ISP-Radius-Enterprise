@@ -651,6 +651,21 @@ def check_rules(flask_app, ids):
     check(one("SELECT username FROM onus WHERE id = %s", (_oid,))["username"] == _b_sub["username"]
           and _lk.headers.get("Location", "").endswith("/#offline-onus"), "Link saves the match and comes back to the section")
     run("UPDATE subscribers SET mac_bind = '' WHERE id = %s", (_b_sub["id"],))
+    # Network > ONUs: the same customer column, also for online ONUs (live PPPoE session MAC)
+    _live = one("SELECT r.username, s.id FROM radacct r JOIN subscribers s ON s.username = r.username "
+                "WHERE r.acctstoptime IS NULL AND s.created_by NOT IN ('karim', 'karim_sub') LIMIT 1")
+    if _live:
+        run("UPDATE radacct SET callingstationid = 'DE:AD:BE:EF:00:42' WHERE username = %s AND acctstoptime IS NULL",
+            (_live["username"],))
+        run("INSERT INTO onus (olt_id, name, serial, mac, status, last_seen) VALUES (%s, 'ONU-CI-LIVE', 'ZTEGLIVE01', "
+            "'de:ad:be:ef:00:42', 'online', NOW())", (_olt_a,))
+        _onu_page = adm.get("/onus?olt=%d&per=100" % _olt_a).get_data(as_text=True)    # the list shows MAC / serial
+        _row = _onu_page.split("de:ad:be:ef:00:42", 1)[-1].split("</tr>", 1)[0]
+        _row_name = _onu_page.split("ZTEGNAME01", 1)[-1].split("</tr>", 1)[0]
+        check('value="%s"' % _live["username"] in _row and "auto by live session" in _row
+              and 'value="%s"' % _a_sub["username"] in _row_name and "auto by ONU name" in _row_name,
+              "Network > ONUs shows the customer of unlinked ONUs too (ONU name, and online ONUs by live session MAC)")
+        run("DELETE FROM onus WHERE name = 'ONU-CI-LIVE'")
     _res_home = client(ids["reseller"]).get("/").get_data(as_text=True)
     check('id="offline-onus"' not in _res_home and "ONU-CI-LOS" not in _res_home,
           "a reseller without ONU access gets no Offline ONUs section")

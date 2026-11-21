@@ -348,6 +348,7 @@ def onus():
     for o in rows:
         o["slot"], o["pon"], o["ont"] = position_of(o)
         o["sig"] = signal_of(o["rx_dbm"])
+    match_onu_customers(rows)
     keep = {k: v for k, v in request.args.items() if k != "page"}
     return render_template("onus.html", rows=rows, pg=pg, keep=keep, statuses=ONU_STATUS, signals=SIGNALS,
                            olts=_my_olts())
@@ -533,3 +534,59 @@ def network_diagram():
     svg = ('<svg viewBox="0 0 %d %d" class="diagram" role="img" aria-label="Network diagram" width="%d" height="%d">%s%s</svg>'
            % (width, total_h + 20, width, total_h + 20, "".join(lines), "".join(boxes)))
     return render_template("network_diagram.html", svg=svg, empty=not nases and not devs)
+
+# ===================================================================== which customer uses an ONU
+def _mac12(text):
+    h = re.sub(r"[^0-9A-Fa-f]", "", text or "").upper()
+    return ":".join(h[i:i + 2] for i in range(0, 12, 2)) if len(h) == 12 else ""
+
+
+def match_onu_customers(rows):
+    """For ONUs not linked to a customer, find who uses them (dashboard Offline ONUs and Network > ONUs):
+      1. the ONU's name or serial on the OLT is the customer's PPPoE username (often written in the ONU description)
+      2. the ONU's MAC is the customer's bound MAC (MAC binding)
+      3. the ONU's MAC is the calling MAC of a customer's live PPPoE session (an ONU in router mode dials PPPoE itself)
+    Sets r["guess"] = {"sid", "username", "full_name", "how"}. Only customers this person may see are used. Nothing is
+    saved: the pages offer a Link button for that."""
+    todo = [r for r in rows if not r.get("sid") and not r.get("username")]
+    if not todo:
+        return
+    ssc, ssp = core.scope_sql("s")
+    keys = {(t or "").strip().lower() for r in todo for t in (r.get("name"), r.get("serial")) if (t or "").strip()}
+    by_name = {}
+    if keys:
+        for s in q("SELECT s.id, s.username, s.full_name FROM subscribers s WHERE LOWER(s.username) IN (%s)"
+                   % ",".join(["%s"] * len(keys)) + ssc, list(keys) + ssp):
+            by_name[s["username"].lower()] = s
+    macs = {_mac12(r.get("mac")) for r in todo} - {""}
+    by_bind, by_session = {}, {}
+    if macs:
+        for s in q("SELECT s.id, s.username, s.full_name, s.mac_bind FROM subscribers s WHERE s.mac_bind IN (%s)"
+                   % ",".join(["%s"] * len(macs)) + ssc, list(macs) + ssp):
+            by_bind[s["mac_bind"]] = s
+        # live sessions only (acctstoptime IS NULL is indexed); routers send the MAC as AA:BB:.., aa:bb:.. or AA-BB-..
+        forms = sorted({f for m in macs for f in (m, m.lower(), m.replace(":", "-"), m.lower().replace(":", "-"))})
+        live = q("SELECT DISTINCT r.username, r.callingstationid FROM radacct r WHERE r.acctstoptime IS NULL "
+                 "AND r.callingstationid IN (%s)" % ",".join(["%s"] * len(forms)), forms)
+        if live:
+            users = {r["username"] for r in live}
+            subs = {s["username"]: s for s in q(
+                "SELECT s.id, s.username, s.full_name FROM subscribers s WHERE s.username IN (%s)"
+                % ",".join(["%s"] * len(users)) + ssc, list(users) + ssp)}
+            for r in live:
+                if r["username"] in subs:
+                    by_session[_mac12(r["callingstationid"])] = subs[r["username"]]
+    for r in todo:
+        hit, how = None, ""
+        for t in (r.get("name"), r.get("serial")):
+            s = by_name.get((t or "").strip().lower())
+            if s:
+                hit, how = s, "ONU name"
+                break
+        m = _mac12(r.get("mac"))
+        if not hit and m in by_bind:
+            hit, how = by_bind[m], "MAC"
+        if not hit and m in by_session:
+            hit, how = by_session[m], "live session"
+        if hit:
+            r["guess"] = {"sid": hit["id"], "username": hit["username"], "full_name": hit["full_name"] or "", "how": how}
