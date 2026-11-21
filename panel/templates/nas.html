@@ -40,14 +40,14 @@
       <td data-card="key"><span class="pill info mono">{{ r.nasname }}</span></td>
       <td data-card="title"><span class="pill ok">{{ r.shortname }}</span>{% if r.description %}<small class="muted" style="display:block">{{ r.description }}</small>{% endif %}</td>
       <td><span class="pill gray">{{ r.type_name }}</span></td>
-      <td>{{ r.group_name or '—' }}</td>
+      <td>{{ r.group_name or '—' }}{% if r.seller %}<small class="muted" style="display:block">{{ icon('user') }} {{ r.seller }}</small>{% endif %}</td>
       <td class="num" data-card="key"><a href="{{ url_for('online', nas=r.nasname) }}">{{ '{:,}'.format(r.online) }}</a></td>
       <td data-card="key">{% if r.coa_enabled %}<span class="pill ok">CoA</span>{% endif %}
         {% if r.last_status == 'up' %}<span class="pill info" title="Checked {{ r.last_checked|ago }}">Reachable</span>{% elif r.last_status == 'down' %}<span class="pill bad" title="Checked {{ r.last_checked|ago }}">Not answering</span>{% else %}<span class="pill gray">Not checked</span>{% endif %}</td>
       <td class="act no-x" data-card="actions"><details class="dd"><summary class="btn sm">Actions &#9662;</summary><div class="dd-menu">
         <a href="{{ url_for('online', nas=r.nasname) }}">Online users</a>
         {% if can('network', 'edit') %}
-        <button type="button" data-open="nas-dlg" data-edit='{{ {"id": r.id, "nasname": r.nasname, "shortname": r.shortname, "type": r.type if r.type in ("mikrotik","cisco","juniper","huawei") else "other", "secret": r.secret, "description": r.description, "group_id": r.group_id or "", "coa_enabled": "1" if r.coa_enabled else "", "snmp_community": r.snmp_community or ""}|tojson }}'>Edit</button>
+        <button type="button" data-open="nas-dlg" data-edit='{{ {"id": r.id, "nasname": r.nasname, "shortname": r.shortname, "type": r.type if r.type in ("mikrotik","cisco","juniper","huawei") else "other", "secret": r.secret, "description": r.description, "group_id": r.group_id or "", "coa_enabled": "1" if r.coa_enabled else "", "snmp_community": r.snmp_community or "", "seller": r.seller or ""}|tojson }}'>Edit</button>
         <form method="post" action="{{ url_for('nas_ping', nid=r.id) }}">{{ csrf_input() }}<button type="submit">Check connection</button></form>
         <button type="button" data-open="setup-dlg" data-fill='{{ {"script": "/radius add service=ppp address=" ~ server ~ " secret=" ~ r.secret ~ " timeout=3s\n/radius incoming set accept=yes port=3799\n/ppp aaa set use-radius=yes accounting=yes interim-update=5m"}|tojson }}'>MikroTik setup</button>
         <form method="post" action="{{ url_for('nas_delete', nid=r.id) }}" data-confirm="Remove router {{ r.shortname }}? It will no longer be able to authenticate customers.">{{ csrf_input() }}<button type="submit" class="danger-t">Delete</button></form>
@@ -69,6 +69,7 @@
       <div class="field"><label class="lbl" for="n-short">NAS Name</label><input id="n-short" name="shortname" maxlength="32" placeholder="Agrabad-POP" required></div>
       <div class="field"><label class="lbl" for="n-ip">NAS IP</label><input id="n-ip" name="nasname" placeholder="10.10.0.1" spellcheck="false" required><div class="help">The address the router sends from.</div></div>
       <div class="field"><label class="lbl" for="n-type">NAS Type</label><select id="n-type" name="type">{% for v, l in types %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
+      {% if sellers %}<div class="field"><label class="lbl" for="n-seller">Reseller</label><select id="n-seller" name="seller"><option value="">None (the ISP's own)</option>{% for s in sellers %}<option value="{{ s.username }}">{{ s.username }}{{ ' · ' ~ s.full_name if s.full_name }} ({{ s.role }})</option>{% endfor %}</select><div class="help">They and the resellers below them see this router's New PPPoE requests and can add those customers.</div></div>{% endif %}
       <div class="field"><label class="lbl" for="n-group">NAS Group</label><select id="n-group" name="group_id"><option value="">None</option>{% for g in groups %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}</select></div>
       <div class="field span-2"><label class="lbl" for="n-secret">Shared secret</label>
         <div class="input-row"><input id="n-secret" name="secret" minlength="6" maxlength="60" spellcheck="false" autocomplete="off" required><button class="btn" type="button" data-gen="n-secret">Generate</button></div>

@@ -935,6 +935,34 @@ def check_rules(flask_app, ids):
           and 'href="/network/coa"' in adm.get("/").get_data(as_text=True),
           "CoA Request Log sits under Network; a refused unknown PPPoE username opens New subscriber with its username and "
           "password filled in, existing customers' passwords are never kept, and sellers do not see others' requests")
+    # ---- resellers see the New PPPoE requests of the routers assigned to them (NAS > Reseller) and add those customers
+    _res_name = one("SELECT username FROM panel_admins WHERE id = %s", (ids["reseller"],))["username"]
+    run("DELETE FROM nas WHERE nasname IN ('10.9.9.1', '10.9.9.2')")
+    run("INSERT INTO nas (nasname, shortname, type, secret, description) VALUES ('10.9.9.2', 'ci-other', 'other', 'ci-secret-2', '')")
+    _ns = adm.post("/nas/save", data={"_csrf": "ci", "nasname": "10.9.9.1", "shortname": "ci-res", "type": "mikrotik",
+                                      "secret": "ci-secret-1", "seller": _res_name})
+    _nas_seller = one("SELECT seller FROM nas WHERE nasname = '10.9.9.1'")
+    _nas_html = adm.get("/nas").get_data(as_text=True)
+    _rc = client(ids["reseller"])
+    _rc_menu = _rc.get("/").get_data(as_text=True)
+    _rc_new = _rc.get("/network/coa?tab=new")
+    _rc_new_html = _rc_new.get_data(as_text=True)
+    _rc_form = _rc.get("/subscribers/new?req=%d" % _rid).get_data(as_text=True)
+    _chap_rid = one("SELECT MAX(id) AS id FROM radpostauth WHERE username = 'chap.only'")["id"]
+    _rc_chap = _rc.get("/subscribers/new?req=%d" % _chap_rid).get_data(as_text=True)
+    _sub_new = client(ids["subreseller"]).get("/network/coa?tab=new").get_data(as_text=True)
+    _nid = one("SELECT id FROM nas WHERE nasname = '10.9.9.1'")["id"]
+    run("REPLACE INTO role_perms (role, module, level) VALUES ('reseller', 'network', 'edit')")
+    _rc.post("/nas/save", data={"_csrf": "ci", "id": str(_nid), "nasname": "10.9.9.1", "shortname": "ci-res", "type": "mikrotik",
+                                "secret": "ci-secret-1", "seller": ""})
+    _kept_seller = one("SELECT seller FROM nas WHERE nasname = '10.9.9.1'")["seller"]
+    run("REPLACE INTO role_perms (role, module, level) VALUES ('reseller', 'network', 'view')")
+    check(_ns.status_code == 302 and _nas_seller and _nas_seller["seller"] == _res_name and 'name="seller"' in _nas_html
+          and 'href="/network/coa"' in _rc_menu
+          and _rc_new.status_code == 200 and "new.pppoe" in _rc_new_html and "chap.only" not in _rc_new_html
+          and "Add New Subscriber" in _rc_new_html and 'value="new.pppoe"' in _rc_form and 'value="S3cret!x"' in _rc_form
+          and 'value="chap.only"' not in _rc_chap and "new.pppoe" not in _sub_new and _kept_seller == _res_name,
+          "a reseller sees and adds the New PPPoE requests of routers assigned to them, not other routers'; only the office assigns routers")
 
     # ---- installable app (PWA): manifests, icons, service worker, offline page, tags on every layout
     import struct as _st

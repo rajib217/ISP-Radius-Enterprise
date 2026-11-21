@@ -50,7 +50,7 @@ def nas_list():
     cond = (" WHERE " + " AND ".join(where)) if where else ""
     total = q("SELECT COUNT(*) AS c FROM nas n" + cond, params, one=True)["c"]
     pg = pager(total)
-    rows = q("SELECT n.id, n.nasname, n.shortname, n.type, n.description, n.group_id, n.coa_enabled, n.last_status, n.snmp_community, "
+    rows = q("SELECT n.id, n.nasname, n.shortname, n.type, n.description, n.group_id, n.coa_enabled, n.last_status, n.snmp_community, n.seller, "
              "n.last_checked, g.name AS group_name, "
              "(SELECT COUNT(*) FROM radacct ra WHERE ra.nasipaddress = n.nasname AND ra.acctstoptime IS NULL) "
              "AS online FROM nas n LEFT JOIN nas_groups g ON g.id = n.group_id" + cond +
@@ -64,7 +64,15 @@ def nas_list():
     keep = {k: v for k, v in request.args.items() if k != "page"}
     return render_template("nas.html", rows=rows, pg=pg, keep=keep, types=NAS_TYPES,
                            groups=q("SELECT id, name FROM nas_groups ORDER BY name"),
-                           server=request.host.split(":")[0])
+                           server=request.host.split(":")[0], sellers=_sellers())
+
+
+def _sellers():
+    """Resellers a router can belong to (only admins and staff assign routers; a seller never sees this choice)."""
+    if core.my_downline() is not None:
+        return []
+    return q("SELECT username, full_name, role FROM panel_admins WHERE role IN (%s) ORDER BY username"
+             % ",".join(["%s"] * len(core.SELLER_ROLES)), list(core.SELLER_ROLES))
 
 
 @route("/nas/save", module="network", methods=["POST"])
@@ -76,6 +84,13 @@ def nas_save():
     ntype = f.get("type") if f.get("type") in dict(NAS_TYPES) else "other"
     group = int(f["group_id"]) if f.get("group_id", "").isdigit() else None
     coa = 1 if f.get("coa_enabled") == "1" else 0
+    seller = None                       # None = keep what is saved (a seller editing a router cannot change it)
+    if core.my_downline() is None:
+        seller = f.get("seller", "").strip()
+        if seller and not q("SELECT 1 AS x FROM panel_admins WHERE username = %s AND role IN (%s)"
+                            % ("%s", ",".join(["%s"] * len(core.SELLER_ROLES))), [seller] + list(core.SELLER_ROLES), one=True):
+            flash("Pick a reseller from the list.", "error")
+            return redirect(url_for("nas_list"))
     community = f.get("snmp_community", "").strip()
     if community and not re.match(r"^[!-~]{1,64}$", community):
         flash("The SNMP community may only contain printable characters without spaces (max 64).", "error")
@@ -92,6 +107,8 @@ def nas_save():
     else:
         insert("INSERT INTO nas (nasname, shortname, type, secret, description, group_id, coa_enabled, snmp_community) "
                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)", (name, short, ntype, secret, desc, group, coa, community))
+    if seller is not None:
+        x("UPDATE nas SET seller = %s WHERE nasname = %s", (seller, name))
     audit("nas_saved", name)
     commit()
     ok, msg = reload_radius()

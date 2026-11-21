@@ -4,10 +4,11 @@ from flask import g, request, url_for
 import core
 
 
-def _i(label, endpoint, match=None, args=None, none_of=None, module=None, admin=False, tier=None, fn=None, own=None):
+def _i(label, endpoint, match=None, args=None, none_of=None, module=None, admin=False, tier=None, fn=None, own=None, allow=None):
+    # allow: the page decides who may open it (mod_coa.allowed), so the menu asks the same function
     # own: a function key that opens this one page on its own, even without the group's module (Ledger Reports and
     # bKash Payments: sellers get them only through that tick, staff through it or the Accounting module)
-    return {"own": own, "fn": fn, "tier": tier, "admin": admin, "label": label, "endpoint": endpoint, "match": match or [endpoint], "args": args or {},
+    return {"allow": allow, "own": own, "fn": fn, "tier": tier, "admin": admin, "label": label, "endpoint": endpoint, "match": match or [endpoint], "args": args or {},
             "none_of": none_of or [], "module": module}
 
 
@@ -84,7 +85,7 @@ STRUCTURE = [
         _i("Graph", "network_graph", fn="nas.module"),
         _i("Diagram", "network_diagram", fn="nas.module"),
         _i("Test login", "tools", ["tools", "tools_reload"], fn="nas.module"),
-        _i("CoA Request Log", "coa_log", fn="log.coa"),
+        _i("CoA Request Log", "coa_log", allow="coa"),
     ]),
     _g("area", "Area", "pin", module="area", items=[
         _i("Areas", "areas"),
@@ -133,6 +134,13 @@ def _active(item, endpoint):
     return not any(request.args.get(k) for k in item["none_of"])
 
 
+def _allowed(key):
+    if key == "coa":
+        import mod_coa
+        return mod_coa.allowed()
+    return False
+
+
 def build():
     endpoint = request.endpoint or ""
     is_admin = g.me["role"] == "admin"
@@ -144,7 +152,7 @@ def build():
         if grp["sellers"] and (g.me["role"] not in core.SELLER_ROLES or not core.can_fn(grp["fn"])):
             continue
         mod_ok = not grp["module"] or core.can(grp["module"])
-        if not mod_ok and not any(it.get("own") for it in grp["items"] or []):
+        if not mod_ok and not any(it.get("own") or it.get("allow") for it in grp["items"] or []):
             continue
         if grp["module"] == "plans" and g.me["role"] in core.SELLER_ROLES:
             continue                      # sellers see their packages under My Packages only
@@ -154,6 +162,11 @@ def build():
             off = core.tiers_off()
             for it in grp["items"]:
                 if it.get("tier") in off:
+                    continue
+                if it.get("allow"):
+                    if not _allowed(it["allow"]):
+                        continue
+                    kids.append({"label": it["label"], "url": url_for(it["endpoint"], **it["args"]), "active": _active(it, endpoint)})
                     continue
                 if it.get("own"):              # same rule as the page itself (mod_ledger / mod_bkash_report _allowed)
                     if not (core.can_fn(it["own"]) if seller else (mod_ok or core.can_fn(it["own"]))):

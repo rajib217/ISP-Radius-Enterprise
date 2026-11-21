@@ -7,6 +7,9 @@
                     already set up. "Add New Subscriber" opens the New subscriber form with the username, and the
                     password when the router sent it (PAP), already filled in.
 
+Resellers and sub-resellers who may add customers see the requests that came from their own routers (NAS > Reseller,
+theirs or their downline's); routers with no reseller stay with the admin and staff.
+
 The attempted password is kept only for such unknown usernames (database trigger radpostauth_pass in
 panel_schema.sql; existing customers' wrong passwords are never stored) and is wiped after 3 days (maintenance.py).
 It never goes into a URL: the button carries the log row's id and the form reads the password from the database."""
@@ -21,28 +24,43 @@ UNKNOWN = ("p.reply = 'Access-Reject' AND p.username <> '' "
 
 
 def allowed():
+    """Staff: the Network module and the CoA Requests permission. Sellers: whenever they may add customers."""
+    if core.my_downline() is not None:
+        return core.can("subscribers", "edit") or (core.can("network") and core.can_fn("log.coa"))
     return core.can("network") and core.can_fn("log.coa")
 
 
 def sees_new():
-    """Unknown usernames belong to nobody yet: only staff who may add customers for the whole ISP see them."""
-    return core.my_downline() is None and core.can("subscribers", "edit")
+    """Anyone who may add customers. Staff see every router's requests, a seller only their own routers' (new_scope)."""
+    return core.can("subscribers", "edit")
+
+
+def new_scope():
+    """(' AND ...', params): a seller only meets requests from routers assigned to them or their downline."""
+    names = core.my_downline()
+    if names is None:
+        return "", []
+    if not names:
+        return " AND 1 = 0", []
+    return (" AND p.nas_ip IN (SELECT nasname FROM nas WHERE seller IN (%s))" % ",".join(["%s"] * len(names)),
+            list(names))
 
 
 def request_row(rid):
     """One refused login of an unknown username, for the New subscriber form (None when it is not one)."""
     if not sees_new():
         return None
+    sc, sp = new_scope()
     try:
         return q("SELECT p.id, p.username, p.pass, p.nas_ip, p.mac, p.authdate FROM radpostauth p WHERE p.id = %s AND "
-                 + UNKNOWN, (int(rid),), one=True)
+                 + UNKNOWN + sc, [int(rid)] + sp, one=True)
     except (ValueError, TypeError):
         return None
     except Exception:                    # reason / nas_ip / mac columns arrive with update.sh
         return None
 
 
-@route("/network/coa", module="network")
+@route("/network/coa", module=("network", "subscribers"))   # mod_coa.allowed() decides; sellers may lack Network
 def coa_log():
     if not allowed():
         abort(403)
@@ -71,7 +89,8 @@ def coa_log():
                  "FROM coa_log c LEFT JOIN subscribers s ON s.username = c.username" + w +
                  " ORDER BY c.id DESC LIMIT %s OFFSET %s", params + [pg["per"], (pg["page"] - 1) * pg["per"]])
     else:
-        where, params = UNKNOWN, []
+        sc, sp = new_scope()
+        where, params = UNKNOWN + sc, list(sp)
         if text:
             where += " AND (p.username LIKE %s OR p.nas_ip LIKE %s OR p.mac LIKE %s)"
             params += ["%" + text + "%"] * 3
@@ -86,14 +105,16 @@ def coa_log():
         # the newest row that still has the password, so the form gets it even if a later try came without
         for r in rows:
             if r["has_pw"]:
-                hit = q("SELECT MAX(id) AS id FROM radpostauth WHERE username = %s AND pass <> '' AND reply = 'Access-Reject'",
-                        (r["username"],), one=True)
+                hit = q("SELECT MAX(p.id) AS id FROM radpostauth p WHERE p.username = %s AND p.pass <> '' "
+                        "AND p.reply = 'Access-Reject'" + sc, [r["username"]] + sp, one=True)
                 r["rid"] = hit["id"] or r["rid"]
     new_count = None
     if sees_new():
-        new_count = q("SELECT COUNT(DISTINCT p.username) AS c FROM radpostauth p WHERE " + UNKNOWN
-                      + " AND p.authdate >= NOW() - INTERVAL 1 DAY", one=True)["c"]
+        sc, sp = new_scope()
+        new_count = q("SELECT COUNT(DISTINCT p.username) AS c FROM radpostauth p WHERE " + UNKNOWN + sc
+                      + " AND p.authdate >= NOW() - INTERVAL 1 DAY", sp, one=True)["c"]
     return render_template("coa_log.html", tab=tab, rows=rows, pg=pg, text=text, sees_new=sees_new(),
+                           seller=core.my_downline() is not None,
                            new_count=new_count, result=request.args.get("result", ""),
                            logging_on=core.cfg().get("coa_log") == "1",
                            keep={k: v for k, v in request.args.items() if k != "page"})

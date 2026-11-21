@@ -47,5 +47,6 @@
   <div class="empty"><p>{% if tab == 'coa' %}No disconnect requests{% if text or result %} match this search{% endif %}.{% else %}No new PPPoE requests{% if text %} match this search{% endif %}. When a router asks for a username that is not a customer yet, it shows here.{% endif %}</p></div>
   {% endif %}
 </section>
+{% if tab == 'new' and seller %}<p class="muted" style="margin-top:10px;font-size:13px">You see the requests from the routers assigned to you or the resellers below you. Ask the office to set the Reseller on a router (Network &rsaquo; NAS &rsaquo; Edit) if one is missing.</p>{% endif %}
 {% if tab == 'new' %}<p class="muted" style="margin-top:10px;font-size:13px">The password arrives only when the router's PPPoE profile uses PAP. With CHAP / MS-CHAP (MikroTik's default) only the username comes, so type the password yourself. Passwords are kept for 3 days and only for usernames that are not customers.</p>{% endif %}
 {% endblock %}

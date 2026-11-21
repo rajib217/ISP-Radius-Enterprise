@@ -765,3 +765,6 @@ ALTER TABLE sub_notifications ADD KEY IF NOT EXISTS idx_batch (batch);
 DROP TRIGGER IF EXISTS radpostauth_pass;
 CREATE TRIGGER radpostauth_pass BEFORE INSERT ON radpostauth FOR EACH ROW SET NEW.pass = IF(NEW.reply = 'Access-Reject' AND NEW.username <> '' AND NOT EXISTS (SELECT 1 FROM radcheck WHERE username = NEW.username), LEFT(NEW.pass, 64), '');
 UPDATE radpostauth p SET p.pass = '' WHERE p.pass <> '' AND (p.reply <> 'Access-Reject' OR EXISTS (SELECT 1 FROM radcheck rc WHERE rc.username = p.username));
+
+-- the reseller a router belongs to (NAS > Edit > Reseller): they and their downline see its New PPPoE requests
+ALTER TABLE nas ADD COLUMN IF NOT EXISTS seller VARCHAR(64) NOT NULL DEFAULT '';
