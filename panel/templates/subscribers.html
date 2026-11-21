@@ -39,7 +39,7 @@
 </div>
 
 <section class="panel">
-  <div class="panel-head list-title"><h2>{{ icon('users') }} Subscribers <a class="reload" href="{{ request.full_path.rstrip('?') }}" title="Reload" aria-label="Reload">{{ icon('refresh') }}</a> <b>({{ '{:,}'.format(pg.total) }})</b></h2></div>
+  <div class="panel-head list-title"><h2>{{ icon('users3') }} Subscribers <a class="reload" href="{{ request.full_path.rstrip('?') }}" title="Reload" aria-label="Reload">{{ icon('refresh') }}</a> <b>({{ '{:,}'.format(pg.total) }})</b></h2></div>
 
   <form id="bulkForm" method="post" action="{{ url_for('subscribers_bulk') }}" class="bulkbar" data-bulkbar>
     {{ csrf_input() }}

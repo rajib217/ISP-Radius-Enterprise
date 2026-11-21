@@ -695,6 +695,11 @@ def check_rules(flask_app, ids):
     check(bool(_sw) and "width: 100%" in _sw.group(1) and "height: 100%" in _sw.group(1)
           and _css.rindex('.switch input[type="checkbox"] {') > _css.index('input[type="checkbox"], input[type="radio"] {'),
           "every on/off switch answers a click anywhere on it (the 16px checkbox default does not shrink it)")
+    _js = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "panel", "static", "js", "app.js"), encoding="utf-8").read()
+    _base = adm.get("/subscribers").get_data(as_text=True)
+    check("var MENU_WAIT = 5000;" in _js and '"mouseenter"' in _js and "navIdle" in _js and "hover-menu" in _base
+          and 'id="i-users3"' in _base and re.search(r'data-key="subs"[^>]*>\s*<summary[^>]*><svg class="i"[^>]*><use href="#i-users3"', _base),
+          "menu: submenus open on hover and close 5 s later (desktop), the phone menu hides 5 s after the last touch; Subscribers has the three-person icon")
 
     # ---- dashboard: Offline ONUs (Offline + LOS), sellers only see the ONUs on their own OLTs
     run("INSERT INTO net_devices (name, kind, ip, created_by) VALUES ('CI-OLT-Admin', 'olt', '10.9.0.1', 'admin')")

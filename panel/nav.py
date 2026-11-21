@@ -37,7 +37,7 @@ STRUCTURE = [
         _i("Tax/Extra Fee", "fees", ["fees", "fee_save", "fee_delete"]),
         _i("Package report", "plan_report"),
     ]),
-    _g("subs", "Subscribers", "users", module="subscribers", items=[
+    _g("subs", "Subscribers", "users3", module="subscribers", items=[
         _i("All", "subscribers", ["subscribers", "subscriber_view", "subscriber_edit", "subscriber_new", "subscriber_activation"], none_of=["status"]),
         _i("Online", "subscribers", args={"status": "online"}),
         _i("Stale", "subscribers", args={"status": "stale"}),
@@ -179,9 +179,9 @@ def build():
 # Phone bottom navigation (DESIGN.md B6): four shortcuts picked from build() output, so the
 # permission filtering above is never bypassed, plus a "More" button that opens the full menu.
 _BOTTOM = {
-    "staff": [("dashboard", "Home", "home"), ("subscribers", "Subscribers", "users"),
+    "staff": [("dashboard", "Home", "home"), ("subscribers", "Subscribers", "users3"),
               ("online", "Online", "activity"), ("payments", "Payments", "dollar")],
-    "seller": [("dashboard", "Home", "home"), ("subscribers", "Subscribers", "users"),
+    "seller": [("dashboard", "Home", "home"), ("subscribers", "Subscribers", "users3"),
                ("subscriber_activation", "Activate", "bolt"), ("add_balance", "Balance", "wallet")],
 }
 

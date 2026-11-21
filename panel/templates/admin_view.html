@@ -35,7 +35,7 @@
   </div>
   <div class="kpis ksv">
     <div class="kpi"><div><small>Packages</small><b>{{ shown|length }}</b></div><i class="ki violet">{{ icon('package') }}</i></div>
-    <div class="kpi"><div><small>Subscribers</small><b>{{ subs_n }}</b></div><i class="ki green">{{ icon('users') }}</i></div>
+    <div class="kpi"><div><small>Subscribers</small><b>{{ subs_n }}</b></div><i class="ki green">{{ icon('users3') }}</i></div>
     <div class="kpi"><div><small>Subresellers</small><b>{{ kids.get('subreseller', 0) }}</b></div><i class="ki red">{{ icon('users') }}</i></div>
     <div class="kpi"><div><small>Retailers</small><b>{{ kids.get('retailer', 0) }}</b></div><i class="ki amber">{{ icon('briefcase') }}</i></div>
     <div class="kpi"><div><small>Balance</small><b style="color:var(--fiber)">{{ '{:,.2f}'.format(u.balance|float) }}</b></div><i class="ki violet">{{ icon('wallet') }}</i></div>

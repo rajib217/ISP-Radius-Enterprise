@@ -246,11 +246,59 @@
     }, 30000);
   }
 
-  /* sidebar: only one group open at a time */
-  $$(".nav-group").forEach(function (d) {
-    d.addEventListener("toggle", function () {
-      if (d.open) $$(".nav-group").forEach(function (o) { if (o !== d && o.open && !$(".on", o)) o.open = false; });
+  /* sidebar groups
+     Desktop (mouse, 768 px and wider): a group's submenu opens when the mouse is over it and stays while the mouse is
+     on it; 5 s after the mouse leaves it closes again. Pages open with every group closed (the current group's title
+     stays highlighted).
+     Phone (menu drawer): the menu stays open while it is being used and hides by itself 5 s after the last touch,
+     scroll or key press in it. Picking an item opens that page, which starts with the menu hidden. */
+  var MENU_WAIT = 5000;
+  var hoverMenu = window.matchMedia && matchMedia("(hover: hover) and (pointer: fine) and (min-width: 768px)");
+  function desktop() { return !!(hoverMenu && hoverMenu.matches); }
+  var groups = $$(".nav-group");
+  function closeOthers(d) { groups.forEach(function (o) { if (o !== d && o.open) o.open = false; }); }
+  if (desktop()) groups.forEach(function (d) { d.open = false; });
+  document.documentElement.classList.add("menu-ready");
+  groups.forEach(function (d) {
+    var timer = null, intent = null;
+    function stop() { if (timer) { clearTimeout(timer); timer = null; } }
+    d.addEventListener("mouseenter", function () {
+      if (!desktop()) return;
+      stop();
+      /* a short pause first, so sliding the mouse past a group on the way to another does not open it */
+      intent = setTimeout(function () { intent = null; closeOthers(d); d.open = true; }, 150);
     });
+    d.addEventListener("mouseleave", function () {
+      if (!desktop()) return;
+      if (intent) { clearTimeout(intent); intent = null; }
+      stop(); timer = setTimeout(function () { timer = null; d.open = false; }, MENU_WAIT);
+    });
+    d.addEventListener("toggle", function () {
+      if (!d.open) { stop(); return; }
+      if (desktop()) closeOthers(d);
+      else groups.forEach(function (o) { if (o !== d && o.open && !$(".on", o)) o.open = false; });
+    });
+  });
+  var navTimer = null;
+  function navIdle() {
+    if (navTimer) clearTimeout(navTimer);
+    navTimer = document.body.classList.contains("nav-open")
+      ? setTimeout(function () { navTimer = null; document.body.classList.toggle("nav-open", false); }, MENU_WAIT) : null;
+  }
+  $$("[data-nav-toggle]").forEach(function (b) { b.addEventListener("click", function () { setTimeout(navIdle, 0); }); });
+  var side = $(".side");
+  if (side) {
+    ["touchstart", "pointerdown", "scroll", "wheel", "keydown", "toggle"].forEach(function (ev) {
+      side.addEventListener(ev, function () { if (document.body.classList.contains("nav-open")) navIdle(); }, { passive: true, capture: true });
+    });
+    side.addEventListener("click", function (e) {      /* an item was picked: keep the menu until the next page shows */
+      if (e.target.closest(".nav a[href]") && navTimer) { clearTimeout(navTimer); navTimer = null; }
+    });
+  }
+  window.addEventListener("pageshow", function (e) {    /* back button from the bfcache: start with the menu hidden */
+    if (!e.persisted) return;
+    document.body.classList.toggle("nav-open", false);
+    if (desktop()) groups.forEach(function (d) { d.open = false; });
   });
 
   /* compose pages (SMS / email) */

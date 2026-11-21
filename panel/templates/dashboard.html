@@ -32,7 +32,7 @@
 {# ---- v3: key numbers ---- #}
 <section class="kpi-grid" aria-label="Key numbers">
   <a class="kcard" href="{{ url_for('subscribers', status='active') }}">
-    <span class="kcard-top"><span class="kcard-k">Active subscribers</span><span class="kcard-ic">{{ icon('users') }}</span></span>
+    <span class="kcard-top"><span class="kcard-k">Active subscribers</span><span class="kcard-ic">{{ icon('users3') }}</span></span>
     <span class="kcard-v">{{ '{:,}'.format(stats.active) }}</span>
     <span class="kcard-s">
       {% if v3.growth is not none %}<span class="delta {{ 'up' if v3.growth >= 0 else 'down' }}" title="Change in subscribers over 30 days">{{ icon('trend-up' if v3.growth >= 0 else 'trend-down') }}{{ '+' if v3.growth > 0 }}{{ v3.growth }}%</span>{% endif %}

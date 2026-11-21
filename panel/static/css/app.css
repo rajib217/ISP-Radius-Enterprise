@@ -1971,3 +1971,9 @@ dialog.modal.confirm-dlg { width: min(420px, calc(100vw - 24px)); }
 /* bKash buttons that are links keep white text (the link colour won over it) */
 a.btn-bkash, a.btn-bkash:hover, a.btn-bkash:visited { color: #fff; text-decoration: none; }
 a.btn-bkash .i { color: #fff; }
+
+/* desktop menu opens on hover (app.js): until the script has closed the groups, an open group shows no submenu,
+   so the page never flashes the current group open */
+html.hover-menu:not(.menu-ready) .nav-group[open] > .nav-sub { display: none; }
+html.hover-menu:not(.menu-ready) .nav-group[open] > summary > .i:last-child { transform: none; }
+
