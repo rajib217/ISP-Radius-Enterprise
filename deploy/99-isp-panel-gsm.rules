@@ -1,0 +1,16 @@
+# ISP RADIUS Panel: USB GSM modems for Settings > bKash SMS (installed by install.sh and update.sh)
+#
+# SIM800C boards: their USB-serial chip (CH340, CP210x, FTDI, PL2303) gets the fixed name /dev/gsm-modem
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="gsm-modem", GROUP="dialout", MODE="0660", ENV{ID_MM_DEVICE_IGNORE}="1"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", SYMLINK+="gsm-modem", GROUP="dialout", MODE="0660", ENV{ID_MM_DEVICE_IGNORE}="1"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", SYMLINK+="gsm-modem", GROUP="dialout", MODE="0660", ENV{ID_MM_DEVICE_IGNORE}="1"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="067b", ATTRS{idProduct}=="2303", SYMLINK+="gsm-modem", GROUP="dialout", MODE="0660", ENV{ID_MM_DEVICE_IGNORE}="1"
+
+# 3G / 4G USB sticks in modem mode (ZTE 19d2, Huawei 12d1): their ttyUSB ports are the panel's; ModemManager (when
+# installed) keeps its hands off, or it would grab the port. The panel's "auto" port finds the one that answers AT.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="19d2", GROUP="dialout", MODE="0660", ENV{ID_MM_DEVICE_IGNORE}="1"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="12d1", GROUP="dialout", MODE="0660", ENV{ID_MM_DEVICE_IGNORE}="1"
+
+# ZTE 19d2:1589 (WCDMA "Mobile Broadband Station"): Linux does not know it, so its serial ports only appear when the
+# option driver is told about it. Done every time the stick is plugged in (and at boot).
+ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="19d2", ATTR{idProduct}=="1589", RUN+="/bin/sh -c '/sbin/modprobe option; echo 19d2 1589 > /sys/bus/usb-serial/drivers/option1/new_id 2>/dev/null || true'"

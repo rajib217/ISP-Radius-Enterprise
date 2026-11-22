@@ -176,6 +176,15 @@ SBIN="${SBIN_DIR:-/usr/local/sbin}"
 [[ -f "$SRC_DIR/deploy/isp-panel-fwsync" ]] && install -m 755 "$SRC_DIR/deploy/isp-panel-fwsync" "$SBIN/isp-panel-fwsync"
 [[ -f "$SRC_DIR/deploy/isp-panel-deploy" ]] && install -m 755 "$SRC_DIR/deploy/isp-panel-deploy" "$SBIN/isp-panel-deploy"
 [[ -f "$SRC_DIR/deploy/isp-panel-ssh-gate" && -f "$SBIN/isp-panel-ssh-gate" ]] && install -m 755 "$SRC_DIR/deploy/isp-panel-ssh-gate" "$SBIN/isp-panel-ssh-gate"
+# USB GSM modem rules (SIM800C, ZTE / Huawei sticks): only when they changed, then plugged-in modems are set up again
+GSM_RULES=/etc/udev/rules.d/99-isp-panel-gsm.rules
+if [[ -f "$SRC_DIR/deploy/99-isp-panel-gsm.rules" ]] && ! cmp -s "$SRC_DIR/deploy/99-isp-panel-gsm.rules" "$GSM_RULES"; then
+  c_ok "Updating the USB GSM modem rules"
+  install -m 644 "$SRC_DIR/deploy/99-isp-panel-gsm.rules" "$GSM_RULES"
+  udevadm control --reload-rules 2>/dev/null || true
+  udevadm trigger --subsystem-match=usb --action=add 2>/dev/null || true
+  udevadm trigger --subsystem-match=tty 2>/dev/null || true
+fi
 
 reload_panel() {
   if systemctl show -p ExecReload isp-panel.service | grep -q 'kill'; then

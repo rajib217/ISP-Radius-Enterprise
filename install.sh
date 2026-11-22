@@ -750,15 +750,12 @@ ProtectHome=yes
 WantedBy=multi-user.target
 EOF
 usermod -aG dialout isp-panel 2>/dev/null || true
-# the usual USB-serial chips of SIM800C boards (CH340, CP210x, FTDI, PL2303): a fixed name /dev/gsm-modem, and
-# ModemManager (when installed) keeps its hands off, or it would grab the port from the panel
-cat > /etc/udev/rules.d/99-isp-panel-gsm.rules <<'EOF'
-SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="gsm-modem", GROUP="dialout", MODE="0660", ENV{ID_MM_DEVICE_IGNORE}="1"
-SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", SYMLINK+="gsm-modem", GROUP="dialout", MODE="0660", ENV{ID_MM_DEVICE_IGNORE}="1"
-SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", SYMLINK+="gsm-modem", GROUP="dialout", MODE="0660", ENV{ID_MM_DEVICE_IGNORE}="1"
-SUBSYSTEM=="tty", ATTRS{idVendor}=="067b", ATTRS{idProduct}=="2303", SYMLINK+="gsm-modem", GROUP="dialout", MODE="0660", ENV{ID_MM_DEVICE_IGNORE}="1"
-EOF
-udevadm control --reload-rules 2>/dev/null && udevadm trigger --subsystem-match=tty 2>/dev/null || true
+# USB GSM modems (SIM800C boards, ZTE / Huawei 3G-4G sticks in modem mode): fixed names, the dialout group, ModemManager
+# keeps off their ports, and the ZTE 19d2:1589 stick gets its serial driver (see deploy/99-isp-panel-gsm.rules)
+install -m 644 "$SRC_DIR/deploy/99-isp-panel-gsm.rules" /etc/udev/rules.d/99-isp-panel-gsm.rules
+udevadm control --reload-rules 2>/dev/null || true
+udevadm trigger --subsystem-match=usb --action=add 2>/dev/null || true
+udevadm trigger --subsystem-match=tty 2>/dev/null || true
 
 cat > /etc/systemd/system/isp-panel-maint.service <<'EOF'
 [Unit]
