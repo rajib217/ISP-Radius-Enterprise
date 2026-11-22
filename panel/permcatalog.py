@@ -205,7 +205,7 @@ ENDPOINT_FN = {
     "online_disconnect": "onl.disconnect",
     "payments_add": "inv.add", "payment_delete": "inv.reverse", "payments_export": "inv.export",
     "cashflow": "cf.module", "expenses": "cf.module", "cashflow_save": ("cf.add", "cf.edit"), "cashflow_delete": "cf.delete",
-    "cashflow_csv": "cf.export", "cashflow_xlsx": "cf.export",
+    "cashflow_csv": "cf.export", "cashflow_topup_correct": "cf.edit", "cashflow_xlsx": "cf.export",
     "cashflow_categories": "cfc.module", "cashflow_category_save": ("cfc.add", "cfc.edit"), "cashflow_category_delete": "cfc.delete",
     "olt_new": "olt.add", "olt_edit": "olt.edit", "olt_save": ("olt.add", "olt.edit"), "olt_delete": "olt.delete",
     "olt_sync": "olt.sync", "olt_sync_all": "olt.sync", "olt_test": "olt.sync", "olt_walk": "olt.sync",

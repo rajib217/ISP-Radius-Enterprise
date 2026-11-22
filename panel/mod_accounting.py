@@ -216,6 +216,17 @@ def _categories(kind=None):
     return rows
 
 
+SELLER_TYPES = [("reseller", "Resellers"), ("subreseller", "Subresellers"), ("retailer", "Retailers")]
+# a balance topup the company received: money in for a reseller / sub-reseller / retailer (bKash, or added by staff),
+# not one seller passing balance to another, not a package cost and not a correction (corrections hang on their topup)
+TOPUP_WHERE = ("ul.amount > 0 AND ul.method NOT IN ('activation', 'correction') AND a.role IN ('reseller', 'subreseller', 'retailer') "
+               "AND (ul.method = 'bkash' OR ul.created_by NOT IN (" + SELLERS_SQL + "))")
+# what each topup comes to after its corrections
+CORRECTIONS = ("LEFT JOIN (SELECT ref_id, SUM(amount) AS adj, COUNT(*) AS n FROM user_ledger WHERE method = 'correction' "
+               "AND ref_id IS NOT NULL GROUP BY ref_id) cr ON cr.ref_id = ul.id")
+LEDGER_FROM = "2000-01-01"          # an account's ledger link opens its whole history
+
+
 def _cf_filters(args):
     today = date.today()
     try:
@@ -224,8 +235,10 @@ def _cf_filters(args):
         start = end = None
     kind = args.get("type") if args.get("type") in ("income", "expense") else ""
     src = args.get("src") if args.get("src") in ("manual", "auto") else ""
+    ptype = args.get("ptype") if args.get("ptype") in dict(SELLER_TYPES) else ""
+    owner = (args.get("owner") or "").strip()[:64] if ptype else ""
     return {"from": start, "to": end, "type": kind, "src": src, "category": (args.get("category") or "").strip()[:64],
-            "q": (args.get("q") or "").strip()[:64], "today": today}
+            "q": (args.get("q") or "").strip()[:64], "today": today, "ptype": ptype, "owner": owner}
 
 
 def _cf_parts(f):
@@ -233,9 +246,9 @@ def _cf_parts(f):
     like = "%" + f["q"].replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%" if f["q"] else None
     parts = []
     if f["src"] in ("", "manual"):
-        sql = ("SELECT 'M' AS src, e.id AS rid, e.kind AS kind, e.amount AS amount, e.category AS category, e.paid_to AS paid_to, "
-               "e.note AS note, e.method AS method, e.profile AS profile, pa.role AS prole, e.created_by AS created_by, "
-               "TIMESTAMP(e.spent_on, TIME(e.created_at)) AS at, e.spent_on AS day "
+        sql = ("SELECT 'M' AS src, e.id AS rid, e.kind AS kind, e.amount AS amount, NULL AS orig, e.category AS category, "
+               "e.paid_to AS paid_to, e.note AS note, e.method AS method, e.profile AS profile, pa.role AS prole, "
+               "pa.balance AS pbalance, e.created_by AS created_by, TIMESTAMP(e.spent_on, TIME(e.created_at)) AS at, e.spent_on AS day "
                "FROM expenses e LEFT JOIN panel_admins pa ON pa.username = e.profile WHERE 1 = 1")
         args = []
         if f["type"]:
@@ -250,17 +263,23 @@ def _cf_parts(f):
         if f["to"]:
             sql += " AND e.spent_on <= %s"
             args.append(f["to"])
+        if f["owner"]:
+            sql += " AND e.profile = %s AND pa.role = %s"
+            args += [f["owner"], f["ptype"]]
+        elif f["ptype"]:
+            sql += " AND pa.role = %s"
+            args.append(f["ptype"])
         if like:
             sql += " AND (e.category LIKE %s OR e.paid_to LIKE %s OR e.note LIKE %s OR e.profile LIKE %s OR e.created_by LIKE %s)"
             args += [like] * 5
         parts.append((sql, args))
     if f["src"] in ("", "auto") and f["type"] in ("", "income") and f["category"] in ("", TOPUP_CATEGORY):
-        sql = ("SELECT 'T' AS src, ul.id AS rid, 'income' AS kind, ul.amount AS amount, '" + TOPUP_CATEGORY + "' AS category, "
+        sql = ("SELECT 'T' AS src, ul.id AS rid, 'income' AS kind, ul.amount + COALESCE(cr.adj, 0) AS amount, "
+               "IF(cr.n IS NULL, NULL, ul.amount) AS orig, '" + TOPUP_CATEGORY + "' AS category, "
                "'' AS paid_to, IF(ul.method = 'bkash', 'User Balance Topup (bKash)', 'User Balance Topup') AS note, "
-               "ul.method AS method, a.username AS profile, a.role AS prole, ul.created_by AS created_by, ul.created_at AS at, "
-               "DATE(ul.created_at) AS day FROM user_ledger ul JOIN panel_admins a ON a.id = ul.user_id "
-               "WHERE ul.amount > 0 AND ul.method <> 'activation' AND a.role IN ('reseller', 'subreseller', 'retailer') "
-               "AND (ul.method = 'bkash' OR ul.created_by NOT IN (" + SELLERS_SQL + "))")
+               "ul.method AS method, a.username AS profile, a.role AS prole, a.balance AS pbalance, ul.created_by AS created_by, "
+               "ul.created_at AS at, DATE(ul.created_at) AS day FROM user_ledger ul JOIN panel_admins a ON a.id = ul.user_id "
+               + CORRECTIONS + " WHERE " + TOPUP_WHERE)
         args = []
         if f["from"]:
             sql += " AND ul.created_at >= %s"
@@ -268,6 +287,12 @@ def _cf_parts(f):
         if f["to"]:
             sql += " AND ul.created_at < %s + INTERVAL 1 DAY"
             args.append(f["to"])
+        if f["owner"]:
+            sql += " AND a.username = %s AND a.role = %s"
+            args += [f["owner"], f["ptype"]]
+        elif f["ptype"]:
+            sql += " AND a.role = %s"
+            args.append(f["ptype"])
         if like:
             sql += " AND (a.username LIKE %s OR ul.created_by LIKE %s OR ul.note LIKE %s)"
             args += [like] * 3
@@ -275,6 +300,31 @@ def _cf_parts(f):
     if not parts:
         return None, []
     return " UNION ALL ".join("(%s)" % s for s, _ in parts), [a for _, args in parts for a in args]
+
+
+def _recharge_summary(f):
+    """Filter > Profile type: each person of that type (or the one chosen) with what the company recharged them in the
+    chosen dates (after corrections), how many times, the last time, and their balance now."""
+    if not f["ptype"]:
+        return None
+    where, args = ["a.role = %s"], [f["ptype"]]
+    if f["owner"]:
+        where.append("a.username = %s")
+        args.append(f["owner"])
+    span, sargs = "", []
+    if f["from"]:
+        span += " AND ul.created_at >= %s"
+        sargs.append(f["from"])
+    if f["to"]:
+        span += " AND ul.created_at < %s + INTERVAL 1 DAY"
+        sargs.append(f["to"])
+    rows = q("SELECT a.id, a.username, a.full_name, a.role, a.balance, COALESCE(t.total, 0) AS total, COALESCE(t.c, 0) AS c, t.last "
+             "FROM panel_admins a LEFT JOIN (SELECT ul.user_id, SUM(ul.amount + COALESCE(cr.adj, 0)) AS total, COUNT(*) AS c, "
+             "MAX(ul.created_at) AS last FROM user_ledger ul JOIN panel_admins a ON a.id = ul.user_id " + CORRECTIONS +
+             " WHERE " + TOPUP_WHERE + span + " GROUP BY ul.user_id) t ON t.user_id = a.id WHERE " + " AND ".join(where) +
+             " ORDER BY total DESC, a.username LIMIT 300", sargs + args)
+    return {"rows": rows, "total": sum(float(r["total"] or 0) for r in rows),
+            "balance": sum(float(r["balance"] or 0) for r in rows)}
 
 
 def _cf_keep():
@@ -298,11 +348,62 @@ def cashflow():
     used = {(r["kind"], r["category"]) for r in q("SELECT DISTINCT kind, category FROM expenses")}
     names = {(c["kind"], c["name"]) for c in cats}
     extra = sorted(u for u in used if u not in names)          # in use but not on the category list (kept as they are)
-    people = q("SELECT username, role FROM panel_admins WHERE role IN ('reseller', 'subreseller', 'retailer') ORDER BY username")
+    people = q("SELECT username, full_name, role, balance FROM panel_admins WHERE role IN ('reseller', 'subreseller', 'retailer') "
+               "ORDER BY username")
     return render_template("cashflow.html", rows=rows, tot=tot, pg=pg, f=f, keep=_cf_keep(), cats=cats, extra=extra,
                            kinds=KINDS, methods=METHODS, people=people, topup_category=TOPUP_CATEGORY,
+                           seller_types=SELLER_TYPES, summary=_recharge_summary(f), ledger_from=LEDGER_FROM,
+                           can_fix=core.can("accounting", "edit") and core.can_fn("cf.edit"),
                            can_export=g.me["role"] == "admin" or core.can_fn("cf.export"),
-                           active=[k for k in ("q", "from", "to", "type", "category", "src") if request.args.get(k)])
+                           active=[k for k in ("q", "from", "to", "type", "category", "src", "ptype", "owner") if request.args.get(k)])
+
+
+@route("/cashflow/topup/<int:lid>/correct", module="accounting", methods=["POST"])
+def cashflow_topup_correct(lid):
+    """A recharge given with the wrong amount. The recharge itself is never changed: a Correction line is added to the
+    person's ledger, linked to it, for the difference (minus = taken back, plus = added). Their balance moves by that
+    much at once, Cashflow shows the recharge at its corrected amount (with what it was), and the ledger keeps both lines,
+    who corrected it, when and why. Setting 0 cancels a recharge given by mistake."""
+    _company_only()
+    top = q("SELECT ul.id, ul.user_id, ul.amount, a.username, a.role, ul.amount + COALESCE(cr.adj, 0) AS net "
+            "FROM user_ledger ul JOIN panel_admins a ON a.id = ul.user_id " + CORRECTIONS + " WHERE ul.id = %s AND " + TOPUP_WHERE,
+            (lid,), one=True) or abort(404)
+    f = request.form
+    try:
+        right = round(float(f.get("amount", "")), 2)
+        assert 0 <= right < 10 ** 8
+    except (ValueError, AssertionError):
+        flash("Enter the right amount (0 cancels the recharge). Nothing was changed.", "error")
+        return _back()
+    reason = f.get("reason", "").strip()
+    if len(reason) < 3:
+        flash("Write why it is being corrected (for example: typed 5000 instead of 500). Nothing was changed.", "error")
+        return _back()
+    net = round(float(top["net"]), 2)
+    diff = round(right - net, 2)
+    if not diff:
+        flash("TOP%d is already %.2f. Nothing was changed." % (lid, net), "info")
+        return _back()
+    with core.get_db().cursor() as cur:
+        cur.execute("SELECT balance FROM panel_admins WHERE id = %s FOR UPDATE", (top["user_id"],))
+        bal = round(float(cur.fetchone()["balance"] or 0), 2)
+        new = round(bal + diff, 2)
+        if new < 0 and f.get("allow_negative") != "1":
+            core.get_db().rollback()
+            flash("%s has only %.2f left (the rest is already spent), so taking back %.2f leaves %.2f. Tick \"Allow the "
+                  "balance to go below zero\" to do it anyway, or take back less. Nothing was changed."
+                  % (top["username"], bal, -diff, new), "error")
+            return _back()
+        cur.execute("UPDATE panel_admins SET balance = %s WHERE id = %s", (new, top["user_id"]))
+        cur.execute("INSERT INTO user_ledger (user_id, amount, balance_after, method, note, created_by, ref_id) "
+                    "VALUES (%s, %s, %s, 'correction', %s, %s, %s)",
+                    (top["user_id"], diff, new, ("Correction of TOP%d: %.2f -> %.2f. %s" % (lid, net, right, reason))[:255],
+                     g.me["username"], lid))
+    audit("topup_corrected", top["username"], "TOP%d %.2f -> %.2f (%+.2f), balance %.2f -> %.2f: %s" % (lid, net, right, diff, bal, new, reason))
+    commit()
+    flash("TOP%d corrected from %.2f to %.2f. %s's balance is now %.2f (%+.2f)." % (lid, net, right, top["username"], new, diff),
+          "success")
+    return _back()
 
 
 def _back():
@@ -362,7 +463,8 @@ def _cf_export():
     head = ["ID", "Date", "Type", "Category", "Amount", "Profile", "Paid to / from", "Method", "Description", "Created by", "Source"]
     data = [["%s%d" % ("CF" if r["src"] == "M" else "TOP", r["rid"]), r["at"].strftime("%Y-%m-%d %H:%M") if r["at"] else "",
              r["kind"].capitalize(), r["category"], float(r["amount"]), r["profile"] or "", r["paid_to"] or "", r["method"] or "",
-             r["note"] or "", r["created_by"] or "", "Written" if r["src"] == "M" else "Balance topup"] for r in rows]
+             (r["note"] or "") + (" (corrected, was %.2f)" % float(r["orig"]) if r.get("orig") is not None else ""),
+             r["created_by"] or "", "Written" if r["src"] == "M" else "Balance topup"] for r in rows]
     audit("export", "cashflow", "%d rows" % len(rows))
     commit()
     return head, data

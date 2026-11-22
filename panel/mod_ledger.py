@@ -28,7 +28,7 @@ TYPES = [  # (key, label, source)
     ("invoice", "Invoice", "P"), ("profit", "Profit", "R"),
     ("topup", "Topup", "S+"), ("used", "Balance Used", "S-"),
     ("cost", "Package Cost", "Ua"), ("utopup", "Balance Topup", "Ub"),
-    ("add", "Balance Add", "U+"), ("deduct", "Balance Deduct", "U-"),
+    ("add", "Balance Add", "U+"), ("deduct", "Balance Deduct", "U-"), ("correct", "Correction", "Uc"),
 ]
 PREFIX = {"P": "INV", "R": "PRF", "S": "SBL", "U": "USL"}
 EXPORT_CAP = 100000
@@ -64,7 +64,7 @@ def _filters():
         start, end = end, start
     kind = a.get("type") if a.get("type") in dict((k, 1) for k, _, _ in TYPES) else ""
     term = (a.get("q") or "").strip()[:64]
-    return {"from": start, "to": end, "type": kind, "q": term}
+    return {"from": start, "to": end, "type": kind, "q": term, "acct": (a.get("acct") or "").strip()[:64]}
 
 
 def _parts(f, scope):
@@ -91,6 +91,9 @@ def _parts(f, scope):
         if like:
             sql += " AND (p.username LIKE %s OR p.received_by LIKE %s OR p.note LIKE %s)"
             args += [like, like, like]
+        if f["acct"]:
+            sql += " AND (p.username = %s OR p.received_by = %s)"
+            args += [f["acct"], f["acct"]]
         out.append((sql, args, "p.paid_at"))
     # payments: Profit of the selling reseller
     if src in ("", "R"):
@@ -103,6 +106,9 @@ def _parts(f, scope):
         if like:
             sql += " AND (p.username LIKE %s OR a.username LIKE %s)"
             args += [like, like]
+        if f["acct"]:
+            sql += " AND a.username = %s"
+            args.append(f["acct"])
         out.append((sql, args, "p.paid_at"))
     # the customer's own balance
     if src in ("", "S+", "S-"):
@@ -119,22 +125,28 @@ def _parts(f, scope):
         if like:
             sql += " AND (s.username LIKE %s OR sl.created_by LIKE %s OR sl.note LIKE %s)"
             args += [like, like, like]
+        if f["acct"]:
+            sql += " AND (s.username = %s OR sl.created_by = %s)"
+            args += [f["acct"], f["acct"]]
         out.append((sql, args, "sl.created_at"))
     # a reseller's / staff member's balance
-    if src in ("", "Ua", "Ub", "U+", "U-"):
+    if src in ("", "Ua", "Ub", "U+", "U-", "Uc"):
         w, p = inlist("a.username")
         sql = ("SELECT 'U' AS src, ul.id AS sid, ul.created_at AS created, CASE WHEN ul.method = 'activation' THEN 'Package Cost' "
-               "WHEN ul.method = 'bkash' THEN 'Balance Topup' WHEN ul.amount >= 0 THEN 'Balance Add' ELSE 'Balance Deduct' END AS kind, "
+               "WHEN ul.method = 'bkash' THEN 'Balance Topup' WHEN ul.method = 'correction' THEN 'Correction' WHEN ul.amount >= 0 THEN 'Balance Add' ELSE 'Balance Deduct' END AS kind, "
                "a.username AS p_user, a.role AS p_role, '' AS part_user, ul.amount AS amount, ul.id AS ref_id, 'Ledger' AS ref_kind, "
                "ul.balance_after - ul.amount AS pbal, ul.balance_after AS nbal, ul.created_by AS action_by, ul.note AS note "
                "FROM user_ledger ul JOIN panel_admins a ON a.id = ul.user_id WHERE ul.created_at >= %s AND ul.created_at < %s" + w)
         args = [lo, hi] + p
-        sql += {"Ua": " AND ul.method = 'activation'", "Ub": " AND ul.method = 'bkash'",
-                "U+": " AND ul.method NOT IN ('activation', 'bkash') AND ul.amount >= 0",
-                "U-": " AND ul.method NOT IN ('activation', 'bkash') AND ul.amount < 0"}.get(src, "")
+        sql += {"Ua": " AND ul.method = 'activation'", "Ub": " AND ul.method = 'bkash'", "Uc": " AND ul.method = 'correction'",
+                "U+": " AND ul.method NOT IN ('activation', 'bkash', 'correction') AND ul.amount >= 0",
+                "U-": " AND ul.method NOT IN ('activation', 'bkash', 'correction') AND ul.amount < 0"}.get(src, "")
         if like:
             sql += " AND (a.username LIKE %s OR ul.created_by LIKE %s OR ul.note LIKE %s)"
             args += [like, like, like]
+        if f["acct"]:
+            sql += " AND a.username = %s"
+            args.append(f["acct"])
         out.append((sql, args, "ul.created_at"))
     return out
 
@@ -191,7 +203,18 @@ def ledger():
     rows = _finish(_page(parts, pg["per"], pg["offset"]))
     keep = {k: v for k, v in request.args.items() if k != "page"}
     can_export = _can_export(scope)
-    return render_template("ledger.html", rows=rows, pg=pg, f=f, keep=keep, types=TYPES, scope=scope, can_export=can_export)
+    import mod_accounting as acc
+    account = None
+    if f["acct"] and (scope == "all" or f["acct"] in (core.my_downline() or [])):
+        account = q("SELECT id, username, full_name, role, balance FROM panel_admins WHERE username = %s", (f["acct"],), one=True)
+        if account:
+            # what the company recharged this account in the shown dates (Cashflow's User Payment, after corrections)
+            account["recharged"] = q(
+                "SELECT COALESCE(SUM(ul.amount + COALESCE(cr.adj, 0)), 0) AS t, COUNT(*) AS c FROM user_ledger ul JOIN panel_admins a "
+                "ON a.id = ul.user_id " + acc.CORRECTIONS + " WHERE a.id = %s AND " + acc.TOPUP_WHERE +
+                " AND ul.created_at >= %s AND ul.created_at < %s + INTERVAL 1 DAY", (account["id"], f["from"], f["to"]), one=True)
+    return render_template("ledger.html", rows=rows, pg=pg, f=f, keep=keep, types=TYPES, scope=scope, can_export=can_export,
+                           account=account, ledger_from=acc.LEDGER_FROM)
 
 
 def _export_rows():

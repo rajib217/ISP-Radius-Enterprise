@@ -1753,6 +1753,43 @@ def check_rules(flask_app, ids):
     _rc = client(ids["reseller"])
     check(_rc.get("/cashflow").status_code == 403 and _rc.post("/cashflow/save", data={"_csrf": "ci", "kind": "income",
           "category": "X", "amount": "5"}).status_code == 403, "resellers never open the company's Cashflow")
+    # ---- Cashflow > Profile filter (who was recharged how much, balance now), name -> their ledger, fixing a wrong recharge
+    _bal0 = one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"]
+    run("UPDATE panel_admins SET balance = 100 WHERE id = %s", (ids["reseller"],))
+    _pp = _adm.get("/cashflow?ptype=reseller&owner=%s" % _rs_name).get_data(as_text=True)
+    _pp_type = _adm.get("/cashflow?ptype=reseller").get_data(as_text=True)
+    _pp_wrong = _adm.get("/cashflow?ptype=retailer&owner=%s" % _rs_name).get_data(as_text=True)
+    _fix_url = "/cashflow/topup/%d/correct" % _top
+    _no_reason = _adm.post(_fix_url, data={"_csrf": "ci", "amount": "700", "reason": ""})
+    _n_after_bad = one("SELECT COUNT(*) AS c FROM user_ledger WHERE ref_id = %s", (_top,))["c"]
+    _adm.post(_fix_url, data={"_csrf": "ci", "amount": "700", "reason": "typed 777 instead of 700"})
+    _c1 = one("SELECT amount, balance_after, method FROM user_ledger WHERE ref_id = %s ORDER BY id DESC LIMIT 1", (_top,))
+    _bal1 = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
+    _too_far = _adm.post(_fix_url, data={"_csrf": "ci", "amount": "0", "reason": "given by mistake"})
+    _n_far = one("SELECT COUNT(*) AS c FROM user_ledger WHERE ref_id = %s", (_top,))["c"]
+    _cf_fixed = _adm.get("/cashflow?ptype=reseller&owner=%s" % _rs_name).get_data(as_text=True)
+    _adm.post(_fix_url, data={"_csrf": "ci", "amount": "0", "reason": "given by mistake", "allow_negative": "1"})
+    _bal2 = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
+    _move_fix = _adm.post("/cashflow/topup/%d/correct" % _move, data={"_csrf": "ci", "amount": "1", "reason": "not a company recharge"})
+    _rc_fix = client(ids["reseller"]).post(_fix_url, data={"_csrf": "ci", "amount": "1", "reason": "reseller tries"})
+    _led = _adm.get("/ledger?acct=%s&from=2000-01-01" % _rs_name).get_data(as_text=True)
+    _led_corr = _adm.get("/ledger?acct=%s&from=2000-01-01&type=correct" % _rs_name).get_data(as_text=True)
+    check("TOP%d" % _top in _pp and "TOP%d" % _move not in _pp and "CF%d" % _inc["id"] in _pp and "CF%d" % _exp["id"] not in _pp
+          and "Recharged to %s" % _rs_name in _pp and "777.00" in _pp and ("acct=%s" % _rs_name) in _pp
+          and 'data-follows="ptype"' in _cf and "TOP%d" % _top in _pp_type and "TOP%d" % _top not in _pp_wrong,
+          "Cashflow profile filter: one reseller's recharges, the total and balance table, and links to their ledger")
+    check(_no_reason.status_code == 302 and _n_after_bad == 0
+          and _c1 and _c1["method"] == "correction" and float(_c1["amount"]) == -77 and abs(_bal1 - 23) < 0.001
+          and _n_far == 1 and abs(_bal2 - (-677)) < 0.001
+          and "700.00" in _cf_fixed and "cf-was" in _cf_fixed and "777.00" in _cf_fixed
+          and _move_fix.status_code == 404 and _rc_fix.status_code == 403,
+          "a wrong recharge is fixed with a linked Correction (balance moves by the difference; a reason is needed; it will not "
+          "go below zero unless allowed; seller-to-seller moves and resellers cannot use it)")
+    check("Ledger of" in _led and "acct-kpis" in _led and "led-type t-correction" in _led and "led-type t-correction" in _led_corr
+          and "ci-cf top" in _led and "ci-cf move" not in _led_corr,
+          "a reseller's name opens their whole ledger: balance, what was recharged, every recharge and correction")
+    run("DELETE FROM user_ledger WHERE ref_id = %s", (_top,))
+    run("UPDATE panel_admins SET balance = %s WHERE id = %s", (_bal0, ids["reseller"]))
     run("DELETE FROM expenses WHERE note IN ('ci-cf income', 'ci-cf expense')")
     run("DELETE FROM cashflow_categories WHERE name IN ('CI Generator fuel', 'CI Diesel')")
     run("DELETE FROM user_ledger WHERE note IN ('ci-cf top', 'ci-cf move')")

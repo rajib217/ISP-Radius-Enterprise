@@ -2175,3 +2175,17 @@ html.hover-menu:not(.menu-ready) .nav-group[open] > summary > .i:last-child { tr
 .tbl.compact td, .tbl.compact th { padding-top: 6px; padding-bottom: 6px; }
 .cf-totals { display: flex; gap: 10px; flex-wrap: wrap; }
 .cf-totals .chip b { margin-left: 6px; }
+.led-type.t-correction { background: var(--accent-soft); color: var(--info-text, var(--accent)); }
+a.led-acct { color: var(--accent); text-decoration: none; }
+a.led-acct:hover { text-decoration: underline; background: var(--accent-soft); }
+.cf-was { display: block; font-size: 11.5px; color: var(--muted); }
+.cf-sum { border-top: 1px solid var(--rule, var(--line, #e5e7eb)); padding-top: 14px; }
+.cf-sum h3 { margin: 0 0 10px; font-size: 15px; }
+.cf-sum tfoot th { font-weight: 700; }
+.acct-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+.acct-head h2 { margin: 2px 0 0; font-size: 20px; }
+.acct-head h2 small { font-size: 13px; font-weight: 500; }
+.acct-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 14px; }
+.acct-kpis > div { display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; border-radius: 10px; background: var(--surface-2); }
+.acct-kpis b { font-size: 18px; }
+.acct-kpis span { font-size: 12.5px; }

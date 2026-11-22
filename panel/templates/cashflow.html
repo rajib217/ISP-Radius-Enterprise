@@ -29,7 +29,7 @@
       <span class="chip">Net<b>{{ (tot.income - tot.expense)|money }}</b></span>
     </div></div>
   <form class="filters panel-body" method="get" style="padding-bottom:0">
-    {% for k in ('from', 'to', 'type', 'category', 'src') %}{% if a.get(k) %}<input type="hidden" name="{{ k }}" value="{{ a.get(k) }}">{% endif %}{% endfor %}
+    {% for k in ('from', 'to', 'type', 'category', 'src', 'ptype', 'owner') %}{% if a.get(k) %}<input type="hidden" name="{{ k }}" value="{{ a.get(k) }}">{% endif %}{% endfor %}
     <div class="search">{{ icon('search') }}<input type="search" name="q" value="{{ f.q }}" placeholder="Category, profile, description" aria-label="Search"></div>
   </form>
   {% if active %}
@@ -38,8 +38,27 @@
     {% if f.type %}<span class="chip">Type<b>{{ f.type|capitalize }}</b></span>{% endif %}
     {% if f.category %}<span class="chip">Category<b>{{ f.category }}</b></span>{% endif %}
     {% if f.src %}<span class="chip">Source<b>{{ 'Written here' if f.src == 'manual' else 'Balance topups' }}</b></span>{% endif %}
+    {% if f.ptype %}<span class="chip">Profile<b>{{ dict(seller_types).get(f.ptype) }}{% if f.owner %}: {{ f.owner }}{% endif %}</b></span>{% endif %}
     {% if f.q %}<span class="chip">Search<b>{{ f.q }}</b></span>{% endif %}
     <a class="btn sm" href="{{ url_for('cashflow') }}">{{ icon('x') }}Reset</a>
+  </div>
+  {% endif %}
+
+  {% if summary %}
+  <div class="panel-body cf-sum">
+    <h3>Recharged to {{ f.owner or dict(seller_types).get(f.ptype)|lower }}{% if f['from'] or f['to'] %} · {{ f['from'] or '…' }} → {{ f['to'] or '…' }}{% else %} · all time{% endif %}</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>Name</th><th class="num">Recharged</th><th class="num">Times</th><th class="hide-sm">Last recharge</th><th class="num">Balance now</th><th></th></tr></thead>
+      <tbody>{% for p in summary.rows %}<tr>
+        <td data-card="title"><a class="led-acct" href="{{ url_for('ledger', acct=p.username, **{'from': ledger_from}) }}" title="All of {{ p.username }}'s ledger">{{ p.username }} <small>({{ role_names.get(p.role) }})</small></a>{% if p.full_name %}<small class="muted"> {{ p.full_name }}</small>{% endif %}</td>
+        <td class="num" data-card="key"><span class="cf-amt income">{{ p.total|money }}</span></td>
+        <td class="num" data-card="key">{{ p.c }}</td>
+        <td class="hide-sm nowrap">{{ p.last.strftime('%Y-%m-%d %H:%M') if p.last else '—' }}</td>
+        <td class="num" data-card="key"><b>{{ p.balance|money }}</b></td>
+        <td class="act" data-card="actions"><a class="btn sm" href="{{ url_for('ledger', acct=p.username, **{'from': ledger_from}) }}">{{ icon('file') }}Ledger</a></td>
+      </tr>{% else %}<tr><td colspan="6" class="muted">No {{ dict(seller_types).get(f.ptype)|lower }} found.</td></tr>{% endfor %}</tbody>
+      {% if summary.rows|length > 1 %}<tfoot><tr><th>Total</th><th class="num">{{ summary.total|money }}</th><th></th><th class="hide-sm"></th><th class="num">{{ summary.balance|money }}</th><th></th></tr></tfoot>{% endif %}
+    </table></div>
   </div>
   {% endif %}
 
@@ -49,9 +68,9 @@
     <thead><tr><th>ID</th><th>Profile</th><th>Type</th><th class="num">Amount</th><th>Category</th><th>Description</th><th class="hide-sm">Created By</th><th>Created At</th><th></th></tr></thead>
     <tbody>{% for r in rows %}<tr>
       <td class="muted mono" data-label="ID">{{ ('CF' if r.src == 'M' else 'TOP') ~ r.rid }}</td>
-      <td data-label="Profile" data-card="title">{% if r.profile %}<span class="led-acct">{{ r.profile }}{% if r.prole %} <small>({{ role_names.get(r.prole, r.prole|capitalize) }})</small>{% endif %}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td data-label="Profile" data-card="title">{% if r.profile and r.prole in ('reseller', 'subreseller', 'retailer') %}<a class="led-acct" href="{{ url_for('ledger', acct=r.profile, **{'from': ledger_from}) }}" title="All of {{ r.profile }}'s ledger · balance {{ r.pbalance|money }}">{{ r.profile }} <small>({{ role_names.get(r.prole) }})</small></a>{% elif r.profile %}<span class="led-acct">{{ r.profile }}{% if r.prole %} <small>({{ role_names.get(r.prole, r.prole|capitalize) }})</small>{% endif %}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
       <td data-label="Type" data-card="key"><span class="cf-kind {{ r.kind }}">{{ r.kind|capitalize }}</span></td>
-      <td class="num" data-label="Amount" data-card="key"><span class="cf-amt {{ r.kind }}">{{ r.amount|money }}</span></td>
+      <td class="num" data-label="Amount" data-card="key"><span class="cf-amt {{ r.kind }}">{{ r.amount|money }}</span>{% if r.orig is not none %}<small class="cf-was" title="Corrected">was <s>{{ r.orig|money }}</s></small>{% endif %}</td>
       <td data-label="Category" data-card="key"><span class="led-chip">{{ r.category }}</span></td>
       <td class="who-cell" data-label="Description">{{ r.note or r.paid_to or '—' }}{% if r.note and r.paid_to %}<small>{{ 'From' if r.kind == 'income' else 'Paid to' }} {{ r.paid_to }}</small>{% endif %}{% if r.method %}<small>{{ r.method }}</small>{% endif %}</td>
       <td class="hide-sm" data-label="Created By">{{ r.created_by or '—' }}</td>
@@ -60,7 +79,10 @@
         {% if r.src == 'M' %}
           {% if can_edit %}<button class="btn sm icon" data-open="cf-dlg" data-edit='{{ {"id": r.rid, "kind": r.kind, "spent_on": r.day.isoformat(), "category": r.category, "amount": r.amount|string, "paid_to": r.paid_to, "method": r.method, "note": r.note, "profile": r.profile}|tojson }}' aria-label="Edit entry CF{{ r.rid }}" title="Edit">{{ icon('edit') }}</button>{% endif %}
           {% if can_del %}<form method="post" action="{{ url_for('cashflow_delete', eid=r.rid) }}" data-confirm="Delete cashflow entry CF{{ r.rid }} ({{ r.category }}, {{ r.amount|money }})?">{{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path }}"><button class="btn sm icon danger" type="submit" aria-label="Delete entry CF{{ r.rid }}" title="Delete">{{ icon('trash') }}</button></form>{% endif %}
-        {% else %}<span class="badge plain muted cf-auto" title="From the user's balance topup. Change it in their balance, not here.">Auto</span>{% endif %}
+        {% else %}
+          {% if can_fix %}<button class="btn sm" data-open="fix-dlg" data-new data-action="{{ url_for('cashflow_topup_correct', lid=r.rid) }}" data-label="TOP{{ r.rid }} · {{ r.profile }}" data-fill='{{ {"amount": "%.2f"|format(r.amount), "reason": "", "now": "%.2f"|format(r.amount), "bal": "%.2f"|format(r.pbalance or 0)}|tojson }}' title="Wrong amount? Correct this recharge">{{ icon('edit') }}Fix</button>
+          {% else %}<span class="badge plain muted cf-auto" title="From the user's balance topup">Auto</span>{% endif %}
+        {% endif %}
       </td>
     </tr>{% endfor %}</tbody>
   </table></div>
@@ -83,6 +105,12 @@
             {% for c in cats %}<option value="{{ c.name }}" data-tier="{{ c.kind }}" {{ 'selected' if f.category == c.name and f.type == c.kind }}>{{ c.name }}</option>{% endfor %}
             {% for k, n in extra %}<option value="{{ n }}" data-tier="{{ k }}" {{ 'selected' if f.category == n and f.type == k }}>{{ n }}</option>{% endfor %}</select>
           <div class="help">Choose Income or Expense first.</div></div>
+        <div class="field"><label class="lbl" for="cff-ptype">Profile type</label>
+          <select id="cff-ptype" name="ptype"><option value="">Select a type</option>{% for k, label in seller_types %}<option value="{{ k }}" {{ 'selected' if f.ptype == k }}>{{ label }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="cff-owner">Select an option</label>
+          <select id="cff-owner" name="owner" data-follows="ptype"><option value="">All of this type</option>
+            {% for p in people %}<option value="{{ p.username }}" data-tier="{{ p.role }}" {{ 'selected' if f.owner == p.username and f.ptype == p.role }}>{{ p.username }}{% if p.full_name %} ({{ p.full_name }}){% endif %} · {{ p.balance|money }}</option>{% endfor %}</select>
+          <div class="help">Shows what each one was recharged and their balance now.</div></div>
         <div class="field"><label class="lbl" for="cff-src">Source</label>
           <select id="cff-src" name="src"><option value="">All</option>
             <option value="manual" {{ 'selected' if f.src == 'manual' }}>Written here</option>
@@ -122,6 +150,25 @@
       </div>
     </div>
     <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save</button></div>
+  </form>
+</dialog>
+{% endif %}
+{% if can_fix %}
+<dialog class="modal" id="fix-dlg" aria-labelledby="fix-title">
+  <form method="post" action="">
+    {{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path }}">
+    <div class="modal-head"><h2 id="fix-title">Correct recharge <span data-label-slot></span></h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <p class="muted" style="margin:0">The recharge itself is kept. A <b>Correction</b> line for the difference is added to their ledger, linked to it, and their balance moves by that much now. Put <b>0</b> to cancel a recharge given by mistake.</p>
+      <div class="grid-2">
+        <div class="field"><label class="lbl" for="fix-now">Recharged now</label><input id="fix-now" name="now" readonly tabindex="-1"></div>
+        <div class="field"><label class="lbl" for="fix-bal">Their balance now</label><input id="fix-bal" name="bal" readonly tabindex="-1"></div>
+        <div class="field"><label class="lbl" for="fix-amount">Right amount ({{ currency }})</label><input id="fix-amount" name="amount" type="number" inputmode="decimal" step="0.01" min="0" required></div>
+        <div class="field"><label class="lbl" for="fix-reason">Why</label><input id="fix-reason" name="reason" maxlength="150" required minlength="3" placeholder="Typed 5000 instead of 500"></div>
+      </div>
+      <label class="check"><input type="checkbox" name="allow_negative" value="1"> Allow the balance to go below zero (when they already spent part of it)</label>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save correction</button></div>
   </form>
 </dialog>
 {% endif %}

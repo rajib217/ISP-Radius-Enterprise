@@ -828,3 +828,7 @@ INSERT INTO cashflow_categories (kind, name)
   WHERE NOT EXISTS (SELECT 1 FROM cashflow_categories);
 -- categories already used by entries are on the list
 INSERT IGNORE INTO cashflow_categories (kind, name) SELECT DISTINCT kind, category FROM expenses WHERE category <> '';
+
+-- Cashflow > fix a wrong recharge: a Correction line (method 'correction') points at the recharge it corrects
+ALTER TABLE user_ledger ADD COLUMN IF NOT EXISTS ref_id INT UNSIGNED NULL;
+ALTER TABLE user_ledger ADD INDEX IF NOT EXISTS idx_ref (ref_id);
