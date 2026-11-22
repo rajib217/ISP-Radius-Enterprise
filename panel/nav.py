@@ -64,7 +64,7 @@ STRUCTURE = [
     _g("acct", "Accounting", "dollar", module="accounting", items=[
         _i("Payments", "payments", ["payments", "receipt", "payment_add"]),
         _i("Receive payment", "receive"),
-        _i("Expenses", "expenses"),
+        _i("Cashflow", "cashflow", ["cashflow", "cashflow_categories", "expenses"], fn="cf.module"),
         _i("Income & expense", "acct_summary"),
         _i("Dues", "dues"),
         _i("Ledger Reports", "ledger", ["ledger", "ledger_csv", "ledger_xlsx"], own="led.module"),

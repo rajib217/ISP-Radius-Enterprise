@@ -78,7 +78,8 @@ def accounting():
     inc = q("SELECT COALESCE(SUM(CASE WHEN paid_at >= %s THEN amount ELSE 0 END), 0) AS today_total, "
             "COALESCE(SUM(amount), 0) AS month_total, COUNT(*) AS c FROM payments WHERE paid_at >= %s",
             (today, first), one=True)
-    exp = q("SELECT COALESCE(SUM(amount), 0) AS month_total FROM expenses WHERE spent_on >= %s", (first,), one=True)
+    exp = q("SELECT COALESCE(SUM(IF(kind = 'expense', amount, 0)), 0) AS month_total, "
+            "COALESCE(SUM(IF(kind = 'income', amount, 0)), 0) AS other_income FROM expenses WHERE spent_on >= %s", (first,), one=True)
     due = q("SELECT COUNT(*) AS c, COALESCE(SUM(p.price), 0) AS amount FROM subscribers s LEFT JOIN plans p "
             "ON p.id = s.plan_id WHERE s.status = 'active' AND s.expiry_date < CURDATE()", one=True)
     by_method = q("SELECT method, COUNT(*) AS c, SUM(amount) AS total FROM payments WHERE paid_at >= %s "
@@ -86,7 +87,7 @@ def accounting():
     cards = [("Collected today", inc["today_total"], "payments received", "", "green", {}),
              ("Collected this month", inc["month_total"], "%d payments" % n(inc["c"]), "", "violet", {}),
              ("Expenses this month", exp["month_total"], "money spent", "", "red", {}),
-             ("Net this month", float(inc["month_total"] or 0) - float(exp["month_total"] or 0), "income minus expenses", "", "amber", {}),
+             ("Net this month", float(inc["month_total"] or 0) + float(exp["other_income"] or 0) - float(exp["month_total"] or 0), "income minus expenses", "", "amber", {}),
              ("Dues", due["amount"], "%d expired customers" % n(due["c"]), "", "rose", {})]
     return {"cards": cards, "by_method": by_method, "money": True}
 
@@ -170,8 +171,11 @@ def cashflow():
         "SELECT DATE_FORMAT(paid_at, '%%Y-%%m') AS ym, SUM(amount) AS t FROM payments WHERE paid_at >= %s GROUP BY ym",
         (first,))}
     exp = {r["ym"]: float(r["t"] or 0) for r in q(
-        "SELECT DATE_FORMAT(spent_on, '%%Y-%%m') AS ym, SUM(amount) AS t FROM expenses WHERE spent_on >= %s GROUP BY ym",
-        (first,))}
+        "SELECT DATE_FORMAT(spent_on, '%%Y-%%m') AS ym, SUM(amount) AS t FROM expenses WHERE kind = 'expense' AND spent_on >= %s "
+        "GROUP BY ym", (first,))}
+    for r in q("SELECT DATE_FORMAT(spent_on, '%%Y-%%m') AS ym, SUM(amount) AS t FROM expenses WHERE kind = 'income' "
+               "AND spent_on >= %s GROUP BY ym", (first,)):
+        inc[r["ym"]] = inc.get(r["ym"], 0) + float(r["t"] or 0)
     keys = ["%04d-%02d" % ym for ym in months]
     chart = {"labels": [date(y, m, 1).strftime("%b %y") for y, m in months], "unit": "money", "colors": ["--c1", "--c4"],
              "series": [{"name": "Income", "values": [inc.get(k, 0) for k in keys]},

@@ -11,13 +11,23 @@
   </div>
 </div>
 <section class="panel">
+  {% set a = request.args %}
+  {% set ptype_names = dict(profile_types) %}
   <form class="filters panel-body" method="get" style="padding-bottom:0">
-    <div class="search">{{ icon('search') }}<input type="search" name="q" value="{{ request.args.get('q', '') }}" placeholder="Username or note" aria-label="Search"></div>
-    <select name="method" aria-label="Method"><option value="">All methods</option>{% for m in methods %}<option {{ 'selected' if request.args.get('method') == m }}>{{ m }}</option>{% endfor %}</select>
-    <select name="by" aria-label="Received by"><option value="">Everyone</option>{% for s in staff %}<option {{ 'selected' if request.args.get('by') == s }}>{{ s }}</option>{% endfor %}</select>
-    <input type="date" name="from" value="{{ request.args.get('from', '') }}" aria-label="From"><input type="date" name="to" value="{{ request.args.get('to', '') }}" aria-label="To">
-    <button class="btn" type="submit">Filter</button>
+    {% for k in ('from', 'to', 'ptype', 'owner', 'method', 'by') %}{% if a.get(k) %}<input type="hidden" name="{{ k }}" value="{{ a.get(k) }}">{% endif %}{% endfor %}
+    <div class="search">{{ icon('search') }}<input type="search" name="q" value="{{ a.get('q', '') }}" placeholder="Username or note" aria-label="Search"></div>
+    <button class="btn" type="button" data-open="payf-dlg">{{ icon('filter') }}Filter{% if active %} <span class="f-count">{{ active|length }}</span>{% endif %}</button>
   </form>
+  {% if active %}
+  <div class="chips panel-body f-chips">
+    {% if a.get('from') or a.get('to') %}<span class="chip">Date<b>{{ a.get('from') or '…' }} → {{ a.get('to') or '…' }}</b></span>{% endif %}
+    {% if a.get('ptype') %}<span class="chip">Profile<b>{{ ptype_names.get(a.get('ptype'), a.get('ptype')) }}{% if a.get('owner') %}: {{ a.get('owner') }}{% endif %}</b></span>{% endif %}
+    {% if a.get('method') %}<span class="chip">Payment type<b>{{ a.get('method') }}</b></span>{% endif %}
+    {% if a.get('by') %}<span class="chip">Received by<b>{{ a.get('by') }}</b></span>{% endif %}
+    {% if a.get('q') %}<span class="chip">Search<b>{{ a.get('q') }}</b></span>{% endif %}
+    <a class="btn sm" href="{{ url_for('payments') }}">{{ icon('x') }}Reset</a>
+  </div>
+  {% endif %}
   {% if rows %}
   <div class="tbl-wrap"><table class="tbl">
     <thead><tr><th>Receipt</th><th>Date</th><th>Customer</th><th class="num">Amount</th><th>Method</th><th class="hide-sm">Valid until</th><th class="hide-sm">Received by</th><th></th></tr></thead>
@@ -36,6 +46,36 @@
   {{ pager(pg, keep, 'payments') }}
   {% else %}<div class="empty"><h3>No payments found</h3><p>Renewals and payments you record appear here.</p></div>{% endif %}
 </section>
+
+<dialog class="modal" id="payf-dlg" aria-labelledby="payf-title">
+  <form method="get" action="{{ url_for('payments') }}" data-filter-form>
+    <div class="modal-head"><h2 id="payf-title">Filter</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body">
+      <div class="grid-2">
+        <div class="field"><label class="lbl" for="pf-q">Search</label><input id="pf-q" type="search" name="q" value="{{ a.get('q', '') }}" placeholder="Username or note"></div>
+        <div class="field"><label class="lbl" for="pf-from">Date range</label>
+          <div class="f-range"><input id="pf-from" type="date" name="from" value="{{ a.get('from', '') }}" aria-label="From"><span class="muted">to</span><input type="date" name="to" value="{{ a.get('to', '') }}" aria-label="To"></div></div>
+        <div class="field"><label class="lbl" for="pf-ptype">Profile type</label>
+          <select id="pf-ptype" name="ptype"><option value="">Select a type</option>
+            {% for k, label in profile_types %}<option value="{{ k }}" {{ 'selected' if a.get('ptype') == k }}>{{ label }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="pf-owner">Select an option</label>
+          <select id="pf-owner" name="owner" data-follows="ptype"><option value="">All of this type</option>
+            {% for role, people in profiles.items() %}{% for u in people %}<option value="{{ u.username }}" data-tier="{{ role }}" {{ 'selected' if a.get('owner') == u.username and a.get('ptype') == role }}>{{ u.username }}{% if u.full_name %} ({{ u.full_name }}){% endif %}</option>{% endfor %}{% endfor %}</select>
+          <div class="help">After choosing Resellers, Subresellers or Retailers: one of them, or all.</div></div>
+        <div class="field"><label class="lbl" for="pf-method">Payment type</label>
+          <select id="pf-method" name="method"><option value="">Select a type</option>{% for m in methods %}<option {{ 'selected' if a.get('method') == m }}>{{ m }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="pf-by">Received by</label>
+          <select id="pf-by" name="by"><option value="">Everyone</option>{% for s in staff %}<option {{ 'selected' if a.get('by') == s }}>{{ s }}</option>{% endfor %}</select></div>
+      </div>
+    </div>
+    <div class="modal-foot f-foot">
+      <button type="button" class="btn" data-copy-url>{{ icon('copy') }}Copy URL</button><span class="f-gap"></span>
+      <button type="button" class="btn" data-close>Close</button>
+      <a class="btn" href="{{ url_for('payments') }}">Reset</a>
+      <button class="btn primary" type="submit">Submit</button>
+    </div>
+  </form>
+</dialog>
 
 {% if can('accounting', 'edit') %}
 <dialog class="modal" id="pay-dlg" aria-labelledby="pay-title">

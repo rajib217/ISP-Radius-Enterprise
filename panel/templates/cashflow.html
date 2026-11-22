@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, pager %}
+{% block title %}Cashflow{% endblock %}
+{% set role_names = {'admin': 'Admin', 'staff': 'Staff', 'reseller': 'Reseller', 'subreseller': 'Sub-reseller', 'retailer': 'Retailer'} %}
+{% set a = request.args %}
+{% set can_add = can('accounting', 'edit') and can_fn('cf.add') %}
+{% set can_edit = can('accounting', 'edit') and can_fn('cf.edit') %}
+{% set can_del = can('accounting', 'edit') and can_fn('cf.delete') %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Cashflow</h1>
+    <p class="sub">{{ '{:,}'.format(tot.c) }} record{{ '' if tot.c == 1 else 's' }} · Income {{ currency }} {{ tot.income|money }} · Expense {{ currency }} {{ tot.expense|money }}</p></div>
+  <div class="actions">
+    {% if can_add %}<button class="btn primary" data-open="cf-dlg" data-new data-fill='{{ {"spent_on": f.today.isoformat(), "kind": a.get("type") or "expense"}|tojson }}'>{{ icon('plus') }}Add Cashflow</button>{% endif %}
+    {% if can('accounting', 'edit') and can_fn('cfc.add') %}<button class="btn" data-open="cfc-dlg" data-new>{{ icon('plus') }}Add Category</button>{% endif %}
+    {% if can_fn('cfc.module') %}<a class="btn" href="{{ url_for('cashflow_categories') }}">{{ icon('layers') }}All Categories</a>{% endif %}
+    {% if can_export %}<a class="btn" href="{{ url_for('cashflow_xlsx', **keep) }}">{{ icon('download') }}Excel</a>
+    <a class="btn" href="{{ url_for('cashflow_csv', **keep) }}">{{ icon('file') }}CSV</a>{% endif %}
+    <button class="btn" type="button" data-open="cff-dlg">{{ icon('filter') }}Filter{% if active %} <span class="f-count">{{ active|length }}</span>{% endif %}</button>
+    <button class="btn" type="button" data-compact-for="cf-tbl" aria-pressed="false">{{ icon('table') }}Compact View</button>
+  </div>
+</div>
+
+<section class="panel">
+  <div class="panel-head"><h2>Cashflow Reports</h2>
+    <div class="cf-totals">
+      <span class="chip">Income<b class="cf-amt income">{{ tot.income|money }}</b></span>
+      <span class="chip">Expense<b class="cf-amt expense">{{ tot.expense|money }}</b></span>
+      <span class="chip">Net<b>{{ (tot.income - tot.expense)|money }}</b></span>
+    </div></div>
+  <form class="filters panel-body" method="get" style="padding-bottom:0">
+    {% for k in ('from', 'to', 'type', 'category', 'src') %}{% if a.get(k) %}<input type="hidden" name="{{ k }}" value="{{ a.get(k) }}">{% endif %}{% endfor %}
+    <div class="search">{{ icon('search') }}<input type="search" name="q" value="{{ f.q }}" placeholder="Category, profile, description" aria-label="Search"></div>
+  </form>
+  {% if active %}
+  <div class="chips panel-body f-chips">
+    {% if f['from'] or f['to'] %}<span class="chip">Date<b>{{ f['from'] or '…' }} → {{ f['to'] or '…' }}</b></span>{% endif %}
+    {% if f.type %}<span class="chip">Type<b>{{ f.type|capitalize }}</b></span>{% endif %}
+    {% if f.category %}<span class="chip">Category<b>{{ f.category }}</b></span>{% endif %}
+    {% if f.src %}<span class="chip">Source<b>{{ 'Written here' if f.src == 'manual' else 'Balance topups' }}</b></span>{% endif %}
+    {% if f.q %}<span class="chip">Search<b>{{ f.q }}</b></span>{% endif %}
+    <a class="btn sm" href="{{ url_for('cashflow') }}">{{ icon('x') }}Reset</a>
+  </div>
+  {% endif %}
+
+  {% if rows %}
+  <div class="listbar"><span class="muted">Showing {{ pg.first }} to {{ pg.last }} of {{ '{:,}'.format(pg.total) }} records</span>{{ pager(pg, keep, 'cashflow') }}</div>
+  <div class="tbl-wrap"><table class="tbl" id="cf-tbl">
+    <thead><tr><th>ID</th><th>Profile</th><th>Type</th><th class="num">Amount</th><th>Category</th><th>Description</th><th class="hide-sm">Created By</th><th>Created At</th><th></th></tr></thead>
+    <tbody>{% for r in rows %}<tr>
+      <td class="muted mono" data-label="ID">{{ ('CF' if r.src == 'M' else 'TOP') ~ r.rid }}</td>
+      <td data-label="Profile" data-card="title">{% if r.profile %}<span class="led-acct">{{ r.profile }}{% if r.prole %} <small>({{ role_names.get(r.prole, r.prole|capitalize) }})</small>{% endif %}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td data-label="Type" data-card="key"><span class="cf-kind {{ r.kind }}">{{ r.kind|capitalize }}</span></td>
+      <td class="num" data-label="Amount" data-card="key"><span class="cf-amt {{ r.kind }}">{{ r.amount|money }}</span></td>
+      <td data-label="Category" data-card="key"><span class="led-chip">{{ r.category }}</span></td>
+      <td class="who-cell" data-label="Description">{{ r.note or r.paid_to or '—' }}{% if r.note and r.paid_to %}<small>{{ 'From' if r.kind == 'income' else 'Paid to' }} {{ r.paid_to }}</small>{% endif %}{% if r.method %}<small>{{ r.method }}</small>{% endif %}</td>
+      <td class="hide-sm" data-label="Created By">{{ r.created_by or '—' }}</td>
+      <td class="nowrap" data-label="Created At">{{ r.at.strftime('%Y-%m-%d %H:%M') if r.at else '—' }}</td>
+      <td class="act" data-card="actions">
+        {% if r.src == 'M' %}
+          {% if can_edit %}<button class="btn sm icon" data-open="cf-dlg" data-edit='{{ {"id": r.rid, "kind": r.kind, "spent_on": r.day.isoformat(), "category": r.category, "amount": r.amount|string, "paid_to": r.paid_to, "method": r.method, "note": r.note, "profile": r.profile}|tojson }}' aria-label="Edit entry CF{{ r.rid }}" title="Edit">{{ icon('edit') }}</button>{% endif %}
+          {% if can_del %}<form method="post" action="{{ url_for('cashflow_delete', eid=r.rid) }}" data-confirm="Delete cashflow entry CF{{ r.rid }} ({{ r.category }}, {{ r.amount|money }})?">{{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path }}"><button class="btn sm icon danger" type="submit" aria-label="Delete entry CF{{ r.rid }}" title="Delete">{{ icon('trash') }}</button></form>{% endif %}
+        {% else %}<span class="badge plain muted cf-auto" title="From the user's balance topup. Change it in their balance, not here.">Auto</span>{% endif %}
+      </td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  <div class="listbar"><span class="muted">Showing {{ pg.first }} to {{ pg.last }} of {{ '{:,}'.format(pg.total) }} records</span>{{ pager(pg, keep, 'cashflow') }}</div>
+  {% else %}<div class="empty"><h3>No cashflow entries</h3><p>Income and expenses you add appear here, with the balance resellers pay in (User Payment).</p></div>{% endif %}
+</section>
+
+<dialog class="modal" id="cff-dlg" aria-labelledby="cff-title">
+  <form method="get" action="{{ url_for('cashflow') }}" data-filter-form>
+    <div class="modal-head"><h2 id="cff-title">Filter</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body">
+      <div class="grid-2">
+        <div class="field"><label class="lbl" for="cff-q">Search</label><input id="cff-q" type="search" name="q" value="{{ f.q }}" placeholder="Category, profile, description"></div>
+        <div class="field"><label class="lbl" for="cff-from">Date range</label>
+          <div class="f-range"><input id="cff-from" type="date" name="from" value="{{ a.get('from', '') }}" aria-label="From"><span class="muted">to</span><input type="date" name="to" value="{{ a.get('to', '') }}" aria-label="To"></div></div>
+        <div class="field"><label class="lbl" for="cff-type">Cashflow type</label>
+          <select id="cff-type" name="type"><option value="">Select an option</option>{% for k, label in kinds %}<option value="{{ k }}" {{ 'selected' if f.type == k }}>{{ label }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="cff-cat">Category</label>
+          <select id="cff-cat" name="category" data-follows="type"><option value="">All categories</option>
+            {% for c in cats %}<option value="{{ c.name }}" data-tier="{{ c.kind }}" {{ 'selected' if f.category == c.name and f.type == c.kind }}>{{ c.name }}</option>{% endfor %}
+            {% for k, n in extra %}<option value="{{ n }}" data-tier="{{ k }}" {{ 'selected' if f.category == n and f.type == k }}>{{ n }}</option>{% endfor %}</select>
+          <div class="help">Choose Income or Expense first.</div></div>
+        <div class="field"><label class="lbl" for="cff-src">Source</label>
+          <select id="cff-src" name="src"><option value="">All</option>
+            <option value="manual" {{ 'selected' if f.src == 'manual' }}>Written here</option>
+            <option value="auto" {{ 'selected' if f.src == 'auto' }}>Balance topups (User Payment)</option></select></div>
+      </div>
+    </div>
+    <div class="modal-foot f-foot">
+      <button type="button" class="btn" data-copy-url>{{ icon('copy') }}Copy URL</button><span class="f-gap"></span>
+      <button type="button" class="btn" data-close>Close</button>
+      <a class="btn" href="{{ url_for('cashflow') }}">Reset</a>
+      <button class="btn primary" type="submit">Submit</button>
+    </div>
+  </form>
+</dialog>
+
+{% if can_add or can_edit %}
+<dialog class="modal" id="cf-dlg" aria-labelledby="cf-title">
+  <form method="post" action="{{ url_for('cashflow_save') }}">
+    {{ csrf_input() }}<input type="hidden" name="id"><input type="hidden" name="next" value="{{ request.full_path }}">
+    <div class="modal-head"><h2 id="cf-title" data-title data-title-new="Add cashflow" data-title-edit="Edit cashflow">Add cashflow</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body">
+      <div class="grid-2">
+        <div class="field"><label class="lbl" for="cf-kind">Type</label>
+          <select id="cf-kind" name="kind" required>{% for k, label in kinds %}<option value="{{ k }}">{{ label }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="cf-date">Date</label><input id="cf-date" name="spent_on" type="date" required></div>
+        <div class="field"><label class="lbl" for="cf-cat">Category</label>
+          <input id="cf-cat" name="category" maxlength="64" required autocomplete="off" data-list-by="kind" data-list-prefix="cf-cats-">
+          {% for k, _ in kinds %}<datalist id="cf-cats-{{ k }}">{% for c in cats if c.kind == k %}<option value="{{ c.name }}">{% endfor %}</datalist>{% endfor %}
+          <div class="help">Pick one or type a new one; a new one joins the list.</div></div>
+        <div class="field"><label class="lbl" for="cf-amount">Amount ({{ currency }})</label><input id="cf-amount" name="amount" type="number" inputmode="decimal" step="0.01" min="0.01" required></div>
+        <div class="field"><label class="lbl" for="cf-profile">Profile (optional)</label>
+          <input id="cf-profile" name="profile" list="cf-people" maxlength="64" autocomplete="off" spellcheck="false" placeholder="Reseller / user">
+          <datalist id="cf-people">{% for p in people %}<option value="{{ p.username }}">{{ role_names.get(p.role, p.role) }}</option>{% endfor %}</datalist></div>
+        <div class="field"><label class="lbl" for="cf-method">Method</label><select id="cf-method" name="method">{% for m in methods %}<option>{{ m }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="cf-to">Paid to / received from</label><input id="cf-to" name="paid_to" maxlength="128"></div>
+        <div class="field"><label class="lbl" for="cf-note">Description</label><input id="cf-note" name="note" maxlength="255"></div>
+      </div>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save</button></div>
+  </form>
+</dialog>
+{% endif %}
+{% include "_cashflow_category_dlg.html" %}
+{% endblock %}

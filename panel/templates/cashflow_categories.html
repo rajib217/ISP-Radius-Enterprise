@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Cashflow Categories{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Cashflow Categories</h1><p class="sub">{{ cats|length }} categor{{ 'y' if cats|length == 1 else 'ies' }} · <a href="{{ url_for('cashflow') }}">Back to Cashflow</a></p></div>
+  <div class="actions">{% if can('accounting', 'edit') and can_fn('cfc.add') %}<button class="btn primary" data-open="cfc-dlg" data-new>{{ icon('plus') }}Add Category</button>{% endif %}</div>
+</div>
+{% for k, label in kinds %}
+<section class="panel">
+  <div class="panel-head"><h2>{{ label }}</h2></div>
+  {% set list = cats|selectattr('kind', 'equalto', k)|list %}
+  {% if list %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Name</th><th class="num">Entries</th><th class="num">Total</th><th class="hide-sm">Note</th><th class="hide-sm">Created by</th><th></th></tr></thead>
+    <tbody>{% for c in list %}<tr>
+      <td data-card="title"><b>{{ c.name }}</b>{% if k == 'income' and c.name == topup_category %}<small class="muted"> · also every reseller balance topup</small>{% endif %}</td>
+      <td class="num" data-card="key">{{ c.uses }}</td>
+      <td class="num" data-card="key">{{ c.total|money }}</td>
+      <td class="hide-sm">{{ c.note or '—' }}</td>
+      <td class="hide-sm">{{ c.created_by or 'built in' }}</td>
+      <td class="act" data-card="actions">
+        {% if can('accounting', 'edit') and can_fn('cfc.edit') %}<button class="btn sm icon" data-open="cfc-dlg" data-edit='{{ {"id": c.id, "kind": c.kind, "name": c.name, "note": c.note}|tojson }}' aria-label="Edit {{ c.name }}" title="Edit">{{ icon('edit') }}</button>{% endif %}
+        {% if can('accounting', 'edit') and can_fn('cfc.delete') %}<form method="post" action="{{ url_for('cashflow_category_delete', cid=c.id) }}" data-confirm="Delete the category {{ c.name }}?">{{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path }}"><button class="btn sm icon danger" type="submit" aria-label="Delete {{ c.name }}" title="{{ 'In use: move its entries first' if c.uses else 'Delete' }}" {{ 'disabled' if c.uses }}>{{ icon('trash') }}</button></form>{% endif %}
+      </td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="empty"><p>No {{ label|lower }} categories yet.</p></div>{% endif %}
+</section>
+{% endfor %}
+{% include "_cashflow_category_dlg.html" %}
+{% endblock %}

@@ -72,6 +72,7 @@
       /* one drawer serves every row: the button gives the form its address and the heading its name */
       if (b.dataset.action && form) form.action = b.dataset.action;
       if (b.dataset.label) $$("[data-label-slot]", dlg).forEach(function (n) { n.textContent = b.dataset.label; });
+      if (form) form.dispatchEvent(new Event("filled"));
       dlg.showModal();
       var first = $("input:not([type=hidden]):not([readonly]), select", dlg);
       if (first) first.focus();
@@ -679,6 +680,55 @@
     if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === "/") { var s = $("[data-global-search]"); if (s) { e.preventDefault(); s.focus(); } }
     else if (e.key === "[") { var b = $("[data-side-toggle]"); if (b) b.click(); }
+  });
+  /* filter dialogs (Payments, Cashflow): a second list that follows the first (data-follows="name of the first"),
+     only filled fields go in the address, and Copy URL gives the filtered page's link */
+  $$("form[data-filter-form]").forEach(function (form) {
+    $$("select[data-follows]", form).forEach(function (sel) {
+      var lead = form.elements[sel.dataset.follows];
+      if (!lead) return;
+      var sync = function () {
+        var any = false;
+        $$("option", sel).forEach(function (o) {
+          if (!o.value) return;
+          var show = o.dataset.tier === lead.value;
+          o.hidden = !show; o.disabled = !show; if (show) any = true;
+          if (!show && o.selected) sel.value = "";
+        });
+        sel.disabled = !any;
+      };
+      lead.addEventListener("change", function () { sel.value = ""; sync(); });
+      sync();
+    });
+    form.addEventListener("submit", function () {
+      $$("[name]", form).forEach(function (el) { if (!el.value) el.disabled = true; });
+    });
+    $$("[data-copy-url]", form).forEach(function (b) {
+      b.addEventListener("click", function () {
+        var p = new URLSearchParams();
+        $$("[name]", form).forEach(function (el) { if (el.value && !el.disabled) p.append(el.name, el.value); });
+        var url = location.origin + form.getAttribute("action") + (p.toString() ? "?" + p.toString() : "");
+        var o = b.innerHTML, done = function () { b.textContent = "Copied"; setTimeout(function () { b.innerHTML = o; }, 1200); };
+        if (navigator.clipboard) navigator.clipboard.writeText(url).then(done, done); else done();
+      });
+    });
+  });
+  /* a text box whose suggestions follow another field (Cashflow: the categories of the chosen type) */
+  $$("input[data-list-by]").forEach(function (inp) {
+    var form = inp.form, lead = form && form.elements[inp.dataset.listBy];
+    if (!lead) return;
+    var sync = function () { inp.setAttribute("list", inp.dataset.listPrefix + lead.value); };
+    lead.addEventListener("change", sync);
+    form.addEventListener("filled", sync);
+    sync();
+  });
+  /* Cashflow: compact rows, remembered on this browser */
+  $$("[data-compact-for]").forEach(function (b) {
+    var tbl = document.getElementById(b.dataset.compactFor), key = "compact." + b.dataset.compactFor;
+    if (!tbl) return;
+    var set = function (on) { tbl.classList.toggle("compact", on); b.setAttribute("aria-pressed", on ? "true" : "false"); store(key, on ? "1" : "0"); };
+    b.addEventListener("click", function () { set(!tbl.classList.contains("compact")); });
+    if (store(key) === "1") set(true);
   });
   var bn = $(".bottom-nav"), lastY = window.scrollY || 0;
   var bnTick = false;                 /* at most once per frame: smooth scrolling on phones */

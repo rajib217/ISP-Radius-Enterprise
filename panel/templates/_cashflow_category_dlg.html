@@ -1,0 +1,18 @@
+{% if can('accounting', 'edit') and (can_fn('cfc.add') or can_fn('cfc.edit')) %}
+<dialog class="modal" id="cfc-dlg" aria-labelledby="cfc-title">
+  <form method="post" action="{{ url_for('cashflow_category_save') }}">
+    {{ csrf_input() }}<input type="hidden" name="id"><input type="hidden" name="next" value="{{ request.full_path }}">
+    <div class="modal-head"><h2 id="cfc-title" data-title data-title-new="Add category" data-title-edit="Edit category">Add category</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body">
+      <div class="grid-2">
+        <div class="field"><label class="lbl" for="cfc-kind">Type</label>
+          <select id="cfc-kind" name="kind" required><option value="income">Income</option><option value="expense" selected>Expense</option></select></div>
+        <div class="field"><label class="lbl" for="cfc-name">Name</label><input id="cfc-name" name="name" maxlength="64" required></div>
+        <div class="field" style="grid-column:1/-1"><label class="lbl" for="cfc-note">Note</label><input id="cfc-note" name="note" maxlength="255"></div>
+      </div>
+      <p class="muted" data-new-hide style="margin:10px 0 0">Renaming a category also renames it on every entry that uses it.</p>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save</button></div>
+  </form>
+</dialog>
+{% endif %}

@@ -2152,3 +2152,26 @@ html.hover-menu:not(.menu-ready) .nav-group[open] > summary > .i:last-child { tr
   .ph-tabs.pp-tabs a { padding: 8px 11px; font-size: 13px; }
   .ph-rows { padding: 0 16px 6px; }
 }
+
+/* filter dialogs (Payments, Cashflow) and the Cashflow list */
+.f-count { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; margin-left: 4px; border-radius: 99px;
+  background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; }
+.f-range { display: flex; gap: 8px; align-items: center; }
+.f-range input { flex: 1; min-width: 0; }
+.f-foot { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.f-foot .f-gap { flex: 1; }
+.f-chips { padding-top: 10px; padding-bottom: 0; }
+.f-chips .chip b { margin-left: 6px; }
+.cf-kind { display: inline-block; padding: 2px 10px; border-radius: 8px; font-size: 12.5px; font-weight: 600; }
+.cf-kind.income { background: color-mix(in srgb, #16a34a 14%, transparent); color: #15803d; }
+.cf-kind.expense { background: color-mix(in srgb, #dc2626 14%, transparent); color: #b91c1c; }
+:root[data-theme="dark"] .cf-kind.income { color: #4ade80; }
+:root[data-theme="dark"] .cf-kind.expense { color: #f87171; }
+.cf-amt.income { color: #15803d; font-weight: 700; }
+.cf-amt.expense { color: #b91c1c; font-weight: 700; }
+:root[data-theme="dark"] .cf-amt.income { color: #4ade80; }
+:root[data-theme="dark"] .cf-amt.expense { color: #f87171; }
+.cf-auto { font-size: 11.5px; }
+.tbl.compact td, .tbl.compact th { padding-top: 6px; padding-bottom: 6px; }
+.cf-totals { display: flex; gap: 10px; flex-wrap: wrap; }
+.cf-totals .chip b { margin-left: 6px; }

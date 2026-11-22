@@ -1682,6 +1682,80 @@ def check_rules(flask_app, ids):
           "USB GSM modem as the SMS gateway: the service sends the waiting customer SMS (2 a round), retries a refused one, "
           "the HTTP sender leaves them alone, and Settings > SMS shows the modem (%s %s)"
           % (_sm.sent if _sm else None, {k: (v["status"], v["tries"]) for k, v in _ob.items()}))
+
+    # ---- Payments > Filter: whose customers paid (Own / a type / one person of that type)
+    _adm = client(ids["admin"])
+    _rs_name = one("SELECT username FROM panel_admins WHERE id = %s", (ids["reseller"],))["username"]
+    _rs_cust = one("SELECT id, username FROM subscribers WHERE created_by = %s ORDER BY id LIMIT 1", (_rs_name,))
+    _own_cust = one("SELECT id, username FROM subscribers WHERE created_by NOT IN (SELECT username FROM panel_admins "
+                    "WHERE role IN ('reseller', 'subreseller', 'retailer')) ORDER BY id LIMIT 1")
+    for _c in (_rs_cust, _own_cust):
+        run("INSERT INTO payments (subscriber_id, username, amount, days_added, method, note, received_by) "
+            "VALUES (%s, %s, 11, 0, 'cash', 'ci-pf', 'admin')", (_c["id"], _c["username"]))
+    _pf_res = _adm.get("/payments?q=ci-pf&ptype=reseller&owner=%s" % _rs_name).get_data(as_text=True)
+    _pf_type = _adm.get("/payments?q=ci-pf&ptype=reseller").get_data(as_text=True)
+    _pf_own = _adm.get("/payments?q=ci-pf&ptype=own").get_data(as_text=True)
+    _pf_wrong = _adm.get("/payments?q=ci-pf&ptype=retailer&owner=%s" % _rs_name).get_data(as_text=True)
+    _pf_all = _adm.get("/payments").get_data(as_text=True)
+    _ub = lambda u: '<b class="mono">%s</b>' % u
+    check(_ub(_rs_cust["username"]) in _pf_res and _ub(_own_cust["username"]) not in _pf_res
+          and _ub(_rs_cust["username"]) in _pf_type and _ub(_own_cust["username"]) not in _pf_type
+          and _ub(_own_cust["username"]) in _pf_own and _ub(_rs_cust["username"]) not in _pf_own
+          and "No payments found" in _pf_wrong
+          and 'id="payf-dlg"' in _pf_all and 'data-follows="ptype"' in _pf_all and 'data-tier="reseller"' in _pf_all
+          and "data-copy-url" in _pf_all and 'class="f-count"' in _pf_res,
+          "Payments filter: Profile Type (own / reseller / one reseller) shows only those customers' payments")
+    run("DELETE FROM payments WHERE note = 'ci-pf'")
+
+    # ---- Accounting > Cashflow: income and expenses in one book, reseller balance topups as User Payment
+    _menu = side_menu(_adm.get("/").get_data(as_text=True))
+    _r1 = _adm.post("/cashflow/save", data={"_csrf": "ci", "kind": "income", "spent_on": date.today().isoformat(),
+                                            "category": "Installation fee", "amount": "1234.50", "profile": _rs_name,
+                                            "method": "cash", "note": "ci-cf income"})
+    _adm.post("/cashflow/save", data={"_csrf": "ci", "kind": "expense", "spent_on": date.today().isoformat(),
+                                      "category": "CI Generator fuel", "amount": "300", "method": "cash", "note": "ci-cf expense"})
+    _bad = _adm.post("/cashflow/save", data={"_csrf": "ci", "kind": "income", "category": "X", "amount": "5", "profile": "nobody-here"})
+    _inc = one("SELECT * FROM expenses WHERE note = 'ci-cf income'")
+    _exp = one("SELECT * FROM expenses WHERE note = 'ci-cf expense'")
+    _newcat = one("SELECT id FROM cashflow_categories WHERE kind = 'expense' AND name = 'CI Generator fuel'")
+    run("INSERT INTO user_ledger (user_id, amount, balance_after, method, note, created_by) VALUES (%s, 777, 777, 'cash', 'ci-cf top', 'admin')",
+        (ids["reseller"],))
+    _top = one("SELECT id FROM user_ledger WHERE note = 'ci-cf top'")["id"]
+    run("INSERT INTO user_ledger (user_id, amount, balance_after, method, note, created_by) VALUES (%s, 55, 55, 'transfer', 'ci-cf move', %s)",
+        (ids["subreseller"], _rs_name))
+    _move = one("SELECT id FROM user_ledger WHERE note = 'ci-cf move'")["id"]
+    _cf = _adm.get("/cashflow").get_data(as_text=True)
+    _cf_exp = _adm.get("/cashflow?type=expense").get_data(as_text=True)
+    _cf_cat = _adm.get("/cashflow?type=income&category=User+Payment").get_data(as_text=True)
+    _csv = _adm.get("/cashflow.csv").get_data(as_text=True)
+    _xl = _adm.get("/cashflow.xlsx")
+    _old = _adm.get("/expenses")
+    _cats = _adm.get("/cashflow/categories").get_data(as_text=True)
+    _del_used = _adm.post("/cashflow/categories/%d/delete" % _newcat["id"], data={"_csrf": "ci"}) if _newcat else None
+    _still = one("SELECT id FROM cashflow_categories WHERE id = %s", (_newcat["id"],)) if _newcat else None
+    _adm.post("/cashflow/categories/save", data={"_csrf": "ci", "id": str(_newcat["id"]) if _newcat else "", "kind": "expense",
+                                                 "name": "CI Diesel"})
+    _renamed = one("SELECT category FROM expenses WHERE id = %s", (_exp["id"],))["category"] if _exp else ""
+    _sum = _adm.get("/accounting/summary")
+    check(_r1.status_code == 302 and _inc and _inc["kind"] == "income" and _inc["profile"] == _rs_name
+          and _exp and _exp["kind"] == "expense" and _newcat and not one("SELECT id FROM expenses WHERE category = 'X'")
+          and _bad.status_code == 302
+          and 'href="/cashflow"' in _menu and 'href="/expenses"' not in _menu
+          and "CF%d" % _inc["id"] in _cf and "CF%d" % _exp["id"] in _cf and "TOP%d" % _top in _cf and "TOP%d" % _move not in _cf
+          and "User Balance Topup" in _cf and 'id="cff-dlg"' in _cf and 'id="cf-dlg"' in _cf and "data-compact-for" in _cf
+          and "CF%d" % _exp["id"] in _cf_exp and "CF%d" % _inc["id"] not in _cf_exp and "TOP%d" % _top not in _cf_exp
+          and "TOP%d" % _top in _cf_cat and "CF%d" % _inc["id"] not in _cf_cat
+          and "ci-cf income" in _csv and "User Balance Topup" in _csv and _xl.status_code == 200 and _xl.data[:2] == b"PK"
+          and _old.status_code == 302 and "/cashflow?type=expense" in _old.headers.get("Location", "")
+          and "CI Generator fuel" in _cats and _still and _renamed == "CI Diesel" and _sum.status_code == 200,
+          "Cashflow: income and expense entries, reseller balance topups as User Payment (not seller-to-seller moves), "
+          "filters, export, categories (in use cannot be deleted; a rename follows on the entries)")
+    _rc = client(ids["reseller"])
+    check(_rc.get("/cashflow").status_code == 403 and _rc.post("/cashflow/save", data={"_csrf": "ci", "kind": "income",
+          "category": "X", "amount": "5"}).status_code == 403, "resellers never open the company's Cashflow")
+    run("DELETE FROM expenses WHERE note IN ('ci-cf income', 'ci-cf expense')")
+    run("DELETE FROM cashflow_categories WHERE name IN ('CI Generator fuel', 'CI Diesel')")
+    run("DELETE FROM user_ledger WHERE note IN ('ci-cf top', 'ci-cf move')")
     return bad
 
 

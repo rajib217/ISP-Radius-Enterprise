@@ -202,19 +202,24 @@ def my_downline():
     if g.me["role"] not in SELLER_ROLES:
         return None
     if "downline" not in g:
-        rows = q("SELECT id, username, parent_id FROM panel_admins")
-        kids = {}
-        for r in rows:
-            kids.setdefault(r["parent_id"], []).append(r)
-        names, todo, seen = [g.me["username"]], [g.me["id"]], {g.me["id"]}
-        while todo:
-            for r in kids.get(todo.pop(), []):
-                if r["id"] not in seen:
-                    seen.add(r["id"])
-                    names.append(r["username"])
-                    todo.append(r["id"])
-        g.downline = names
+        g.downline = downline_of(g.me["id"], g.me["username"])
     return g.downline
+
+
+def downline_of(uid, username):
+    """A panel user's username and the usernames of everyone below them (any depth)."""
+    rows = q("SELECT id, username, parent_id FROM panel_admins")
+    kids = {}
+    for r in rows:
+        kids.setdefault(r["parent_id"], []).append(r)
+    names, todo, seen = [username], [uid], {uid}
+    while todo:
+        for r in kids.get(todo.pop(), []):
+            if r["id"] not in seen:
+                seen.add(r["id"])
+                names.append(r["username"])
+                todo.append(r["id"])
+    return names
 
 
 def seller_pays(amount, note, method="transfer"):

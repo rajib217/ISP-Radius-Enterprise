@@ -802,3 +802,29 @@ CREATE TABLE IF NOT EXISTS gsm_inbox (
   received_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY idx_received (received_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Accounting > Cashflow: the company's own income and expenses in one book. The expenses table holds both (kind says
+-- which; rows from before Cashflow are expenses). profile = the panel user an entry is about (optional).
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS kind ENUM('income','expense') NOT NULL DEFAULT 'expense';
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS profile VARCHAR(64) NOT NULL DEFAULT '';
+CREATE TABLE IF NOT EXISTS cashflow_categories (
+  id         INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  kind       ENUM('income','expense') NOT NULL DEFAULT 'expense',
+  name       VARCHAR(64)  NOT NULL,
+  note       VARCHAR(255) NOT NULL DEFAULT '',
+  created_by VARCHAR(64)  NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_kind_name (kind, name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- the starting list, once (a category deleted later does not come back on the next update)
+INSERT INTO cashflow_categories (kind, name)
+  SELECT d.kind, d.name FROM (
+    SELECT 'income' AS kind, 'User Payment' AS name UNION ALL SELECT 'income', 'Installation fee'
+    UNION ALL SELECT 'income', 'Device sale' UNION ALL SELECT 'income', 'Other income'
+    UNION ALL SELECT 'expense', 'Bandwidth / upstream' UNION ALL SELECT 'expense', 'Salary'
+    UNION ALL SELECT 'expense', 'Electricity' UNION ALL SELECT 'expense', 'Rent' UNION ALL SELECT 'expense', 'Equipment'
+    UNION ALL SELECT 'expense', 'Maintenance' UNION ALL SELECT 'expense', 'Transport' UNION ALL SELECT 'expense', 'Marketing'
+    UNION ALL SELECT 'expense', 'Tax / license' UNION ALL SELECT 'expense', 'Other') d
+  WHERE NOT EXISTS (SELECT 1 FROM cashflow_categories);
+-- categories already used by entries are on the list
+INSERT IGNORE INTO cashflow_categories (kind, name) SELECT DISTINCT kind, category FROM expenses WHERE category <> '';
