@@ -754,7 +754,7 @@ usermod -aG dialout isp-panel 2>/dev/null || true
 # keeps off their ports, and the ZTE 19d2:1589 stick gets its serial driver (see deploy/99-isp-panel-gsm.rules)
 install -m 644 "$SRC_DIR/deploy/99-isp-panel-gsm.rules" /etc/udev/rules.d/99-isp-panel-gsm.rules
 udevadm control --reload-rules 2>/dev/null || true
-udevadm trigger --subsystem-match=usb --action=add 2>/dev/null || true
+udevadm trigger --subsystem-match=usb --attr-match=idVendor=19d2 --attr-match=idProduct=1589 --action=add 2>/dev/null || true
 udevadm trigger --subsystem-match=tty 2>/dev/null || true
 
 cat > /etc/systemd/system/isp-panel-maint.service <<'EOF'

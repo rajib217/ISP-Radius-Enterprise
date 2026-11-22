@@ -379,14 +379,18 @@ def cashflow_topup_correct(lid):
     if len(reason) < 3:
         flash("Write why it is being corrected (for example: typed 5000 instead of 500). Nothing was changed.", "error")
         return _back()
-    net = round(float(top["net"]), 2)
-    diff = round(right - net, 2)
-    if not diff:
-        flash("TOP%d is already %.2f. Nothing was changed." % (lid, net), "info")
-        return _back()
     with core.get_db().cursor() as cur:
+        # every correction of this person's recharges locks their balance row first, so they run one after another and
+        # each sees the ones before it (a double click does not take the difference twice)
         cur.execute("SELECT balance FROM panel_admins WHERE id = %s FOR UPDATE", (top["user_id"],))
         bal = round(float(cur.fetchone()["balance"] or 0), 2)
+        cur.execute("SELECT COALESCE(SUM(amount), 0) AS adj FROM user_ledger WHERE method = 'correction' AND ref_id = %s", (lid,))
+        net = round(float(top["amount"]) + float(cur.fetchone()["adj"] or 0), 2)
+        diff = round(right - net, 2)
+        if not diff:
+            core.get_db().rollback()
+            flash("TOP%d is already %.2f. Nothing was changed." % (lid, net), "info")
+            return _back()
         new = round(bal + diff, 2)
         if new < 0 and f.get("allow_negative") != "1":
             core.get_db().rollback()
@@ -525,6 +529,9 @@ def cashflow_category_save():
         return _back()
     if cid:
         old = q("SELECT kind, name FROM cashflow_categories WHERE id = %s", (cid,), one=True) or abort(404)
+        if (old["kind"], old["name"]) == ("income", TOPUP_CATEGORY) and (kind, name) != (old["kind"], old["name"]):
+            flash("%s holds every reseller balance topup, so it keeps its name and type. Only its note can change." % TOPUP_CATEGORY, "error")
+            return _back()
         x("UPDATE cashflow_categories SET kind = %s, name = %s, note = %s WHERE id = %s", (kind, name, f.get("note", "").strip()[:255], cid))
         # entries keep up with a renamed category
         x("UPDATE expenses SET kind = %s, category = %s WHERE kind = %s AND category = %s", (kind, name, old["kind"], old["name"]))
@@ -541,6 +548,9 @@ def cashflow_category_save():
 def cashflow_category_delete(cid):
     _company_only()
     row = q("SELECT kind, name FROM cashflow_categories WHERE id = %s", (cid,), one=True) or abort(404)
+    if (row["kind"], row["name"]) == ("income", TOPUP_CATEGORY):
+        flash("%s holds every reseller balance topup and cannot be deleted." % TOPUP_CATEGORY, "error")
+        return _back()
     used = q("SELECT COUNT(*) AS c FROM expenses WHERE kind = %s AND category = %s", (row["kind"], row["name"]), one=True)["c"]
     if used:
         flash("%s is used by %d entr%s. Move them to another category first." % (row["name"], used, "y" if used == 1 else "ies"), "error")

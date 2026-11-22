@@ -698,7 +698,12 @@
         sel.disabled = !any;
       };
       lead.addEventListener("change", function () { sel.value = ""; sync(); });
+      form.addEventListener("synced", sync);
       sync();
+    });
+    window.addEventListener("pageshow", function () {     /* Back button: the fields switched off on submit come back */
+      $$("[name]", form).forEach(function (el) { el.disabled = false; });
+      form.dispatchEvent(new Event("synced"));
     });
     form.addEventListener("submit", function () {
       $$("[name]", form).forEach(function (el) { if (!el.value) el.disabled = true; });

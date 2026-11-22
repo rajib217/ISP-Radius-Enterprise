@@ -1762,6 +1762,10 @@ def check_rules(flask_app, ids):
                                                  "name": "CI Diesel"})
     _renamed = one("SELECT category FROM expenses WHERE id = %s", (_exp["id"],))["category"] if _exp else ""
     _sum = _adm.get("/accounting/summary")
+    _up = one("SELECT id FROM cashflow_categories WHERE kind = 'income' AND name = 'User Payment'")
+    _up_ren = _adm.post("/cashflow/categories/save", data={"_csrf": "ci", "id": str(_up["id"]), "kind": "income", "name": "CI Topups"}) if _up else None
+    _up_del = _adm.post("/cashflow/categories/%d/delete" % _up["id"], data={"_csrf": "ci"}) if _up else None
+    _up_kept = one("SELECT name FROM cashflow_categories WHERE id = %s", (_up["id"],)) if _up else None
     check(_r1.status_code == 302 and _inc and _inc["kind"] == "income" and _inc["profile"] == _rs_name
           and _exp and _exp["kind"] == "expense" and _newcat and not one("SELECT id FROM expenses WHERE category = 'X'")
           and _bad.status_code == 302
@@ -1772,7 +1776,8 @@ def check_rules(flask_app, ids):
           and "TOP%d" % _top in _cf_cat and "CF%d" % _inc["id"] not in _cf_cat
           and "ci-cf income" in _csv and "User Balance Topup" in _csv and _xl.status_code == 200 and _xl.data[:2] == b"PK"
           and _old.status_code == 302 and "/cashflow?type=expense" in _old.headers.get("Location", "")
-          and "CI Generator fuel" in _cats and _still and _renamed == "CI Diesel" and _sum.status_code == 200,
+          and "CI Generator fuel" in _cats and _still and _renamed == "CI Diesel" and _sum.status_code == 200
+          and _up_ren.status_code == 302 and _up_del.status_code == 302 and _up_kept and _up_kept["name"] == "User Payment",
           "Cashflow: income and expense entries, reseller balance topups as User Payment (not seller-to-seller moves), "
           "filters, export, categories (in use cannot be deleted; a rename follows on the entries)")
     _rc = client(ids["reseller"])
@@ -1788,6 +1793,8 @@ def check_rules(flask_app, ids):
     _no_reason = _adm.post(_fix_url, data={"_csrf": "ci", "amount": "700", "reason": ""})
     _n_after_bad = one("SELECT COUNT(*) AS c FROM user_ledger WHERE ref_id = %s", (_top,))["c"]
     _adm.post(_fix_url, data={"_csrf": "ci", "amount": "700", "reason": "typed 777 instead of 700"})
+    _adm.post(_fix_url, data={"_csrf": "ci", "amount": "700", "reason": "typed 777 instead of 700"})     # pressed twice
+    _n_dup = one("SELECT COUNT(*) AS c FROM user_ledger WHERE ref_id = %s", (_top,))["c"]
     _c1 = one("SELECT amount, balance_after, method FROM user_ledger WHERE ref_id = %s ORDER BY id DESC LIMIT 1", (_top,))
     _bal1 = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
     _too_far = _adm.post(_fix_url, data={"_csrf": "ci", "amount": "0", "reason": "given by mistake"})
@@ -1803,7 +1810,7 @@ def check_rules(flask_app, ids):
           and "Recharged to %s" % _rs_name in _pp and "777.00" in _pp and ("acct=%s" % _rs_name) in _pp
           and 'data-follows="ptype"' in _cf and "TOP%d" % _top in _pp_type and "TOP%d" % _top not in _pp_wrong,
           "Cashflow profile filter: one reseller's recharges, the total and balance table, and links to their ledger")
-    check(_no_reason.status_code == 302 and _n_after_bad == 0
+    check(_no_reason.status_code == 302 and _n_after_bad == 0 and _n_dup == 1
           and _c1 and _c1["method"] == "correction" and float(_c1["amount"]) == -77 and abs(_bal1 - 23) < 0.001
           and _n_far == 1 and abs(_bal2 - (-677)) < 0.001
           and "700.00" in _cf_fixed and "cf-was" in _cf_fixed and "777.00" in _cf_fixed

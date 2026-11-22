@@ -182,7 +182,7 @@ if [[ -f "$SRC_DIR/deploy/99-isp-panel-gsm.rules" ]] && ! cmp -s "$SRC_DIR/deplo
   c_ok "Updating the USB GSM modem rules"
   install -m 644 "$SRC_DIR/deploy/99-isp-panel-gsm.rules" "$GSM_RULES"
   udevadm control --reload-rules 2>/dev/null || true
-  udevadm trigger --subsystem-match=usb --action=add 2>/dev/null || true
+  udevadm trigger --subsystem-match=usb --attr-match=idVendor=19d2 --attr-match=idProduct=1589 --action=add 2>/dev/null || true
   udevadm trigger --subsystem-match=tty 2>/dev/null || true
 fi
 
