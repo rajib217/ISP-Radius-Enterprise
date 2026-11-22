@@ -9,7 +9,7 @@ DEFAULT_SETTINGS = {
     # expired customers: kept online in the "expired-notice" RADIUS group (MikroTik address list "expired") and shown
     # the unpaid-bill page (mod_expired.py) instead of being refused
     "expired_notice_on": "0", "expired_notice_phone": "", "expired_notice_msg": "", "expired_notice_rate": "256k/256k",
-    "expired_notice_bkash": "1", "expired_notice_server": "",
+    "expired_notice_bkash": "1", "expired_notice_server": "", "expired_notice_hours": "0",
     "isp_name": "My ISP",
     "currency": "BDT",
     "interim_interval": "600",   # seconds, sent to routers as Acct-Interim-Interval

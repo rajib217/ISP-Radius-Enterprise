@@ -82,6 +82,12 @@
     .call { background: linear-gradient(135deg, var(--accent), #1d4ed8); color: #fff; box-shadow: 0 12px 24px -12px var(--accent); }
     .ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); min-height: 48px; font-size: 15.5px; }
 
+    .until { margin-top: 12px; padding: 12px 14px; border-radius: 12px; background: var(--warnbg); display: flex; gap: 10px;
+      font-size: 14px; line-height: 1.5; }
+    .until svg { flex: none; width: 20px; height: 20px; margin-top: 1px; color: var(--warn); }
+    .until small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+    .err { margin: 16px 20px 0; padding: 12px 14px; border-radius: 12px; background: var(--badbg); color: var(--bad); font-weight: 700;
+      font-size: 14.5px; text-align: center; }
     .tip { margin: 14px 20px 0; padding: 12px 14px; border-radius: 14px; background: var(--warnbg); color: var(--ink);
       display: flex; gap: 10px; font-size: 14.5px; }
     .tip svg { flex: none; width: 20px; height: 20px; margin-top: 2px; color: var(--warn); }
@@ -136,11 +142,14 @@
         {% if info.ended %}<div class="{{ 'wide' if not info.balance }}"><dt>মেয়াদ শেষ</dt><dd>{{ info.ended.strftime('%d-%m-%Y, %I:%M %p') }}</dd></div>{% endif %}
         {% if info.balance %}<div><dt>আপনার ব্যালেন্স</dt><dd>{{ currency }} {{ '%.2f' % info.balance }}</dd></div>{% endif %}
       </dl>
+      {% if info.until %}<div class="until"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <div><b>{{ info.until.strftime('%d-%m-%Y, %I:%M %p') }}</b> পর্যন্ত এই কম স্পীডে bKash-এ বিল দিতে পারবেন।<small>এরপর সংযোগ পুরো বন্ধ হবে, তখন অফিসে ফোন করে চালু করতে হবে।</small></div></div>{% endif %}
     </section>
     {% endif %}
 
+    {% if pay_error %}<p class="err" role="alert">{{ pay_error }}</p>{% endif %}
     <div class="acts">
-      {% if pay_url %}<a class="btn pay" href="{{ pay_url }}">
+      {% if pay_url %}<a class="btn pay" href="{{ '?pay=1' if direct else pay_url }}" rel="nofollow">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
         bKash-এ বিল পরিশোধ করুন</a>{% endif %}
       {% if phone %}<a class="btn call" href="tel:{{ phone|replace(' ', '') }}">
@@ -158,13 +167,14 @@
 
     <p class="steps-h">কীভাবে আবার চালু করবেন</p>
     <ol class="steps">
-      {% if pay_url %}<li>উপরের গোলাপি বাটনে চাপ দিয়ে ইউজার আইডি ও পাসওয়ার্ড দিয়ে লগইন করুন, তারপর bKash-এ বিল দিন।</li>
+      {% if pay_url and direct %}<li>গোলাপি বাটনে চাপ দিন, bKash খুলবে। আপনার bKash নম্বর, OTP আর PIN দিয়ে বিল দিন। লগইন লাগবে না।</li>
+      {% elif pay_url %}<li>উপরের গোলাপি বাটনে চাপ দিয়ে ইউজার আইডি ও পাসওয়ার্ড দিয়ে লগইন করুন, তারপর bKash-এ বিল দিন।</li>
       {% else %}<li>অফিসে ফোন করে বা গিয়ে বিল পরিশোধ করুন।</li>{% endif %}
       <li>পরিশোধের পর কয়েক মিনিটের মধ্যে ইন্টারনেট নিজে থেকেই চালু হবে।</li>
       <li>চালু না হলে রাউটার একবার বন্ধ করে আবার চালু করুন।</li>
     </ol>
 
-    <p class="foot">{% if pay_url %}bKash-এ পরিশোধের জন্য আপনার ইউজার আইডি ও পাসওয়ার্ড দিয়ে লগইন করুন।{% else %}বিল পরিশোধের জন্য অফিসে যোগাযোগ করুন।{% endif %}
+    <p class="foot">{% if pay_url and direct %}bKash-এ পরিশোধ হলেই প্যাকেজ নিজে থেকে চালু হয়ে যাবে।{% elif pay_url %}bKash-এ পরিশোধের জন্য আপনার ইউজার আইডি ও পাসওয়ার্ড দিয়ে লগইন করুন।{% else %}বিল পরিশোধের জন্য অফিসে যোগাযোগ করুন।{% endif %}
       <small>Your internet bill is unpaid. Please pay or call the office.</small></p>
   </main>
   <p class="credit">{{ isp }}</p>

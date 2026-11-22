@@ -37,6 +37,11 @@ def _sub():
     sid = session.get("cid")
     if not sid:
         return None
+    return sub_row(sid)
+
+
+def sub_row(sid):
+    """One customer with the plan columns pay_terms needs (also used by the expired notice page's bKash button)."""
     return q("SELECT s.*, p.label AS plan_label, p.name AS plan_name, p.price AS plan_price, p.validity_days, "
              "p.download_mbps, p.upload_mbps, p.quota_total_gb FROM subscribers s "
              "LEFT JOIN plans p ON p.id = s.plan_id WHERE s.id = %s", (sid,), one=True)
@@ -427,7 +432,7 @@ def portal_pay():
                  (sub["id"], t["amount"], t["fee"], t["days"], token))
     commit()
     try:
-        data = bkash.create("portal", tid, t["amount"] + t["fee"], sub["username"],
+        data = bkash.create("portal", tid, t["amount"] + t["fee"], sub["id"],      # reference: the subscriber ID
                             mod_topup.callback_url("portal_bkash", tid=tid, key=token), "PRT%d" % tid)
     except bkash.BkashError as e:
         x("UPDATE portal_payments SET status = 'failed', message = %s WHERE id = %s", (str(e)[:255], tid))

@@ -51,11 +51,55 @@ def _pay_url(s):
     return ""
 
 
+PAY_TRIES = 5          # bKash payments one customer may start from the page in 10 minutes
+
+
+def _start_bkash(sub):
+    """The notice page's bKash button: start the portal's bKash checkout for the customer on this IP, no portal sign-in.
+    The subscriber ID goes to bKash as the payer reference; when bKash confirms, the package renews at once (the same
+    rules as the portal: mod_portal.portal_bkash / bkash.settle_portal). Returns a redirect, or the reason it cannot."""
+    import secrets
+    import bkash
+    import mod_portal
+    import mod_topup
+    from core import insert, x
+    row = mod_portal.sub_row(sub["id"])
+    t = mod_portal.pay_terms(row) if row else {"ok": False, "why": ""}
+    if not t["ok"]:
+        return t["why"] or "Online payment is not available. Please call the office."
+    tries = q("SELECT COUNT(*) AS c FROM portal_payments WHERE subscriber_id = %s AND created_at > NOW() - INTERVAL 10 MINUTE",
+              (row["id"],), one=True)["c"]
+    if tries >= PAY_TRIES:
+        return "অনেকবার চেষ্টা করা হয়েছে। ১০ মিনিট পর আবার চেষ্টা করুন।"
+    token = secrets.token_hex(16)
+    tid = insert("INSERT INTO portal_payments (subscriber_id, amount, fee, days, token) VALUES (%s, %s, %s, %s, %s)",
+                 (row["id"], t["amount"], t["fee"], t["days"], token))
+    commit()
+    try:
+        data = bkash.create("portal", tid, t["amount"] + t["fee"], row["id"],
+                            mod_topup.callback_url("portal_bkash", tid=tid, key=token), "PRT%d" % tid)
+    except bkash.BkashError as e:
+        x("UPDATE portal_payments SET status = 'failed', message = %s WHERE id = %s", (str(e)[:255], tid))
+        commit()
+        return "bKash পেমেন্ট শুরু করা যায়নি। একটু পরে আবার চেষ্টা করুন বা অফিসে ফোন করুন।"
+    x("UPDATE portal_payments SET payment_id = %s WHERE id = %s", (data["paymentID"], tid))
+    audit("notice_bkash_started", row["username"], "%.2f" % (t["amount"] + t["fee"]), who=row["username"])
+    commit()
+    return redirect(data["bkashURL"])
+
+
+def _hours(s):
+    try:
+        return max(0, int(s.get("expired_notice_hours") or 0))
+    except ValueError:
+        return 0
+
+
 @route("/expired-notice")
 def expired_notice():
     s = cfg()
     sub, plan = _customer_by_ip(request.remote_addr)
-    info = None
+    info, pay_error = None, ""
     if request.args.get("preview") == "1" and session.get("uid"):          # Settings > Expired notice: Preview
         info = {"id": 1024, "name": "Labib Hasan", "username": "labib@ahammedpur", "plan": "10 Mbps Home",
                 "ended": datetime.now() - timedelta(hours=5), "amount": 500.0, "balance": 0.0}
@@ -68,9 +112,20 @@ def expired_notice():
             info = {"id": sub["id"], "name": sub.get("full_name") or "", "username": sub["username"],
                     "plan": (plan or {}).get("label") or (plan or {}).get("name") or "",
                     "ended": end, "amount": max(round(price - bal, 2), 0.0), "balance": bal}
+            if request.args.get("pay") == "1" and _pay_url(s):
+                res = _start_bkash(sub)
+                if not isinstance(res, str):
+                    return res
+                pay_error = res
+    hours = _hours(s)
+    if info and info.get("ended") and hours:
+        info["until"] = info["ended"] + timedelta(hours=hours)
+    # a customer found by IP pays straight from this page (bKash opens, no portal sign-in); otherwise the portal
+    direct = bool(info and _pay_url(s))
     import mod_settings
     html = render_template("expired_notice.html", s=s, info=info, phone=s.get("expired_notice_phone") or s.get("support_phone") or "",
-                           message=s.get("expired_notice_msg") or DEFAULT_MSG, pay_url=_pay_url(s),
+                           message=s.get("expired_notice_msg") or DEFAULT_MSG, pay_url=_pay_url(s), direct=direct,
+                           pay_error=pay_error,
                            isp=s.get("isp_name") or "", brand=mod_settings.brand_urls(), currency=s.get("currency") or "BDT",
                            id_ref=s.get("bksms_on") == "1")
     return Response(html, headers={"Cache-Control": "no-store, max-age=0"})
@@ -128,6 +183,12 @@ def settings_expired():
         f = request.form
         rate = f.get("expired_notice_rate", "").strip()[:64]
         server = f.get("expired_notice_server", "").strip()[:64]
+        try:
+            hours = int(f.get("expired_notice_hours", "").strip() or 0)
+            assert 0 <= hours <= 720
+        except (ValueError, AssertionError):
+            flash("How long must be 0 to 720 hours (0 = no limit). Nothing was saved.", "error")
+            return redirect(url_for("settings_expired"))
         if rate and not core.RATE_RE.match(rate):
             flash("The speed looks like 256k/256k. Nothing was saved.", "error")
             return redirect(url_for("settings_expired"))
@@ -141,7 +202,7 @@ def settings_expired():
                "expired_notice_bkash": "1" if f.get("expired_notice_bkash") == "1" else "0",
                "expired_notice_phone": f.get("expired_notice_phone", "").strip()[:32],
                "expired_notice_msg": f.get("expired_notice_msg", "").strip()[:500],
-               "expired_notice_rate": rate, "expired_notice_server": server}
+               "expired_notice_rate": rate, "expired_notice_server": server, "expired_notice_hours": str(hours)}
         import db
         with get_db().cursor() as cur:
             for k, v in new.items():

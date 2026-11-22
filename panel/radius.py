@@ -7,7 +7,7 @@ radgroupreply tables so FreeRADIUS never has to know about the panel.
 import ipaddress
 import re
 import subprocess
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -94,6 +94,17 @@ def expired_notice_group(cur):
     return EXPIRED_GROUP if row and row["svalue"] == "1" else ""
 
 
+def notice_hours(cur):
+    """Settings > Expired notice > "How long": hours after the end moment an expired customer keeps the slow speed and
+    the notice page (time to pay by bKash). After that they are refused like any expired account. 0 = no limit."""
+    cur.execute("SELECT svalue FROM settings WHERE skey = 'expired_notice_hours'")
+    row = cur.fetchone()
+    try:
+        return max(0, int((row or {}).get("svalue") or 0))
+    except ValueError:
+        return 0
+
+
 def ensure_expired_group(cur, rate=""):
     """(Re)write the RADIUS reply of the notice group: put the customer in the router's "expired" address list, at a
     small speed so the notice page and bKash still open."""
@@ -151,8 +162,14 @@ def sync_subscriber(cur, username, plan, status, expiry, static_ip, password=Non
     plan = plan or {}
     # ended = the package's own end moment has passed (not only the date: an account that ends at 14:00 is expired at
     # 14:00, so its next login already lands in the expired policy / notice page)
-    expired = bool(expiry and datetime.combine(expiry, _clock_time(at) or time(23, 59, 59)) <= datetime.now())
-    expired_policy = plan.get("expired_policy") or expired_notice_group(cur)
+    ends = datetime.combine(expiry, _clock_time(at) or time(23, 59, 59)) if expiry else None
+    expired = bool(ends and ends <= datetime.now())
+    expired_policy = plan.get("expired_policy") or ""
+    if expired and not expired_policy:
+        expired_policy = expired_notice_group(cur)
+        hours = notice_hours(cur) if expired_policy else 0
+        if hours and ends + timedelta(hours=hours) <= datetime.now():
+            expired_policy = ""          # the time to pay from the notice page is over: refused, call the office
     restricted, reject = "", False       # a policy that replaces the plan's group, or an outright refusal
     if status == "suspended":
         restricted = plan.get("disabled_policy") or ""

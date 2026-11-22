@@ -1114,6 +1114,72 @@ def check_rules(flask_app, ids):
     _sp = _set.get("/settings/expired-notice").get_data(as_text=True)
     check("to-addresses=10.20.30.40 to-ports=8099" in _sp and "src-address-list=expired" in _sp and "pay.bka.sh" in _sp,
           "Settings > Expired notice shows the MikroTik commands for this server")
+    # ---- notice page bKash button: checkout opens straight away for the customer on this IP (no portal sign-in)
+    import bkash as _bk2
+    run("REPLACE INTO settings (skey, svalue) VALUES ('bkash_on', '1'), ('bkash_key', 'k'), ('bkash_secret', 's'), "
+        "('bkash_user', 'u'), ('bkash_pass', 'p'), ('sub_self_activation', '1'), ('portal_on', '1'), "
+        "('bkash_callback_base', 'https://panel.ci.test')")
+    _made = []
+    _real_create = _bk2.create
+
+    def _fake_create(flow, ref, amount, payer, callback, invoice):
+        _made.append({"payer": payer, "callback": callback, "amount": amount})
+        return {"paymentID": "CINOTICE%d" % ref, "bkashURL": "https://sandbox.payment.bkash.com/redirect/ci"}
+    _bk2.create = _fake_create
+    try:
+        _np = _anon.get("/expired-notice", environ_base={"REMOTE_ADDR": _ip}).get_data(as_text=True)
+        _go = _anon.get("/expired-notice?pay=1", environ_base={"REMOTE_ADDR": _ip})
+        _stranger = _anon.get("/expired-notice?pay=1", environ_base={"REMOTE_ADDR": "192.0.2.77"})
+    finally:
+        _bk2.create = _real_create
+    _prow = one("SELECT * FROM portal_payments WHERE subscriber_id = %s ORDER BY id DESC LIMIT 1", (_ex["id"],))
+    check('href="?pay=1"' in _np and _go.status_code == 302
+          and _go.headers.get("Location") == "https://sandbox.payment.bkash.com/redirect/ci"
+          and len(_made) == 1 and str(_made[0]["payer"]) == str(_ex["id"])
+          and _made[0]["callback"].startswith("https://panel.ci.test/portal/bkash/")
+          and _prow and _prow["payment_id"] == "CINOTICE%d" % _prow["id"] and _prow["status"] == "pending"
+          and _stranger.status_code == 200,
+          "notice page bKash button: checkout starts for the customer found by IP, subscriber ID as the reference; unknown IP starts nothing")
+    with flask_app.test_request_context("/portal"):
+        _paid = _bk2.settle_portal(_prow, {"trxID": "CINTRX1", "amount": "%.2f" % (float(_prow["amount"]) + float(_prow["fee"]))})
+    _after = one("SELECT expiry_date, status FROM subscribers WHERE id = %s", (_ex["id"],))
+    _queued = one("SELECT COUNT(*) AS c FROM coa_queue WHERE username = %s AND reason = 'renewed'", (_ex["username"],))["c"]
+    check(_paid and _after["expiry_date"] > date.today() and _after["status"] == "active" and _queued >= 1,
+          "a bKash payment from the notice page renews the package at once and reconnects the customer")
+    run("DELETE FROM settings WHERE skey IN ('bkash_on', 'bkash_key', 'bkash_secret', 'bkash_user', 'bkash_pass', 'bkash_callback_base')")
+    run("DELETE FROM coa_queue WHERE username = %s", (_ex["username"],))
+
+    # ---- how long the expired speed lasts: after it the customer is refused and their slow session dropped
+    run("UPDATE subscribers SET expiry_date = CURDATE() - INTERVAL 3 DAY, expiry_time = '10:00' WHERE id = %s", (_ex["id"],))
+    _hours_form = {"_csrf": "ci", "expired_notice_on": "1", "expired_notice_bkash": "1", "expired_notice_phone": "01700000999",
+                   "expired_notice_rate": "256k/256k", "expired_notice_msg": "", "expired_notice_server": "10.20.30.40"}
+    _set.post("/settings/expired-notice", data=dict(_hours_form, expired_notice_hours="900"))
+    _bad_hours = one("SELECT svalue FROM settings WHERE skey = 'expired_notice_hours'")
+    _set.post("/settings/expired-notice", data=dict(_hours_form, expired_notice_hours="168"))
+    _g_in, _c_in = _rad_rows(_ex["username"])
+    _np2 = _anon.get("/expired-notice", environ_base={"REMOTE_ADDR": _ip}).get_data(as_text=True)
+    _sp2 = _set.get("/settings/expired-notice").get_data(as_text=True)
+    _set.post("/settings/expired-notice", data=dict(_hours_form, expired_notice_hours="24"))
+    import maintenance as _mt
+    _mc = db.connect()
+    try:
+        with _mc.cursor() as _cur:
+            _cur.execute("SELECT skey, svalue FROM settings")
+            _sett = {r["skey"]: r["svalue"] for r in _cur.fetchall()}
+            _mt.apply_plan_states(_mc, _cur, _sett)
+    finally:
+        _mc.close()
+    _g_out = [r["groupname"] for r in run_q("SELECT groupname FROM radusergroup WHERE username = %s", (_ex["username"],))]
+    _c_out = {r["attribute"]: r["value"] for r in run_q("SELECT attribute, value FROM radcheck WHERE username = %s", (_ex["username"],))}
+    _kick = one("SELECT COUNT(*) AS c FROM coa_queue WHERE username = %s AND reason = 'notice time over'", (_ex["username"],))["c"]
+    check((_bad_hours or {}).get("svalue", "0") in ("0", None) and _g_in == ["expired-notice"] and "Expiration" not in _c_in
+          and "পর্যন্ত এই কম স্পীডে" in _np2 and 'name="expired_notice_hours"' in _sp2 and 'value="168"' in _sp2
+          and "expired-notice" not in _g_out and "Expiration" in _c_out and _kick == 1,
+          "expired speed time limit: inside it the customer sees the page and its deadline; after it they are refused and dropped")
+    run("DELETE FROM coa_queue WHERE username = %s", (_ex["username"],))
+    run("UPDATE subscribers SET expiry_date = CURDATE() - INTERVAL 1 DAY, expiry_time = '10:00' WHERE id = %s", (_ex["id"],))
+    _set.post("/settings/expired-notice", data=dict(_hours_form, expired_notice_hours="0"))
+    _rad_rows(_ex["username"])
     # the exact moment: an account ending later today keeps its Expiration; one that ended a minute ago is expired
     run("UPDATE subscribers SET expiry_date = CURDATE(), expiry_time = %s WHERE id = %s",
         ((datetime.now() + timedelta(hours=2)).strftime("%H:%M") if datetime.now().hour < 21 else "23:59", _ex["id"]))

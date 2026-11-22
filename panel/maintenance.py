@@ -289,17 +289,30 @@ def apply_plan_states(conn, cur, s):
     notice = radius.EXPIRED_GROUP if s.get("expired_notice_on") == "1" else ""
     if notice:
         radius.ensure_expired_group(cur, s.get("expired_notice_rate", ""))
+    hours = radius.notice_hours(cur) if notice else 0
     for p in plans.values():
         group = p["expired_policy"] or notice
         if not group:
             continue
+        window = ""
+        if hours and not p["expired_policy"]:     # only for the notice: its time to pay may already be over
+            window = " AND " + radius.END_MOMENT + " + INTERVAL %d HOUR > NOW()" % hours
         cur.execute(
             "SELECT s.id FROM subscribers s JOIN plans p ON p.id = s.plan_id LEFT JOIN radusergroup g "
             "ON g.username = s.username AND g.groupname = %s WHERE s.plan_id = %s AND s.status = 'active' "
-            "AND s.expiry_date IS NOT NULL AND " + radius.END_MOMENT + " <= NOW() AND g.username IS NULL LIMIT 2000",
+            "AND s.expiry_date IS NOT NULL AND " + radius.END_MOMENT + " <= NOW() AND g.username IS NULL" + window + " LIMIT 2000",
             (group, p["id"]))
         for sub in cur.fetchall():
             _resync(cur, sub, p)
+            changed += 1
+    if hours:                      # the time to pay from the notice page is over: refused, and the slow session is dropped
+        cur.execute("SELECT DISTINCT s.id, s.username, s.plan_id FROM radusergroup g JOIN subscribers s ON s.username = g.username "
+                    "LEFT JOIN plans p ON p.id = s.plan_id WHERE g.groupname = %s AND s.expiry_date IS NOT NULL AND "
+                    + radius.END_MOMENT + " + INTERVAL %s HOUR <= NOW() LIMIT 2000", (radius.EXPIRED_GROUP, hours))
+        for sub in cur.fetchall():
+            _resync(cur, sub, plans.get(sub["plan_id"]))
+            cur.execute("INSERT INTO coa_queue (username, reason, created_by) VALUES (%s, 'notice time over', 'system')",
+                        (sub["username"],))
             changed += 1
     if not notice:                 # switched off: customers still in the notice group go back to being refused
         cur.execute("SELECT DISTINCT s.id, s.plan_id FROM radusergroup g JOIN subscribers s ON s.username = g.username "
