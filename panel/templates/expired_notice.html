@@ -88,6 +88,16 @@
     .until small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
     .err { margin: 16px 20px 0; padding: 12px 14px; border-radius: 12px; background: var(--badbg); color: var(--bad); font-weight: 700;
       font-size: 14.5px; text-align: center; }
+    .byid { margin: 20px 20px 0; padding: 18px; border-radius: 18px; border: 1px solid var(--line); background: var(--soft);
+      display: grid; gap: 12px; }
+    .byid h2 { margin: 0; font-size: 18px; line-height: 1.35; }
+    .byid-help { margin: -6px 0 0; color: var(--muted); font-size: 14px; }
+    .byid-form { display: grid; gap: 10px; }
+    .byid-form input[name=sid] { width: 100%; min-height: 54px; padding: 0 16px; border-radius: 14px; border: 1.5px solid var(--line);
+      background: var(--card); color: var(--ink); font: inherit; font-size: 20px; font-weight: 700; letter-spacing: .02em; }
+    .byid-form input[name=sid]:focus { outline: none; border-color: var(--bk); box-shadow: 0 0 0 4px rgb(226 19 110 / .15); }
+    .byid .facts { margin: 0; }
+    .byid .err { margin: 0; }
     .tip { margin: 14px 20px 0; padding: 12px 14px; border-radius: 14px; background: var(--warnbg); color: var(--ink);
       display: flex; gap: 10px; font-size: 14.5px; }
     .tip svg { flex: none; width: 20px; height: 20px; margin-top: 2px; color: var(--warn); }
@@ -148,6 +158,34 @@
     {% endif %}
 
     {% if pay_error %}<p class="err" role="alert">{{ pay_error }}</p>{% endif %}
+    {% if step is not none %}
+    <section class="byid" id="pay">
+      {% if step.who %}
+      <h2>এই সংযোগের বিল দিচ্ছেন?</h2>
+      <dl class="facts">
+        <div><dt>নাম</dt><dd>{{ step.who.name }}</dd></div>
+        <div><dt>সাবস্ক্রাইবার আইডি</dt><dd class="mono">{{ step.who.id }}</dd></div>
+        {% if step.who.plan %}<div class="wide"><dt>প্যাকেজ</dt><dd>{{ step.who.plan }}</dd></div>{% endif %}
+      </dl>
+      {% if step.error %}<p class="err" role="alert">{{ step.error }}</p>{% endif %}
+      <a class="btn pay" href="?pay=1&amp;sid={{ step.who.id }}&amp;go=1" rel="nofollow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        bKash-এ {{ currency }} {{ '%.2f' % step.who.amount }} পরিশোধ করুন</a>
+      <a class="btn ghost" href="?pay=1">অন্য আইডি লিখুন</a>
+      {% else %}
+      <h2>আপনার সাবস্ক্রাইবার আইডি লিখুন</h2>
+      <p class="byid-help">আইডি দিলে bKash পেমেন্ট খুলবে, পাসওয়ার্ড লাগবে না। আইডি জানা না থাকলে ইউজারনেম লিখুন।</p>
+      <form method="get" action="" class="byid-form">
+        <input type="hidden" name="pay" value="1">
+        <input name="sid" value="{{ step.key }}" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false"
+               required maxlength="64" placeholder="যেমন 1024" aria-label="সাবস্ক্রাইবার আইডি বা ইউজারনেম" autofocus>
+        <button class="btn pay" type="submit">এগিয়ে যান</button>
+      </form>
+      {% if step.error %}<p class="err" role="alert">{{ step.error }}</p>{% endif %}
+      {% endif %}
+      {% if phone %}<a class="btn ghost" href="tel:{{ phone|replace(' ', '') }}">অফিসে ফোন করুন: {{ phone }}</a>{% endif %}
+    </section>
+    {% else %}
     <div class="acts">
       {% if pay_url %}<a class="btn pay" href="{{ '?pay=1' if direct else pay_url }}" rel="nofollow">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
@@ -159,6 +197,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
         বিল দিয়েছি, আবার চেষ্টা করুন</button>
     </div>
+    {% endif %}
 
     {% if info and info.id and id_ref %}
     <p class="tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
@@ -167,7 +206,7 @@
 
     <p class="steps-h">কীভাবে আবার চালু করবেন</p>
     <ol class="steps">
-      {% if pay_url and direct %}<li>গোলাপি বাটনে চাপ দিন, bKash খুলবে। আপনার bKash নম্বর, OTP আর PIN দিয়ে বিল দিন। লগইন লাগবে না।</li>
+      {% if pay_url and direct %}<li>গোলাপি বাটনে চাপ দিন{% if not info %}, আপনার সাবস্ক্রাইবার আইডি লিখুন{% endif %}, bKash খুলবে। আপনার bKash নম্বর, OTP আর PIN দিয়ে বিল দিন। লগইন লাগবে না।</li>
       {% elif pay_url %}<li>উপরের গোলাপি বাটনে চাপ দিয়ে ইউজার আইডি ও পাসওয়ার্ড দিয়ে লগইন করুন, তারপর bKash-এ বিল দিন।</li>
       {% else %}<li>অফিসে ফোন করে বা গিয়ে বিল পরিশোধ করুন।</li>{% endif %}
       <li>পরিশোধের পর কয়েক মিনিটের মধ্যে ইন্টারনেট নিজে থেকেই চালু হবে।</li>

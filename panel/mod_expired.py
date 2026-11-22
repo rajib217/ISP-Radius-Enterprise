@@ -88,6 +88,52 @@ def _start_bkash(sub):
     return redirect(data["bkashURL"])
 
 
+LOOKUPS = 30           # subscriber IDs one address may look up on the page in 10 minutes
+
+
+def _mask(name):
+    """'Labib Hasan' -> 'La*** Ha***': enough for the customer to know it is them, not a list of names for others."""
+    return " ".join((w[:2] + "***") if len(w) > 2 else (w[:1] + "*") for w in (name or "").split()) or "***"
+
+
+def _pay_by_id(s):
+    """The bKash button when the customer is not found by IP (the router masquerades their address, as it does when
+    this server is on the internet). The page asks for the subscriber ID (or username), shows the masked name, package
+    and amount, then opens bKash checkout for that subscriber. No password: paying only ever renews that account.
+    Returns a redirect (bKash), or a dict for the page: {key, who, error}."""
+    import mod_portal
+    key = (request.args.get("sid") or "").strip()[:64]
+    step = {"key": key, "who": None, "error": ""}
+    if not key:
+        return step
+    seen = q("SELECT COUNT(*) AS c FROM audit_log WHERE action = 'notice_lookup' AND ip = %s "
+             "AND created_at > NOW() - INTERVAL 10 MINUTE", (request.remote_addr or "",), one=True)["c"]
+    if seen >= LOOKUPS:
+        step["error"] = "অনেকবার চেষ্টা করা হয়েছে। ১০ মিনিট পর আবার চেষ্টা করুন বা অফিসে ফোন করুন।"
+        return step
+    audit("notice_lookup", key, who="notice")
+    commit()
+    row = mod_portal.sub_row(int(key)) if key.isdigit() and len(key) <= 9 else None
+    if not row:
+        found = q("SELECT id FROM subscribers WHERE username = %s", (key,), one=True)
+        row = mod_portal.sub_row(found["id"]) if found else None
+    if not row:
+        step["error"] = "এই আইডির কোনো গ্রাহক পাওয়া যায়নি। আইডি ঠিক আছে কিনা দেখে আবার লিখুন।"
+        return step
+    t = mod_portal.pay_terms(row)
+    if not t["ok"]:
+        step["error"] = t["why"] or "এই সংযোগের বিল অনলাইনে দেওয়া যাচ্ছে না। অফিসে ফোন করুন।"
+        return step
+    if request.args.get("go") == "1":
+        res = _start_bkash(row)
+        if not isinstance(res, str):
+            return res
+        step["error"] = res
+    step["who"] = {"id": row["id"], "name": _mask(row.get("full_name") or row["username"]),
+                   "plan": row.get("plan_label") or row.get("plan_name") or "", "amount": round(t["amount"] + t["fee"], 2)}
+    return step
+
+
 def _hours(s):
     try:
         return max(0, int(s.get("expired_notice_hours") or 0))
@@ -99,7 +145,7 @@ def _hours(s):
 def expired_notice():
     s = cfg()
     sub, plan = _customer_by_ip(request.remote_addr)
-    info, pay_error = None, ""
+    info, pay_error, step = None, "", None
     if request.args.get("preview") == "1" and session.get("uid"):          # Settings > Expired notice: Preview
         info = {"id": 1024, "name": "Labib Hasan", "username": "labib@ahammedpur", "plan": "10 Mbps Home",
                 "ended": datetime.now() - timedelta(hours=5), "amount": 500.0, "balance": 0.0}
@@ -117,15 +163,19 @@ def expired_notice():
                 if not isinstance(res, str):
                     return res
                 pay_error = res
+    if request.args.get("pay") == "1" and _pay_url(s) and not info:
+        step = _pay_by_id(s)
+        if not isinstance(step, dict):
+            return step
     hours = _hours(s)
     if info and info.get("ended") and hours:
         info["until"] = info["ended"] + timedelta(hours=hours)
-    # a customer found by IP pays straight from this page (bKash opens, no portal sign-in); otherwise the portal
-    direct = bool(info and _pay_url(s))
+    # bKash opens from this page without a portal sign-in: at once for a customer found by IP, else after the ID
+    direct = bool(_pay_url(s))
     import mod_settings
     html = render_template("expired_notice.html", s=s, info=info, phone=s.get("expired_notice_phone") or s.get("support_phone") or "",
                            message=s.get("expired_notice_msg") or DEFAULT_MSG, pay_url=_pay_url(s), direct=direct,
-                           pay_error=pay_error,
+                           pay_error=pay_error, step=step,
                            isp=s.get("isp_name") or "", brand=mod_settings.brand_urls(), currency=s.get("currency") or "BDT",
                            id_ref=s.get("bksms_on") == "1")
     return Response(html, headers={"Cache-Control": "no-store, max-age=0"})

@@ -1130,12 +1130,28 @@ def check_rules(flask_app, ids):
         _np = _anon.get("/expired-notice", environ_base={"REMOTE_ADDR": _ip}).get_data(as_text=True)
         _go = _anon.get("/expired-notice?pay=1", environ_base={"REMOTE_ADDR": _ip})
         _stranger = _anon.get("/expired-notice?pay=1", environ_base={"REMOTE_ADDR": "192.0.2.77"})
+        _made_by_ip = len(_made)
+        _far = {"REMOTE_ADDR": "198.51.100.9"}           # the router masquerades: the page cannot tell who this is
+        _gen_btn = _anon.get("/expired-notice", environ_base=_far).get_data(as_text=True)
+        _ask = _anon.get("/expired-notice?pay=1", environ_base=_far).get_data(as_text=True)
+        _who = _anon.get("/expired-notice?pay=1&sid=%d" % _ex["id"], environ_base=_far).get_data(as_text=True)
+        _byname = _anon.get("/expired-notice?pay=1&sid=%s" % _ex["username"], environ_base=_far).get_data(as_text=True)
+        _nobody = _anon.get("/expired-notice?pay=1&sid=999999999", environ_base=_far).get_data(as_text=True)
+        _go2 = _anon.get("/expired-notice?pay=1&sid=%d&go=1" % _ex["id"], environ_base=_far)
     finally:
         _bk2.create = _real_create
-    _prow = one("SELECT * FROM portal_payments WHERE subscriber_id = %s ORDER BY id DESC LIMIT 1", (_ex["id"],))
+    _exname = one("SELECT full_name FROM subscribers WHERE id = %s", (_ex["id"],))["full_name"] or _ex["username"]
+    check('href="?pay=1"' in _gen_btn and "/portal/login" not in _gen_btn.split('class="btn pay"')[1][:80]
+          and 'name="sid"' in _ask and "go=1" in _who and "পরিশোধ করুন" in _who and _ex["username"] not in _who
+          and _exname not in _who and _exname[:2] + "***" in _who and "go=1" in _byname
+          and "কোনো গ্রাহক পাওয়া যায়নি" in _nobody and _go2.status_code == 302 and len(_made) == _made_by_ip + 1
+          and str(_made[-1]["payer"]) == str(_ex["id"]),
+          "customer not found by IP: the bKash button asks for the subscriber ID, shows a masked name and the amount, then opens bKash")
+    run("DELETE FROM audit_log WHERE action = 'notice_lookup'")
+    _prow = one("SELECT * FROM portal_payments WHERE subscriber_id = %s AND payment_id LIKE 'CINOTICE%%' ORDER BY id LIMIT 1", (_ex["id"],))
     check('href="?pay=1"' in _np and _go.status_code == 302
           and _go.headers.get("Location") == "https://sandbox.payment.bkash.com/redirect/ci"
-          and len(_made) == 1 and str(_made[0]["payer"]) == str(_ex["id"])
+          and _made_by_ip == 1 and str(_made[0]["payer"]) == str(_ex["id"])
           and _made[0]["callback"].startswith("https://panel.ci.test/portal/bkash/")
           and _prow and _prow["payment_id"] == "CINOTICE%d" % _prow["id"] and _prow["status"] == "pending"
           and _stranger.status_code == 200,
