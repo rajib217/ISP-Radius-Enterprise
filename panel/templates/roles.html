@@ -6,7 +6,7 @@
     <div class="modal-head"><h2 id="role-title">Add Role</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack">
       <div class="field"><label class="lbl" for="role-name">Role name <b class="req">*</b></label><input id="role-name" name="name" required minlength="2" maxlength="40" placeholder="For example: Billing clerk"></div>
-      <div class="field"><label class="lbl" for="role-start">Start from</label><select id="role-start" name="start"><option value="">Nothing ticked (empty role)</option>{% for k, l in starts %}<option value="{{ k }}">Copy of {{ l }}</option>{% endfor %}</select><div class="help">You tick the permissions on the next page. This role is for office staff; resellers keep their own tiers.</div></div>
+      <div class="field"><label class="lbl" for="role-start">Start from</label><select id="role-start" name="start">{% if can_fn('usr.role_add') %}<option value="">Nothing ticked (empty role)</option>{% endif %}{% if can_fn('usr.role_copy') %}{% for k, l in starts %}<option value="{{ k }}">Copy of {{ l }}</option>{% endfor %}{% endif %}</select><div class="help">You tick the permissions on the next page. This role is for office staff; resellers keep their own tiers.</div></div>
     </div>
     <div class="modal-foot"><button type="button" class="btn" data-close>Close</button><button class="btn primary" type="submit">Create role</button></div>
   </form>
@@ -23,7 +23,7 @@
 {% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Role</h1><p class="sub">Each role decides what a person can open and change. Administrators always have full access.</p></div>
-  <div class="page-actions"><button class="btn primary" type="button" data-open="role-dlg">{{ icon('plus') }}Add Role</button></div></div>
+  <div class="page-actions">{% if can_fn('usr.role_add') or can_fn('usr.role_copy') %}<button class="btn primary" type="button" data-open="role-dlg">{{ icon('plus') }}Add Role</button>{% endif %}</div></div>
 <section class="panel xpanel">
   <div class="listbar">
     <div class="row-gap"><div class="seg" role="group" aria-label="Export">
@@ -34,11 +34,11 @@
     <thead><tr><th>ID</th><th>Role Name</th><th>Role Type</th><th>Parent Role</th><th>Permission</th><th>User</th><th>Created By</th><th>Created At</th><th class="no-x">Actions</th></tr></thead>
     <tbody>{% for r in rows %}<tr>
       <td>{{ loop.index }}</td><td><strong>{{ r.name }}</strong></td><td>{{ r.type }}</td><td>{{ r.parent or '—' }}</td>
-      <td>{% if r.role == 'admin' %}<span class="muted">Full access</span>{% else %}<a class="btn sm primary" href="{{ url_for('role_permissions', role=r.role) }}">Set Permission</a>{% endif %}</td>
+      <td>{% if r.role == 'admin' %}<span class="muted">Full access</span>{% else %}<a class="btn sm primary" href="{{ url_for('role_permissions', role=r.role) }}">{{ 'Set Permission' if can_fn('usr.role_edit') else 'View Permission' }}</a>{% endif %}</td>
       <td>{{ r.users }}</td><td>{{ r.by }}</td><td>{{ r.at }}</td>
-      <td class="no-x">{% if r.role != 'admin' %}<a class="btn sm" href="{{ url_for('role_permissions', role=r.role) }}">Edit</a>
-        {% if r.custom %}<button type="button" class="btn sm" data-open="rename-dlg" data-fill='{{ {"name": r.name, "action": url_for("role_rename", role=r.role)}|tojson }}'>Rename</button>
-        <form method="post" action="{{ url_for('role_delete', role=r.role) }}" style="display:inline" data-confirm="Delete the role {{ r.name }}?">{{ csrf_input() }}<button class="btn sm danger">Delete</button></form>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td class="no-x">{% if r.role != 'admin' %}{% if can_fn('usr.role_edit') %}<a class="btn sm" href="{{ url_for('role_permissions', role=r.role) }}">Edit</a>{% endif %}
+        {% if r.custom %}{% if can_fn('usr.role_edit') %}<button type="button" class="btn sm" data-open="rename-dlg" data-fill='{{ {"name": r.name, "action": url_for("role_rename", role=r.role)}|tojson }}'>Rename</button>{% endif %}
+        {% if can_fn('usr.role_delete') %}<form method="post" action="{{ url_for('role_delete', role=r.role) }}" style="display:inline" data-confirm="Delete the role {{ r.name }}?">{{ csrf_input() }}<button class="btn sm danger">Delete</button></form>{% endif %}{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
     </tr>{% endfor %}</tbody>
   </table></div>
   {% else %}<div class="empty"><h3>No roles</h3><p>Create a role above, or copy one to get started.</p></div>{% endif %}

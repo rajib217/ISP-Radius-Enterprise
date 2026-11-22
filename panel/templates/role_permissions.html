@@ -2,6 +2,9 @@
 {% block title %}Permissions{% endblock %}
 {% block content %}
 <h1 class="perm-title">Modules &amp; Permissions (Role: {{ label }})</h1>
+{% if own_role %}<p class="muted">This is your own role. Only an administrator, or someone with another role, can change it.</p>
+{% elif not can_save %}<p class="muted">You can see this role's permissions. Changing them needs the User Role &gt; Edit tick.</p>
+{% elif locked %}<p class="muted">Greyed ticks are ones your own role does not have: they stay as they are.</p>{% endif %}
 <form method="post" class="permform" id="permForm">
   {{ csrf_input() }}<input type="hidden" name="tab" id="permTab" value="{{ tab }}">
   <div class="permtabs" role="tablist">
@@ -16,7 +19,7 @@
         <div class="pfcols" style="--n:{{ g.cols|length }}">
           {% for col in g.cols %}<div class="pfcol">
             {% for it in col %}
-            <label class="pfitem"><input type="checkbox" name="{{ it.key }}" value="1" {{ 'checked' if it.key in ticked }}><i></i>
+            <label class="pfitem"><input type="checkbox" name="{{ it.key }}" value="1" {{ 'checked' if it.key in ticked }} {{ 'disabled' if not can_save or it.key in locked }}><i></i>
               <span><b>{{ it.label }}</b>{% if 'd' in it.flags %}<em class="pfdanger">&#9888; DANGEROUS PERMISSION</em>{% endif %}{% if it.note %}<small class="{{ 'pfdanger' if 'd' in it.flags }}">{{ it.note }}</small>{% endif %}</span></label>
             {% endfor %}
           </div>{% endfor %}
@@ -24,14 +27,14 @@
       </section>{% endfor %}
     </div>
   </div>{% endfor %}
-  <div class="pffoot"><button type="button" class="btn pfsel" id="pfSel"><svg class="i" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5 9-10"/></svg>Select/Deselect</button>
-    <button class="btn pfsave" type="submit">Update</button></div>
+  {% if can_save %}<div class="pffoot"><button type="button" class="btn pfsel" id="pfSel"><svg class="i" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5 9-10"/></svg>Select/Deselect</button>
+    <button class="btn pfsave" type="submit">Update</button></div>{% endif %}
 </form>
 {% endblock %}
 {% block scripts %}<script>
 (function(){var f=document.getElementById("permForm");if(!f)return;
 function q(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s));}
 q(".ptab").forEach(function(b){b.addEventListener("click",function(){var n=b.dataset.ptab;q(".ptab").forEach(function(x){x.classList.toggle("on",x===b)});q(".pfpane").forEach(function(p){p.classList.toggle("hide",p.dataset.pane!==n)});document.getElementById("permTab").value=n;});});
-document.getElementById("pfSel").addEventListener("click",function(){var pane=q(".pfpane").filter(function(p){return !p.classList.contains("hide")})[0];if(!pane)return;var boxes=q("input[type=checkbox]",pane);var all=boxes.every(function(c){return c.checked});boxes.forEach(function(c){c.checked=!all});});
+document.getElementById("pfSel").addEventListener("click",function(){var pane=q(".pfpane").filter(function(p){return !p.classList.contains("hide")})[0];if(!pane)return;var boxes=q("input[type=checkbox]:not(:disabled)",pane);var all=boxes.every(function(c){return c.checked});boxes.forEach(function(c){c.checked=!all});});
 })();
 </script>{% endblock %}

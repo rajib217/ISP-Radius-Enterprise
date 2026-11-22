@@ -159,7 +159,7 @@ def payment_add():
     return redirect(url_for("receipt", pid=pid))
 
 
-@route("/payments/<int:pid>/receipt", module="accounting")
+@route("/payments/<int:pid>/receipt", module=("subscribers", "accounting"))
 def receipt(pid):
     p = q("SELECT p.*, s.full_name, s.phone, s.address, s.area, s.created_by AS owner, pl.label AS plan_label FROM payments p "
           "LEFT JOIN subscribers s ON s.id = p.subscriber_id LEFT JOIN plans pl ON pl.id = s.plan_id "
@@ -173,8 +173,9 @@ def receipt(pid):
 
 
 @route("/payments/<int:pid>/delete", module="accounting", methods=["POST"])
-@admin_required
 def payment_delete(pid):
+    if core.my_downline() is not None:
+        abort(403)
     p = q("SELECT username, amount FROM payments WHERE id = %s", (pid,), one=True) or abort(404)
     x("DELETE FROM payments WHERE id = %s", (pid,))
     audit("payment_deleted", p["username"], "%s" % p["amount"])

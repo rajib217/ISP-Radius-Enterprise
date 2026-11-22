@@ -6,6 +6,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 import json
 import os
+from functools import wraps
 import re
 import secrets
 import core
@@ -20,6 +21,9 @@ from core import (EMAIL_RE, LEVELS, MODULES, PHONE_RE, ROLES, USERNAME_RE, admin
 @route("/profile", methods=["GET", "POST"])
 def profile():
     if request.method == "POST":
+        need = {"password": "prof.password", "details": "prof.edit"}.get(request.form.get("section") or "details")
+        if need and not core.can_fn(need):
+            abort(403)
         if request.form.get("section") == "2fa_start":
             session["totp_pending_secret"] = totp.new_secret()
             flash("Add the key below to your authenticator app, then enter a code to switch two-factor on.", "success")
@@ -113,6 +117,8 @@ def account():
 # ===================================================================== My Packages
 @route("/my-packages")
 def my_packages():
+    if g.me["role"] in core.SELLER_ROLES and not core.can_fn("pkg.module"):
+        abort(403)
     allowed = core.allowed_plan_ids()
     me = g.me["username"]
     rows = q("SELECT p.*, (SELECT COUNT(*) FROM subscribers s WHERE s.plan_id = p.id) AS total, "
@@ -376,8 +382,59 @@ def _ptype(role):
     return {"admin": "Admin", "reseller": "Reseller", "subreseller": "Subreseller", "retailer": "Retailer"}.get(role, "Staff")
 
 
+# ---- Users and Roles for office staff: what they may open follows the User ticks (Users > Roles > User). Staff never
+# touch an administrator or make anyone one, never change their own account here (role, status, deletion), and never
+# hand out more than they have: a role whose ticks they lack, or a tick they lack on a role's permissions. Resellers /
+# sub-resellers / retailers manage the people below them under My Users instead.
+def _users_gate(*keys):
+    def deco(fn):
+        @wraps(fn)
+        def wrapper(*a, **k):
+            role = g.me["role"]
+            if role != "admin" and (role in core.SELLER_ROLES or not any(core.can_fn(key) for key in keys)):
+                abort(403)
+            return fn(*a, **k)
+        return wrapper
+    return deco
+
+
+def _staff():
+    return g.me["role"] != "admin"
+
+
+def _role_funcs(role):
+    cache = g.setdefault("_role_funcs", {})
+    if role not in cache:
+        cache[role] = core.load_funcs(role, core.load_perms(role))
+    return cache[role]
+
+
+def _within_mine(role):
+    """May the signed-in user give this role to someone? Administrators: any. Staff: never Administrator; an office role
+    only when it can do nothing they cannot; a reseller tier always (it sees only its own customers)."""
+    if not _staff():
+        return True
+    if role == "admin":
+        return False
+    return role in core.SELLER_ROLES or _role_funcs(role) <= set(g.funcs or ())
+
+
+def _reach(row, own_ok=False):
+    """May the signed-in user change this account?"""
+    if not _staff():
+        return True
+    if row["id"] == g.me["id"]:
+        return own_ok
+    return _within_mine(row["role"])
+
+
+def _reach_or_403(row, own_ok=False):
+    if not _reach(row, own_ok):
+        abort(403)
+
+
 @route("/admins")
-@admin_required
+@_users_gate("usr.module")
 def admins():
     group = request.args.get("group") if request.args.get("group") in GROUPS else ""
     where, params = "", []
@@ -418,6 +475,10 @@ def admins():
         r["up_admin"], r["up_reseller"], r["up_sub"] = up.get("admin", ""), up.get("reseller", ""), up.get("subreseller", "")
         if r["role"] != "admin" and not r["up_admin"]:
             r["up_admin"] = r.get("created_by") or (only_admin if only_admin else "")
+    if _staff():                                    # staff never see administrators here
+        rows = [r for r in rows if r["role"] != "admin"]
+    for r in rows:
+        r["can_act"] = _reach(r)
     if flt_role in labels:
         rows = [r for r in rows if r["role"] == flt_role]
     if flt_status in ("active", "disabled"):
@@ -431,21 +492,25 @@ def admins():
         gtitle = core.tier_name(group, True)
     off = core.tiers_off()
     return render_template("admins.html", methods=BALANCE_METHODS, rows=rows, roles=core.role_list(),
-                           role_opts=[r for r in core.role_list() if r[0] not in off], depts=depts, zones=zones, plans=plans,
+                           role_opts=[r for r in core.role_list() if r[0] not in off and _within_mine(r[0])], depts=depts, zones=zones, plans=plans,
                            group=group, gtitle=gtitle, ghelp=ghelp, sellers=sellers, total_plans=total_plans,
-                           flt_role=flt_role, flt_status=flt_status, all_users=list(everyone.values()),
+                           flt_role=flt_role, flt_status=flt_status,
+                           all_users=[u for u in everyone.values() if _reach(u)],
                            default_role={"staff": "support", "reseller": "reseller", "subreseller": "subreseller",
                                          "retailer": "retailer"}.get(group, "support"))
 
 
 @route("/admins/<int:aid>")
-@admin_required
+@_users_gate("usr.view")
 def admin_view(aid):
     u = q("SELECT a.*, d.name AS dept, z.name AS zone, par.username AS parent_name FROM panel_admins a "
           "LEFT JOIN departments d ON d.id = a.department_id LEFT JOIN zones z ON z.id = a.zone_id "
           "LEFT JOIN panel_admins par ON par.id = a.parent_id WHERE a.id = %s", (aid,), one=True) or abort(404)
+    if _staff() and u["role"] == "admin":
+        abort(403)
     labels = dict(core.role_list())
     u["role_label"] = labels.get(u["role"], u["role"])
+    u["can_act"] = _reach(u)
     allowed = [r["plan_id"] for r in q("SELECT plan_id FROM user_plans WHERE user_id = %s", (aid,))]
     all_plans = q("SELECT id, label, name, price, download_mbps, upload_mbps, bandwidth_value, bandwidth_type, "
                   "validity_days, duration, duration_type FROM plans ORDER BY download_mbps, label")
@@ -472,7 +537,7 @@ def admin_view(aid):
     sellers = q("SELECT id, username, role FROM panel_admins WHERE role IN ('reseller', 'subreseller') ORDER BY username")
     return render_template("admin_view.html", methods=BALANCE_METHODS, wallet=wallet, open_balance=bool(request.args.get("balance")), u=u, kids=kids, subs_n=subs_n, subs=subs, rep=rep, ledger=ledger,
                            shown=shown, restricted=bool(allowed) and u["role"] != "admin", all_count=len(all_plans),
-                           allowed=allowed, roles=core.role_list(), role_opts=[r for r in core.role_list() if r[0] not in off],
+                           allowed=allowed, roles=core.role_list(), role_opts=[r for r in core.role_list() if r[0] not in off and _within_mine(r[0])],
                            depts=depts, zones=zones, plans=plans, sellers=sellers, group="", default_role="support",
                            gtitle="Users", isp=core.cfg().get("isp_name", ""))
 
@@ -542,21 +607,26 @@ def _packages_page(u, endpoint, allowed=None, back=None):
 
 
 @route("/admins/<int:aid>/packages", methods=["GET", "POST"])
-@admin_required
+@_users_gate("usr.pkg_module", "usr.pkg_assign")
 def admin_packages(aid):
     u = q("SELECT id, username, full_name, role, parent_id FROM panel_admins WHERE id = %s", (aid,), one=True) or abort(404)
     if u["role"] == "admin":
         abort(404)
+    if _staff():
+        _reach_or_403(u)
+        if request.method == "POST" and not core.can_fn("usr.pkg_assign"):
+            abort(403)
     return _packages_page(u, "admin_packages")
 
 
 @route("/admins/balance", methods=["POST"])
-@admin_required
+@_users_gate("usr.balance")
 def admin_balance():
     uid = request.form.get("user_id", "")
     row = q("SELECT * FROM panel_admins WHERE id = %s", (int(uid),), one=True) if uid.isdigit() else None
     if not row:
         abort(404)
+    _reach_or_403(row)
     aid = row["id"]
     method = request.form.get("method", "")
     if method not in dict(BALANCE_METHODS):
@@ -582,9 +652,10 @@ def admin_balance():
 
 
 @route("/admins/<int:aid>/password", methods=["POST"])
-@admin_required
+@_users_gate("usr.password")
 def admin_password(aid):
     row = q("SELECT * FROM panel_admins WHERE id = %s", (aid,), one=True) or abort(404)
+    _reach_or_403(row)
     new = request.form.get("password", "")
     if len(new) < 8:
         flash("Password must be at least 8 characters.", "error")
@@ -609,16 +680,30 @@ def admin_reset_2fa(aid):
 
 
 @route("/admins/save", methods=["POST"])
-@admin_required
+@_users_gate("usr.add", "usr.edit")
 def admin_save():
     f = request.form
     aid = int(f["id"]) if f.get("id", "").isdigit() else 0
+    row0 = q("SELECT * FROM panel_admins WHERE id = %s", (aid,), one=True) or abort(404) if aid else None
+    if _staff():
+        if not core.can_fn("usr.edit" if aid else "usr.add"):
+            abort(403)
+        if row0:
+            _reach_or_403(row0)
     username, name = f.get("username", "").strip(), f.get("full_name", "").strip()[:128]
     role = f.get("role") if f.get("role") in dict(core.role_list()) else "support"
+    if _staff():
+        if row0 and role != row0["role"] and not (core.can_fn("usr.role") or core.can_fn("usr.ptype")):
+            role = row0["role"]                   # Edit without Change Role keeps the role
+        if not _within_mine(role):
+            flash("Not saved. You cannot give the role %s: it can do things your own role cannot." % dict(core.role_list()).get(role, role), "error")
+            return redirect(core.safe_next(request.form.get("next")) or url_for("admins"))
     if role in core.tiers_off():
         flash("%s is switched off in Settings > Partner Management." % core.tier_name(role), "error")
         return redirect(core.safe_next(request.form.get("next")) or url_for("admins"))
     phone, email, password = f.get("phone", "").strip(), f.get("email", "").strip(), f.get("password", "")
+    if row0 and _staff() and not core.can_fn("usr.password"):
+        password = ""                             # Edit without Change Password keeps the password
     identity = f.get("identity", "").strip()[:64]
     country, province, city = (f.get(k, "").strip()[:64] for k in ("country", "province", "city"))
     address = f.get("address", "").strip()[:255]
@@ -653,6 +738,8 @@ def admin_save():
         return redirect(core.safe_next(request.form.get("next")) or url_for("admins"))
     if role not in ("reseller", "subreseller"):
         cap = None
+    elif _staff() and not core.can_fn({"reseller": "usr.subreslimit", "subreseller": "usr.retlimit"}[role]):
+        cap = row0["max_children"] if row0 else None   # the limit needs its own tick
     if parent:
         old_parent = (q("SELECT parent_id FROM panel_admins WHERE id = %s", (aid,), one=True) or {}).get("parent_id") if aid else None
         full = _room_under(parent, skip_id=aid) if parent != old_parent else None
@@ -697,14 +784,17 @@ def admin_save():
 
 
 @route("/admins/role", methods=["POST"])
-@admin_required
+@_users_gate("usr.role", "usr.ptype")
 def admin_role():
     f = request.form
     row = q("SELECT * FROM panel_admins WHERE id = %s", (int(f["user_id"]),), one=True) if f.get("user_id", "").isdigit() else None
     role = f.get("role", "")
     if not row or role not in dict(core.role_list()):
         abort(404)
-    if role in core.tiers_off():
+    _reach_or_403(row)
+    if not _within_mine(role):
+        flash("You cannot give the role %s: it can do things your own role cannot." % dict(core.role_list())[role], "error")
+    elif role in core.tiers_off():
         flash("%s is switched off in Settings > Partner Management." % core.tier_name(role), "error")
     elif row["id"] == g.me["id"] and role != "admin":
         flash("You cannot remove your own administrator role.", "error")
@@ -719,9 +809,10 @@ def admin_role():
 
 
 @route("/admins/<int:aid>/toggle", methods=["POST"])
-@admin_required
+@_users_gate("usr.edit")
 def admin_toggle(aid):
     row = q("SELECT * FROM panel_admins WHERE id = %s", (aid,), one=True) or abort(404)
+    _reach_or_403(row)
     if aid == g.me["id"]:
         flash("You cannot disable your own account.", "error")
     else:
@@ -746,9 +837,10 @@ def _admin_photo(aid):
 
 
 @route("/admins/<int:aid>/settings", methods=["POST"])
-@admin_required
+@_users_gate("usr.settings")
 def admin_profile_settings(aid):
     row = q("SELECT * FROM panel_admins WHERE id = %s", (aid,), one=True) or abort(404)
+    _reach_or_403(row)
     f = request.form
     active = 1 if f.get("status") == "active" else 0
     if aid == g.me["id"] and not active:
@@ -763,7 +855,7 @@ def admin_profile_settings(aid):
 
 
 @route("/admins/<int:aid>/photo")
-@admin_required
+@_users_gate("usr.module", "usr.view")
 def admin_photo(aid):
     f = _admin_photo(aid)
     if not f:
@@ -774,9 +866,10 @@ def admin_photo(aid):
 
 
 @route("/admins/<int:aid>/photo/save", methods=["POST"])
-@admin_required
+@_users_gate("usr.photo")
 def admin_photo_save(aid):
-    row = q("SELECT username FROM panel_admins WHERE id = %s", (aid,), one=True) or abort(404)
+    row = q("SELECT id, username, role FROM panel_admins WHERE id = %s", (aid,), one=True) or abort(404)
+    _reach_or_403(row)
     old = _admin_photo(aid)
     if request.form.get("remove"):
         if old:
@@ -805,9 +898,10 @@ def admin_photo_save(aid):
 
 
 @route("/admins/<int:aid>/invoice-settings", methods=["POST"])
-@admin_required
+@_users_gate("usr.inv_settings")
 def admin_invoice_settings(aid):
-    row = q("SELECT username FROM panel_admins WHERE id = %s", (aid,), one=True) or abort(404)
+    row = q("SELECT id, username, role FROM panel_admins WHERE id = %s", (aid,), one=True) or abort(404)
+    _reach_or_403(row)
     f = request.form
     x("UPDATE panel_admins SET inv_name = %s, inv_address = %s, inv_phone = %s, inv_footer = %s WHERE id = %s",
       (f.get("inv_name", "").strip()[:100], f.get("inv_address", "").strip()[:255],
@@ -819,9 +913,10 @@ def admin_invoice_settings(aid):
 
 
 @route("/admins/<int:aid>/switch", methods=["POST"])
-@admin_required
+@_users_gate("usr.switch")
 def admin_switch(aid):
     row = q("SELECT id, username, role, is_active FROM panel_admins WHERE id = %s", (aid,), one=True) or abort(404)
+    _reach_or_403(row)
     if row["role"] == "admin" or not row["is_active"]:
         flash("You can only switch to an active non-admin user.", "error")
         return redirect(url_for("admin_view", aid=aid))
@@ -838,20 +933,21 @@ def admin_switch(aid):
 def switch_back():
     real = session.get("real_uid")
     back = q("SELECT id, role, is_active FROM panel_admins WHERE id = %s", (real,), one=True) if real else None
-    if not back or back["role"] != "admin" or not back["is_active"]:
+    if not back or back["role"] in core.SELLER_ROLES or not back["is_active"]:   # an administrator, or staff with Switch Profile
         abort(403)
     session.pop("real_uid", None)
     session["uid"] = back["id"]
     session["csrf"] = secrets.token_hex(16)
     flash("Switched back to your own account.", "success")
-    return redirect(url_for("admins"))
+    return redirect(url_for("admins") if back["role"] == "admin" else url_for("dashboard"))
 
 
 
 @route("/admins/<int:aid>/delete", methods=["POST"])
-@admin_required
+@_users_gate("usr.delete")
 def admin_delete(aid):
     row = q("SELECT * FROM panel_admins WHERE id = %s", (aid,), one=True) or abort(404)
+    _reach_or_403(row)
     if aid == g.me["id"]:
         flash("You cannot delete your own account.", "error")
     else:
@@ -890,7 +986,7 @@ def _role_type(role):
 
 
 @route("/roles")
-@admin_required
+@_users_gate("usr.role_module")
 def roles():
     labels = dict(core.role_list())
     counts = {r["role"]: r["c"] for r in q("SELECT role, COUNT(*) AS c FROM panel_admins GROUP BY role")}
@@ -914,8 +1010,11 @@ def _role_key(name):
 
 
 @route("/roles/add", methods=["POST"])
-@admin_required
+@_users_gate("usr.role_add", "usr.role_copy")
 def role_add():
+    src = request.form.get("start", "")
+    if _staff() and not core.can_fn("usr.role_copy" if src else "usr.role_add"):
+        abort(403)
     name = request.form.get("name", "").strip()
     if not 2 <= len(name) <= 40:
         flash("Give the role a name of 2 to 40 characters.", "error")
@@ -923,13 +1022,15 @@ def role_add():
     if name.lower() in {l.lower() for _, l in core.role_list()}:
         flash("A role with that name already exists.", "error")
         return redirect(url_for("roles"))
-    src = request.form.get("start", "")
     key = _role_key(name)
     ticked, levels = set(), {}
     if src and src in core.staff_roles():                 # start from a copy of an existing office-staff role
         levels = core._load_perms(src)
         saved = {r["fkey"]: r["allowed"] for r in q("SELECT fkey, allowed FROM role_funcs WHERE role = %s", (src,))}
         ticked = {k for k in permcatalog.KEYS if (bool(saved[k]) if k in saved else permcatalog.default_on(k, levels, False))}
+        if _staff():                                      # staff copy only what they have themselves
+            ticked &= set(g.funcs or ())
+            levels = permcatalog.module_levels(ticked)
     elif src:
         abort(400)
     x("INSERT INTO custom_roles (role_key, name, created_by) VALUES (%s, %s, %s)", (key, name, g.me["username"]))
@@ -949,7 +1050,7 @@ def _custom_or_404(role):
 
 
 @route("/roles/<role>/rename", methods=["POST"])
-@admin_required
+@_users_gate("usr.role_edit")
 def role_rename(role):
     row = _custom_or_404(role)
     name = request.form.get("name", "").strip()
@@ -966,7 +1067,7 @@ def role_rename(role):
 
 
 @route("/roles/<role>/delete", methods=["POST"])
-@admin_required
+@_users_gate("usr.role_delete")
 def role_delete(role):
     row = _custom_or_404(role)
     n = q("SELECT COUNT(*) AS n FROM panel_admins WHERE role = %s", (role,), one=True)
@@ -983,13 +1084,23 @@ def role_delete(role):
 
 
 @route("/roles/<role>/permissions", methods=["GET", "POST"])
-@admin_required
+@_users_gate("usr.role_module", "usr.role_edit")
 def role_permissions(role):
     labels = dict(core.role_list())
     if role not in labels or role == "admin":
         abort(404)
+    mine = set(g.funcs or ()) if _staff() else set(permcatalog.KEYS)
+    own_role = _staff() and role == g.me["role"]
     if request.method == "POST":
+        if _staff() and (not core.can_fn("usr.role_edit") or own_role):
+            abort(403)
         ticked = {k for k in permcatalog.KEYS if request.form.get(k)}
+        if _staff():                              # a tick the editor does not have stays as it was
+            perms0 = core.load_perms(role)
+            saved0 = {r["fkey"]: r["allowed"] for r in q("SELECT fkey, allowed FROM role_funcs WHERE role = %s", (role,))}
+            before = {k for k in permcatalog.KEYS if (bool(saved0[k]) if k in saved0 else
+                                                       permcatalog.default_on(k, perms0, role in core.SELLER_ROLES))}
+            ticked = (ticked & mine) | (before - mine)
         levels = permcatalog.module_levels(ticked)
         with get_db().cursor() as cur:
             cur.executemany("INSERT INTO role_funcs (role, fkey, allowed) VALUES (%s, %s, %s) "
@@ -1013,7 +1124,8 @@ def role_permissions(role):
                   for g in t["groups"]]
         tabs.append(dict(t, title=("My Profile (%s)" % ptype) if t["title"] == "My Profile" else t["title"], groups=groups))
     return render_template("role_permissions.html", role=role, label=labels[role], tabs=tabs, ticked=ticked,
-                           tab=request.args.get("tab", ""))
+                           tab=request.args.get("tab", ""), locked=set(permcatalog.KEYS) - mine,
+                           can_save=not _staff() or (core.can_fn("usr.role_edit") and not own_role), own_role=own_role)
 
 
 # ===================================================================== Department / Zone

@@ -1825,6 +1825,138 @@ def check_rules(flask_app, ids):
     run("DELETE FROM expenses WHERE note IN ('ci-cf income', 'ci-cf expense')")
     run("DELETE FROM cashflow_categories WHERE name IN ('CI Generator fuel', 'CI Diesel')")
     run("DELETE FROM user_ledger WHERE note IN ('ci-cf top', 'ci-cf move')")
+
+    # ---- Users > Roles ticks really open what they say (office staff, one tick at a time)
+    import permcatalog as _pc
+    _snap_f = run_q("SELECT role, fkey, allowed FROM role_funcs WHERE role IN ('support', 'technician')")
+    _snap_p = run_q("SELECT role, module, level FROM role_perms WHERE role IN ('support', 'technician')")
+
+    def ticks(role, keys):
+        data = {"_csrf": "ci"}
+        data.update({k: "1" for k in keys})
+        return adm.post("/roles/%s/permissions" % role, data=data).status_code
+
+    _gate = {}
+    for _mod, _grp, _it in _pc.ALL_ITEMS:
+        _g = [x["key"] for c in _grp["cols"] for x in c if "g" in x["flags"]]
+        _gate[_it["key"]] = _g[0] if _g else None
+    _deps = {"net.live": ["sub.module"], "cfc.module": ["cf.module"], "cfc.add": ["cf.module"], "cfc.edit": ["cf.module"], "cfc.delete": ["cf.module"]}
+    _seller_only = {"my_profit", "my_profit_csv", "my_users", "my_user_packages", "add_balance"}
+    st = client(ids["staff"])
+    _get_rules = {r.endpoint: r for r in flask_app.url_map.iter_rules() if "GET" in r.methods}
+    _closed, _shut = [], []
+    for _ep, _keys in sorted(_pc.ENDPOINT_FN.items()):
+        if _ep not in _get_rules or _ep in _seller_only or SKIP.search(_ep):
+            continue
+        _k = (_keys,) if isinstance(_keys, str) else _keys
+        _k = _k[0]
+        _want = {_k} | ({_gate[_k]} if _gate.get(_k) else set()) | set(_deps.get(_k, []))
+        _url = re.sub(r"<(?:[a-z]+:)?\w+>", "1", _get_rules[_ep].rule)
+        ticks("support", _want)
+        if st.get(_url).status_code == 403:
+            _closed.append("%s (%s)" % (_ep, _k))
+        ticks("support", _want - {_k})
+        if st.get(_url).status_code != 403:
+            _shut.append("%s (%s)" % (_ep, _k))
+    check(not _closed, "every page wired to a tick opens for staff when that tick is given%s" % (": " + ", ".join(_closed) if _closed else ""))
+    check(not _shut, "and stays shut without it%s" % (": " + ", ".join(_shut) if _shut else ""))
+
+    # ---- Users / Roles for office staff: by tick, never an administrator, never more than they have
+    _base = ["sub.module", "sub.view"]
+    _adm_name = one("SELECT username FROM panel_admins WHERE id = %s", (ids["admin"],))["username"]
+    ticks("support", _base)
+    _u0 = st.get("/admins").status_code
+    _r0 = st.get("/roles").status_code
+    _menu0 = st.get("/").get_data(as_text=True)
+    ticks("support", _base + ["usr.module"])
+    _list = st.get("/admins").get_data(as_text=True)
+    _menu1 = st.get("/").get_data(as_text=True)
+    _v0 = st.get("/admins/%d" % ids["reseller"]).status_code
+    _pw0 = st.post("/admins/%d/password" % ids["reseller"], data={"_csrf": "ci", "password": "x"}).status_code
+    check(_u0 == 403 and _r0 == 403 and 'href="/admins"' not in _menu0 and 'href="/admins"' in _menu1 and 'href="/roles"' not in _menu1
+          and ('href="/admins/%d"' % ids["admin"]) not in _list and ('href="/admins/%d"' % ids["reseller"]) not in _list and _v0 == 403 and _pw0 == 403,
+          "staff: User Profile > Module opens Users (menu and list, no administrators in it), nothing more")
+    ticks("support", _base + ["usr.module", "usr.view", "usr.password", "usr.balance", "usr.edit", "usr.role", "usr.add", "usr.delete"])
+    _vr = st.get("/admins/%d" % ids["reseller"])
+    _va = st.get("/admins/%d" % ids["admin"]).status_code
+    _pw1 = st.post("/admins/%d/password" % ids["reseller"], data={"_csrf": "ci", "password": "x"}).status_code
+    _pwa = st.post("/admins/%d/password" % ids["admin"], data={"_csrf": "ci", "password": "longenough1"}).status_code
+    _pws = st.post("/admins/%d/password" % ids["staff"], data={"_csrf": "ci", "password": "longenough1"}).status_code
+    _b0 = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
+    st.post("/admins/balance", data={"_csrf": "ci", "user_id": str(ids["reseller"]), "method": "cash", "amount": "5", "note": "ci staff"})
+    _b1 = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
+    st.post("/admins/role", data={"_csrf": "ci", "user_id": str(ids["reseller"]), "role": "admin"})
+    _still = one("SELECT role FROM panel_admins WHERE id = %s", (ids["reseller"],))["role"]
+    _new = {"_csrf": "ci", "full_name": "CI Staff Made", "phone": "01711000111", "email": "ci-made@example.com",
+            "identity": "998877", "password": "secret1234", "is_active": "1"}
+    st.post("/admins/save", data=dict(_new, username="ci_made_admin", role="admin"))
+    st.post("/admins/save", data=dict(_new, username="ci_made_mgr", role="manager", phone="01711000112"))
+    st.post("/admins/save", data=dict(_new, username="ci_made_res", role="reseller", phone="01711000113"))
+    _made = {r["username"]: r for r in run_q("SELECT id, username, role, created_by FROM panel_admins WHERE username LIKE 'ci_made_%%'")}
+    run("INSERT INTO panel_admins (username, full_name, password_hash, role) VALUES ('ci_big_mgr', 'CI Manager', 'x', 'manager')")
+    _mgr = one("SELECT id FROM panel_admins WHERE username = 'ci_big_mgr'")["id"]
+    _tm = st.post("/admins/%d/toggle" % _mgr, data={"_csrf": "ci"}).status_code
+    _mk = st.post("/admins/role", data={"_csrf": "ci", "user_id": str(_made["ci_made_res"]["id"]) if "ci_made_res" in _made else "0", "role": "manager"})
+    _mk_role = one("SELECT role FROM panel_admins WHERE username = 'ci_made_res'")
+    _del = st.post("/admins/%d/delete" % _made["ci_made_res"]["id"], data={"_csrf": "ci"}).status_code if "ci_made_res" in _made else 0
+    check(_vr.status_code == 200 and "Delete Profile" in _vr.get_data(as_text=True) and _va == 403 and _pw1 == 302
+          and _pwa == 403 and _pws == 403 and abs(_b1 - _b0 - 5) < 0.001 and _still == "reseller",
+          "staff with the User ticks: view, password, balance on a reseller; never on an administrator or themselves; "
+          "never make someone an administrator")
+    check("ci_made_admin" not in _made and "ci_made_mgr" not in _made and "ci_made_res" in _made
+          and _made["ci_made_res"]["created_by"] == one("SELECT username FROM panel_admins WHERE id = %s", (ids["staff"],))["username"]
+          and _tm == 403 and _mk_role and _mk_role["role"] == "reseller" and _del == 302
+          and not one("SELECT id FROM panel_admins WHERE username = 'ci_made_res'"),
+          "staff add / delete users, but never with (or on someone with) a role that can do more than their own")
+    run("UPDATE panel_admins SET balance = %s WHERE id = %s", (_b0, ids["reseller"]))
+    run("DELETE FROM user_ledger WHERE note = 'ci staff'")
+    run("DELETE FROM panel_admins WHERE username IN ('ci_big_mgr', 'ci_made_res')")
+    # roles
+    ticks("support", _base + ["usr.role_module"])
+    _rl = st.get("/roles")
+    _rp = st.get("/roles/technician/permissions").get_data(as_text=True)
+    _rp_post = st.post("/roles/technician/permissions", data={"_csrf": "ci", "sub.module": "1"}).status_code
+    ticks("support", _base + ["usr.role_module", "usr.role_edit"])
+    _menu2 = st.get("/").get_data(as_text=True)
+    _own = st.post("/roles/support/permissions", data={"_csrf": "ci", "nas.module": "1"}).status_code
+    _tech_nas0 = one("SELECT allowed FROM role_funcs WHERE role = 'technician' AND fkey = 'nas.module'")
+    _ed = st.post("/roles/technician/permissions", data={"_csrf": "ci", "sub.module": "1", "usr.role_module": "1"}).status_code
+    _tech = {r["fkey"]: r["allowed"] for r in run_q("SELECT fkey, allowed FROM role_funcs WHERE role = 'technician'")}
+    check(_rl.status_code == 200 and "Set Permission" not in _rl.get_data(as_text=True) and "disabled" in _rp and _rp_post == 403
+          and 'href="/roles"' in _menu2 and _own == 403 and _ed == 302 and _tech.get("usr.role_module") == 1
+          and _tech.get("nas.module") == (_tech_nas0["allowed"] if _tech_nas0 else 1),
+          "staff: User Role > Module shows roles read-only; Edit changes another role, never their own, and only the "
+          "ticks they have themselves")
+    _rc = client(ids["reseller"])
+    check(_rc.get("/admins").status_code == 403 and _rc.get("/roles").status_code == 403,
+          "resellers never open Users or Roles (they have My Users)")
+    # BTRC: off until ticked, then staff (never resellers) open it
+    _bt0 = st.get("/reports/btrc").status_code
+    ticks("support", _base + ["rep.module", "rep.btrc", "rep.sales"])
+    _bt1 = st.get("/reports/btrc").status_code
+    _rep = st.get("/reports").get_data(as_text=True)
+    check(_bt0 == 403 and _bt1 == 200 and "tab=traffic" not in _rep and "tab=profit" in _rep,
+          "Reports: BTRC opens for staff only with its tick; each report tab follows its own tick")
+    # receipts open with Subscribers or Accounting (Activate & Print by a reseller), payment Reverse follows its tick
+    _rs_user = one("SELECT username FROM panel_admins WHERE id = %s", (ids["reseller"],))["username"]
+    run("INSERT INTO payments (subscriber_id, username, amount, method, days_added, received_by, note) "
+        "SELECT id, username, 1, 'cash', 0, %s, 'ci receipt' FROM subscribers WHERE created_by = %s LIMIT 1", (_rs_user, _rs_user))
+    _pay = one("SELECT id FROM payments WHERE note = 'ci receipt'")
+    _rcpt = _rc.get("/payments/%d/receipt" % _pay["id"]).status_code if _pay else 0
+    ticks("support", ["pay.module", "inv.module"])
+    _rev0 = st.post("/payments/%d/delete" % _pay["id"], data={"_csrf": "ci"}).status_code if _pay else 0
+    ticks("support", ["pay.module", "inv.module", "inv.reverse"])
+    _pays = st.get("/payments").get_data(as_text=True)
+    _rev1 = st.post("/payments/%d/delete" % _pay["id"], data={"_csrf": "ci"}).status_code if _pay else 0
+    check(_pay and _rcpt == 200 and _rev0 == 403 and _rev1 == 302 and not one("SELECT id FROM payments WHERE note = 'ci receipt'")
+          and "/delete" in _pays, "a reseller opens the receipt of their own payment; staff reverse a payment only with Reverse")
+    run("DELETE FROM payments WHERE note = 'ci receipt'")
+    run("DELETE FROM role_funcs WHERE role IN ('support', 'technician')")
+    run("DELETE FROM role_perms WHERE role IN ('support', 'technician')")
+    for r in _snap_f:
+        run("INSERT INTO role_funcs (role, fkey, allowed) VALUES (%s, %s, %s)", (r["role"], r["fkey"], r["allowed"]))
+    for r in _snap_p:
+        run("INSERT INTO role_perms (role, module, level) VALUES (%s, %s, %s)", (r["role"], r["module"], r["level"]))
     return bad
 
 

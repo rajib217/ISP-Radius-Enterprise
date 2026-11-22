@@ -11,7 +11,7 @@
 </section>
 
 <div class="split-even" style="margin-top:16px">
-  <section class="panel">
+  {% if can_fn('prof.edit') %}<section class="panel">
     <div class="panel-head"><h2>My details</h2></div>
     <form class="panel-body stack" method="post">
       {{ csrf_input() }}<input type="hidden" name="section" value="details">
@@ -20,8 +20,8 @@
       {{ field('Email', 'email', u.email, type='email') }}
       <div><button class="btn primary" type="submit">Save details</button></div>
     </form>
-  </section>
-  <section class="panel">
+  </section>{% endif %}
+  {% if can_fn('prof.password') %}<section class="panel">
     <div class="panel-head"><h2>Change password</h2></div>
     <form class="panel-body stack" method="post" autocomplete="off">
       {{ csrf_input() }}<input type="hidden" name="section" value="password">
@@ -30,7 +30,7 @@
       <div class="field"><label class="lbl" for="c-again">New password again</label><input id="c-again" name="again" type="password" minlength="8" autocomplete="new-password" required></div>
       <div><button class="btn primary" type="submit">Change password</button></div>
     </form>
-  </section>
+  </section>{% endif %}
   <section class="panel">
     <div class="panel-head"><h2>Two-factor authentication</h2></div>
     <div class="panel-body stack">

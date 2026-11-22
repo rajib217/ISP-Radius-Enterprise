@@ -313,6 +313,10 @@ def dues_total():
     return {"amount": float(a["t"] or 0) + float(b["t"] or 0), "customers": n(a["c"])}
 
 
+TAB_FN = {"subscriber": "home.subs", "accounting": "home.acc", "user": "home.users", "predictions": "home.pred",
+          "usage": "home.usage", "sales": "home.g_sales", "cashflow": "home.g_pay"}     # Users > Roles > Home
+
+
 def allowed_tabs():
-    return [(k, label) for k, label, mod in TABS if core.can(mod)
+    return [(k, label) for k, label, mod in TABS if core.can(mod) and core.can_fn(TAB_FN[k])
             and not (core.my_downline() is not None and k != "subscriber")]

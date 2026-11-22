@@ -12,24 +12,25 @@ def _i(label, endpoint, match=None, args=None, none_of=None, module=None, admin=
             "none_of": none_of or [], "module": module}
 
 
-def _g(key, label, icon, items=None, endpoint=None, match=None, module=None, admin=False, sellers=False, fn=None):
-    return {"sellers": sellers, "fn": fn, "key": key, "label": label, "icon": icon, "items": items, "endpoint": endpoint,
+def _g(key, label, icon, items=None, endpoint=None, match=None, module=None, admin=False, sellers=False, fn=None, office=False):
+    # office: never shown to resellers / sub-resellers / retailers (administrators and office staff, by the items' ticks)
+    return {"office": office, "sellers": sellers, "fn": fn, "key": key, "label": label, "icon": icon, "items": items, "endpoint": endpoint,
             "match": match or ([endpoint] if endpoint else []), "module": module, "admin": admin}
 
 
 STRUCTURE = [
     _g("home", "Home", "home", endpoint="dashboard"),
-    _g("profile", "My Profile", "user", endpoint="profile", match=["profile", "account"]),
+    _g("profile", "My Profile", "user", endpoint="profile", match=["profile", "account"], fn="prof.module"),
     _g("mypkg", "My Packages", "package", endpoint="my_packages"),
     _g("myusers", "My Users", "users", endpoint="my_users", match=["my_users", "user_transfer", "my_user_save", "my_user_packages", "my_user_delete"], sellers=True, fn="usr.module"),
     _g("myprofit", "My Profit", "chart", endpoint="my_profit", match=["my_profit", "my_profit_csv"], sellers=True, fn="rep.myprofit"),
-    _g("users", "Users", "users", admin=True, items=[
-        _i("Roles", "roles"),
-        _i("Users", "admins", ["admins", "admin_save", "admin_toggle", "admin_delete"], none_of=["group"]),
-        _i("Staffs", "admins", args={"group": "staff"}),
-        _i("Resellers", "admins", args={"group": "reseller"}, tier="reseller"),
-        _i("Sub-resellers", "admins", args={"group": "subreseller"}, tier="subreseller"),
-        _i("Retailers", "admins", args={"group": "retailer"}, tier="retailer"),
+    _g("users", "Users", "users", office=True, items=[
+        _i("Roles", "roles", ["roles", "role_permissions"], fn="usr.role_module"),
+        _i("Users", "admins", ["admins", "admin_save", "admin_toggle", "admin_delete", "admin_view", "admin_packages"], none_of=["group"], fn="usr.module"),
+        _i("Staffs", "admins", args={"group": "staff"}, fn="usr.module"),
+        _i("Resellers", "admins", args={"group": "reseller"}, tier="reseller", fn="usr.module"),
+        _i("Sub-resellers", "admins", args={"group": "subreseller"}, tier="subreseller", fn="usr.module"),
+        _i("Retailers", "admins", args={"group": "retailer"}, tier="retailer", fn="usr.module"),
     ]),
     _g("package", "Package", "layers", module="plans", items=[
         _i("Policy", "policy", ["policy", "policy_save", "policy_delete"]),
@@ -56,7 +57,7 @@ STRUCTURE = [
         _i("MAC Binded", "subscribers", args={"status": "mac"}),
         _i("Grace Period On", "subscribers", args={"status": "grace"}),
         _i("Recent Auto Renew", "subscribers", args={"status": "renewed"}),
-        _i("Extra Service Fees", "charges", ["charges", "charge_save", "charge_paid", "charge_delete"]),
+        _i("Extra Service Fees", "charges", ["charges", "charge_save", "charge_paid", "charge_delete"], fn="sub.fee_module"),
         _i("Suspended", "subscribers", args={"status": "suspended"}),
         _i("Online sessions", "online", module="online"),
         _i("Import / Export", "import_csv", ["import_csv"]),
@@ -119,7 +120,7 @@ STRUCTURE = [
     ]),
     _g("notes", "Notes", "note", endpoint="notes", module="notes"),
     _g("notices", "Notices", "alert", endpoint="notices", module="notices", match=["notices", "notice_save", "notice_delete"]),
-    _g("reports", "Reports", "chart", endpoint="reports", module="reports"),
+    _g("reports", "Reports", "chart", endpoint="reports", module="reports", fn=("rep.bandwidth", "rep.payment", "rep.sales")),
     _g("docs", "Documents", "folder", endpoint="documents", module="documents"),
     _g("zones", "Department/Zone", "briefcase", endpoint="org", module="zones"),
     _g("settings", "Settings", "sliders", endpoint="settings", admin=True,
@@ -150,6 +151,13 @@ def build():
     for grp in STRUCTURE:
         if grp["admin"] and not is_admin:
             continue
+        if grp.get("office") and seller:
+            continue
+        if grp["fn"] and not grp["sellers"] and not any(core.can_fn(k) for k in (
+                (grp["fn"],) if isinstance(grp["fn"], str) else grp["fn"])):
+            continue
+        if grp["key"] == "mypkg" and seller and not core.can_fn("pkg.module"):
+            continue                      # Users > Roles > My Packages > Module
         if grp["sellers"] and (g.me["role"] not in core.SELLER_ROLES or not core.can_fn(grp["fn"])):
             continue
         mod_ok = not grp["module"] or core.can(grp["module"])

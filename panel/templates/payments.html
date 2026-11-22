@@ -5,14 +5,15 @@
 <div class="page-head">
   <div><h1>Payments</h1><p class="sub">{{ '{:,}'.format(tot.c) }} payment{{ '' if tot.c == 1 else 's' }} · {{ currency }} {{ tot.total|money }}</p></div>
   <div class="actions">
-    <a class="btn" href="{{ url_for('payments_export', **keep) }}">{{ icon('download') }}Export CSV</a>
+    {% if can_fn('inv.export') or can_fn('pay.export') %}<a class="btn" href="{{ url_for('payments_export', **keep) }}">{{ icon('download') }}Export CSV</a>{% endif %}
     {% if can('accounting', 'edit') %}<a class="btn" href="{{ url_for('receive') }}">{{ icon('card') }}Receive payment</a>
-    <button class="btn primary" data-open="pay-dlg" data-new>{{ icon('plus') }}Add other payment</button>{% endif %}
+    {% if can_fn('inv.add') %}<button class="btn primary" data-open="pay-dlg" data-new>{{ icon('plus') }}Add other payment</button>{% endif %}{% endif %}
   </div>
 </div>
 <section class="panel">
   {% set a = request.args %}
   {% set ptype_names = dict(profile_types) %}
+  {% set can_receipt = can_fn('pay.receipt') or can_fn('inv.view') %}
   <form class="filters panel-body" method="get" style="padding-bottom:0">
     {% for k in ('from', 'to', 'ptype', 'owner', 'method', 'by') %}{% if a.get(k) %}<input type="hidden" name="{{ k }}" value="{{ a.get(k) }}">{% endif %}{% endfor %}
     <div class="search">{{ icon('search') }}<input type="search" name="q" value="{{ a.get('q', '') }}" placeholder="Username or note" aria-label="Search"></div>
@@ -32,15 +33,15 @@
   <div class="tbl-wrap"><table class="tbl">
     <thead><tr><th>Receipt</th><th>Date</th><th>Customer</th><th class="num">Amount</th><th>Method</th><th class="hide-sm">Valid until</th><th class="hide-sm">Received by</th><th></th></tr></thead>
     <tbody>{% for p in rows %}<tr>
-      <td class="mono"><a href="{{ url_for('receipt', pid=p.id) }}">#{{ p.id }}</a></td>
+      <td class="mono">{% if can_receipt %}<a href="{{ url_for('receipt', pid=p.id) }}">#{{ p.id }}</a>{% else %}#{{ p.id }}{% endif %}</td>
       <td class="nowrap" data-card="key">{{ p.paid_at|dt }}</td>
       <td class="who-cell" data-card="title">{% if p.sid %}<a href="{{ url_for('subscriber_view', sid=p.sid) }}"><b class="mono">{{ p.username }}</b></a>{% else %}<b class="mono">{{ p.username }}</b>{% endif %}<small>{{ p.full_name or '—' }}{% if p.note %} · {{ p.note }}{% endif %}</small></td>
       <td class="num" data-card="key"><b>{{ p.amount|money }}</b></td>
       <td data-card="key">{{ p.method }}</td>
       <td class="hide-sm">{{ p.period_to|d if p.period_to else '—' }}</td>
       <td class="hide-sm">{{ p.received_by or '—' }}</td>
-      <td class="act" data-card="actions"><a class="btn sm icon" href="{{ url_for('receipt', pid=p.id) }}" aria-label="Receipt #{{ p.id }}" title="Receipt">{{ icon('printer') }}</a>
-        {% if me.role == 'admin' %}<form method="post" action="{{ url_for('payment_delete', pid=p.id) }}" data-confirm="Delete payment #{{ p.id }}? The customer's expiry date is not changed.">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete payment {{ p.id }}" title="Delete payment {{ p.id }}">{{ icon('trash') }}</button></form>{% endif %}</td>
+      <td class="act" data-card="actions">{% if can_receipt %}<a class="btn sm icon" href="{{ url_for('receipt', pid=p.id) }}" aria-label="Receipt #{{ p.id }}" title="Receipt">{{ icon('printer') }}</a>{% endif %}
+        {% if can('accounting', 'edit') and can_fn('inv.reverse') %}<form method="post" action="{{ url_for('payment_delete', pid=p.id) }}" data-confirm="Delete payment #{{ p.id }}? The customer's expiry date is not changed.">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete payment {{ p.id }}" title="Delete payment {{ p.id }}">{{ icon('trash') }}</button></form>{% endif %}</td>
     </tr>{% endfor %}</tbody>
   </table></div>
   {{ pager(pg, keep, 'payments') }}

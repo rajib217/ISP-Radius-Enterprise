@@ -6,8 +6,8 @@
   <div><h1>{{ gtitle }}</h1><p class="sub"><a href="{{ url_for('dashboard') }}">Home</a> &middot; All {{ gtitle }}</p></div>
 </div>
 <div class="toolbtns">
-  <button class="btn primary" data-open="admin-dlg" data-new data-fill='{{ {"role": default_role}|tojson }}'>{{ icon('plus') }}Add {{ gtitle|lower if group else 'user' }}</button>
-  <button class="btn primary" type="button" data-open="role-dlg">{{ icon('edit') }}Change Role</button>
+  {% if can_fn('usr.add') %}<button class="btn primary" data-open="admin-dlg" data-new data-fill='{{ {"role": default_role}|tojson }}'>{{ icon('plus') }}Add {{ gtitle|lower if group else 'user' }}</button>{% endif %}
+  {% if can_fn('usr.role') or can_fn('usr.ptype') %}<button class="btn primary" type="button" data-open="role-dlg">{{ icon('edit') }}Change Role</button>{% endif %}
   <button class="btn primary" type="button" id="uFilterBtn">{{ icon('search') }}Filter</button>
   <button class="btn primary" type="button" id="uCompactBtn" aria-pressed="false">{{ icon('layers') }}Compact View</button>
 </div>
@@ -22,11 +22,12 @@
   <div class="listbar">
     <div class="row-gap">
       <select id="uPer" class="w-auto" aria-label="Rows per page"><option>25</option><option selected>50</option><option>100</option><option value="0">All</option></select>
-      <div class="seg" role="group" aria-label="Export">
+      {% if can_fn('usr.export') %}<div class="seg" role="group" aria-label="Export">
         <button type="button" data-xt="print">Print</button><button type="button" data-xt="copy">Copy</button><button type="button" data-xt="pdf">PDF</button><button type="button" data-xt="excel">Excel</button><button type="button" data-xt="csv">CSV</button>
         <span class="viewmenu"><button type="button" id="uViewBtn" aria-haspopup="true">View &#9662;</button>
           <div class="viewpop hide" id="uViewPop">{% for key, name in (('balance','Balance'),('packages','Packages'),('subs','Subscribers'),('resellers','Resellers'),('role','Role & Permission'),('admin','Admin'),('reseller','Reseller'),('subreseller','Subreseller'),('status','Status'),('login','Last sign-in')) %}<label><input type="checkbox" data-ucol="{{ key }}" {{ 'checked' if key not in ('status','login') }}> {{ name }}</label>{% endfor %}</div></span>
-      </div>
+      </div>{% else %}<div class="seg" role="group" aria-label="Columns"><span class="viewmenu"><button type="button" id="uViewBtn" aria-haspopup="true">View &#9662;</button>
+          <div class="viewpop hide" id="uViewPop">{% for key, name in (('balance','Balance'),('packages','Packages'),('subs','Subscribers'),('resellers','Resellers'),('role','Role & Permission'),('admin','Admin'),('reseller','Reseller'),('subreseller','Subreseller'),('status','Status'),('login','Last sign-in')) %}<label><input type="checkbox" data-ucol="{{ key }}" {{ 'checked' if key not in ('status','login') }}> {{ name }}</label>{% endfor %}</div></span></div>{% endif %}
     </div>
     <div class="row-gap"><label class="muted" for="uq">Search:</label><input id="uq" type="search" placeholder="Type & Search" class="w-220" data-filter="#uTbl"></div>
   </div>
@@ -38,18 +39,18 @@
       <tr>
         <td>{{ a.id }}</td>
         <td class="act no-x">
-          <button type="button" class="wallet-ic" data-open="bal-dlg" data-fill='{{ {"user_id": a.id, "user_label": a.username}|tojson }}' title="Add balance" aria-label="Add balance to {{ a.username }}">{{ icon('wallet') }}</button>
+          {% if a.can_act and can_fn('usr.balance') %}<button type="button" class="wallet-ic" data-open="bal-dlg" data-fill='{{ {"user_id": a.id, "user_label": a.username}|tojson }}' title="Add balance" aria-label="Add balance to {{ a.username }}">{{ icon('wallet') }}</button>{% endif %}
           <details class="dd"><summary class="btn sm">Actions &#9662;</summary><div class="dd-menu">
-            <a href="{{ url_for('admin_view', aid=a.id) }}">View profile</a>
-            <button type="button" data-open="admin-dlg" data-edit='{{ {"id": a.id, "username": a.username, "full_name": a.full_name, "role": a.role, "phone": a.phone, "email": a.email, "is_active": 1 if a.is_active else 0, "sms_on": 1 if a.sms_on else 0, "email_on": 1 if a.email_on else 0, "identity": a.identity, "country": a.country, "province": a.province, "city": a.city, "address": a.address, "department_id": a.department_id or "", "zone_id": a.zone_id or "", "parent_id": a.parent_id or "", "max_children": a.max_children if a.max_children is not none else "", "plans": a.plan_ids}|tojson }}'>Edit</button>
-            {% if a.role != 'admin' %}<a href="{{ url_for('role_permissions', role=a.role) }}">Set permission</a>{% endif %}
-            <a href="{{ url_for('subscribers', seller=a.username) }}">View subscribers</a>
-            {% if a.id != me.id %}
-            <form method="post" action="{{ url_for('admin_toggle', aid=a.id) }}">{{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}"><button type="submit">{{ 'Disable' if a.is_active else 'Enable' }}</button></form>
-            <form method="post" action="{{ url_for('admin_delete', aid=a.id) }}" data-confirm="Delete {{ a.username }}?">{{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}"><button type="submit" class="danger-text">Delete</button></form>
+            {% if can_fn('usr.view') %}<a href="{{ url_for('admin_view', aid=a.id) }}">View profile</a>{% endif %}
+            {% if a.can_act and can_fn('usr.edit') %}<button type="button" data-open="admin-dlg" data-edit='{{ {"id": a.id, "username": a.username, "full_name": a.full_name, "role": a.role, "phone": a.phone, "email": a.email, "is_active": 1 if a.is_active else 0, "sms_on": 1 if a.sms_on else 0, "email_on": 1 if a.email_on else 0, "identity": a.identity, "country": a.country, "province": a.province, "city": a.city, "address": a.address, "department_id": a.department_id or "", "zone_id": a.zone_id or "", "parent_id": a.parent_id or "", "max_children": a.max_children if a.max_children is not none else "", "plans": a.plan_ids}|tojson }}'>Edit</button>{% endif %}
+            {% if a.role != 'admin' and can_fn('usr.role_module') %}<a href="{{ url_for('role_permissions', role=a.role) }}">Set permission</a>{% endif %}
+            {% if can('subscribers') %}<a href="{{ url_for('subscribers', seller=a.username) }}">View subscribers</a>{% endif %}
+            {% if a.id != me.id and a.can_act %}
+            {% if can_fn('usr.edit') %}<form method="post" action="{{ url_for('admin_toggle', aid=a.id) }}">{{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}"><button type="submit">{{ 'Disable' if a.is_active else 'Enable' }}</button></form>{% endif %}
+            {% if can_fn('usr.delete') %}<form method="post" action="{{ url_for('admin_delete', aid=a.id) }}" data-confirm="Delete {{ a.username }}?">{{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}"><button type="submit" class="danger-text">Delete</button></form>{% endif %}
             {% endif %}
           </div></details></td>
-        <td><a class="lwho" href="{{ url_for('admin_view', aid=a.id) }}"><span class="lav">{{ icon('user') }}</span><span><b>{{ a.full_name or a.username }}</b><small>{{ a.username }}</small></span></a></td>
+        <td>{% if can_fn('usr.view') %}<a class="lwho" href="{{ url_for('admin_view', aid=a.id) }}">{% else %}<span class="lwho">{% endif %}<span class="lav">{{ icon('user') }}</span><span><b>{{ a.full_name or a.username }}</b><small>{{ a.username }}</small></span>{{ '</a>'|safe if can_fn('usr.view') else '</span>'|safe }}</td>
         <td><span class="pill pt-{{ a.ptype|lower }}">{{ a.ptype }}</span></td>
         <td data-uc="balance"><span class="pill ok">{{ '{:,.2f}'.format(a.balance|float) }}</span></td>
         <td data-uc="packages">{{ a.plan_ids|length if a.plan_ids and a.role != 'admin' else total_plans }}</td>

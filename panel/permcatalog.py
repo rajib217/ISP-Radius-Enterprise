@@ -8,7 +8,7 @@ out the coarse per-module level (table role_perms) that the rest of the panel al
 
 Item flags:  v = needs the module at view level (default is edit)   g = the group's "Module" switch: when off,
 nothing else in that group counts   n = does not change the module level   o = off unless ticked (default)
-d = dangerous, off by default.
+d = dangerous, off by default   a = ticked by default for every role (office staff too, not only resellers).
 """
 
 
@@ -22,19 +22,19 @@ def G(title, mod, *cols, wide=False):
 
 TABS = [
     {"title": "Home", "icon": "home", "groups": [
-        G("Reports & Statistics", None, [I("home.subs", "Subscriber Counter", "", "vn"), I("home.acc", "Accounting Counter", "", "vn"),
-                                         I("home.users", "User Counter", "", "vn"), I("home.pred", "Predictions", "", "vn"),
-                                         I("home.usage", "Usage", "", "vn")]),
-        G("Expired & Expiring", None, [I("home.expiring", "Module", "", "vn")]),
-        G("Graph Reports", None, [I("home.g_sales", "Sales/Invoice Reports", "", "vn"), I("home.g_pay", "Payments Reports", "", "vn")]),
+        G("Reports & Statistics", None, [I("home.subs", "Subscriber Counter", "", "vna"), I("home.acc", "Accounting Counter", "", "vna"),
+                                         I("home.users", "User Counter", "", "vna"), I("home.pred", "Predictions", "", "vna"),
+                                         I("home.usage", "Usage", "", "vna")]),
+        G("Expired & Expiring", None, [I("home.expiring", "Module", "", "vna")]),
+        G("Graph Reports", None, [I("home.g_sales", "Sales/Invoice Reports", "", "vna"), I("home.g_pay", "Payments Reports", "", "vna")]),
         G("Notices", "notices", [I("home.notices", "Module", "", "vg"), I("home.notices_edit", "Add / Edit / Delete")]),
     ]},
     {"title": "My Profile", "icon": "user", "groups": [
         G("My Profile (Reseller)", None,
-          [I("prof.module", "Module", "", "vn"), I("prof.edit", "Edit", "", "n"), I("prof.photo", "Change Photo", "", "n"),
-           I("prof.password", "Change Password", "", "n"), I("prof.note", "Add Note", "", "n")],
+          [I("prof.module", "Module", "", "vna"), I("prof.edit", "Edit", "", "na"), I("prof.photo", "Change Photo", "", "n"),
+           I("prof.password", "Change Password", "", "na"), I("prof.note", "Add Note", "", "n")],
           [I("prof.settings", "Profile Settings", "", "n"),
-           I("prof.topup", "Balance Topup", "Allow Resellers To Topup Balance By Payment Gateways", "n"),
+           I("prof.topup", "Balance Topup", "Allow Resellers To Topup Balance By Payment Gateways", "na"),
            I("prof.inv_module", "Invoice Template Module", "Enable Invoice Template On User Profile", "n"),
            I("prof.inv_settings", "Invoice Settings", "Invoice Template Settings Details On User Profile", "n")], wide=True),
         G("My Packages", "plans", [I("pkg.module", "Module", "", "vg"),
@@ -139,7 +139,7 @@ TABS = [
                                       I("cfc.delete", "Delete", "", "n"), I("cfc.export", "Export", "", "n")]),
     ]},
     {"title": "Network", "icon": "server", "groups": [
-        G("Network", None, [I("net.live", "Subscriber Live Graph", "Allow To View NAS Live Graph", "vn"),
+        G("Network", None, [I("net.live", "Subscriber Live Graph", "Allow To View NAS Live Graph", "vna"),
                             I("net.iface", "NAS Interface Graph", "View NAS Interface Traffic Graph", "vn")]),
         G("NAS, IP Pool and Graphs", "network", [I("nas.module", "Module", "", "vg"), I("nas.edit", "Add / Edit / Delete")]),
         G("OLT", "network", [I("olt.module", "Module", "", "vg"), I("olt.add", "Add"), I("olt.edit", "Edit"), I("olt.delete", "Delete"),
@@ -170,7 +170,7 @@ TABS = [
     {"title": "Reports", "icon": "chart", "groups": [
         G("My Profit (Reseller)", None, [I("rep.myprofit", "Module", "Resellers / sub-resellers / retailers: see their own profit and that of the people below them", "vn")]),
         G("Reports", "reports", [I("rep.module", "Module", "", "vg"), I("rep.sales", "Sales Reports", "", "v"),
-                                 I("rep.payment", "Payment Reports", "", "v"), I("rep.btrc", "BTRC Reports", "", "vn"),
+                                 I("rep.payment", "Payment Reports", "", "v"), I("rep.btrc", "BTRC Reports", "Every customer's name, phone and address for BTRC. Office staff only, off until ticked", "vno"),
                                  I("rep.bandwidth", "Bandwidth Usage Reports", "", "vn")]),
     ]},
     {"title": "Documents", "icon": "folder", "groups": [
@@ -229,7 +229,28 @@ ENDPOINT_FN = {
     "tools_reload": "nas.edit", "device_save": "nas.edit", "device_delete": "nas.edit", "device_ping": "nas.edit",
     "device_ping_all": "nas.edit",
     "olts": "olt.module", "onus": "onu.view", "onu_view": "onu.view",
+    # Home, My Profile, Payments / receipts, reports, extra service fees, live graph (pages that were open to everyone
+    # with the module until these ticks were checked)
+    "payment_add": "inv.add", "payments": ("pay.module", "inv.view"),
+    "receipt": ("pay.receipt", "inv.view", "sub.activation", "sub.invoice", "sub.balance"),
+    "payments_export": ("inv.export", "pay.export"),
+    "profile": "prof.module", "add_balance": "prof.topup",
+    "charges": "sub.fee_module", "charge_save": ("sub.fee_add", "sub.fee_edit"), "charge_paid": "sub.fee_edit",
+    "charge_delete": "sub.fee_delete", "subscriber_rate": "net.live",
+    "collection_csv": "rep.payment", "profit_csv": "rep.sales", "btrc_report": "rep.btrc", "btrc_xlsx": "rep.btrc",
 }
+
+# Ticks that only started to count when the permission check of Nov 2026 wired them in. Before that, everyone with the
+# module (or everyone) had these pages and buttons, so the first time the new code runs each role that could use one
+# gets it ticked (core.upgrade_role_funcs): nothing changes for anyone until an administrator unticks it.
+NOW_ENFORCED = ("home.subs", "home.acc", "home.users", "home.pred", "home.usage", "home.expiring", "home.g_sales",
+                "home.g_pay", "prof.module", "prof.edit", "prof.password", "prof.topup", "pkg.module", "sub.toggle_pw",
+                "sub.attr_view", "sub.note", "sub.document", "sub.fee_view", "sub.fee_module", "sub.fee_add",
+                "sub.fee_edit", "sub.fee_delete", "inv.add", "inv.view", "pay.module", "pay.receipt", "pay.export",
+                "net.live", "rep.sales", "rep.payment", "rep.bandwidth")
+# ...and ticks that start to count but must not open anything by themselves: whatever was saved before (when they did
+# nothing) is cleared once, so only a tick given from now on opens them
+NOW_CLEARED = ("rep.btrc",)
 
 
 def default_on(key, perms, role_is_seller):
@@ -237,6 +258,8 @@ def default_on(key, perms, role_is_seller):
     mod, flags = KEY_INFO[key]
     if "d" in flags or "o" in flags:
         return False
+    if "a" in flags:
+        return True
     if mod is None:
         return bool(role_is_seller)
     need = "view" if "v" in flags else "edit"

@@ -328,6 +328,7 @@ def gate():
         return redirect(url_for("login"))
     g.me = me
     core.apply_timezone(cfg().get("timezone"))
+    core.upgrade_role_funcs()
     g.perms = core.load_perms(me["role"])
     g.funcs = core.load_funcs(me["role"], g.perms)
     sid = (request.view_args or {}).get("sid")

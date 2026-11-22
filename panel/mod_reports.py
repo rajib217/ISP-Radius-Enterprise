@@ -13,8 +13,13 @@ SPAN_SQL = "acctstarttime >= %s AND acctstarttime < %s + INTERVAL 1 DAY"
 
 @route("/reports", module="reports")
 def reports():
-    tabs = ("traffic", "collection", "customers", "profit") + (("server",) if g.me["role"] == "admin" else ())
-    tab = request.args.get("tab") if request.args.get("tab") in tabs else "traffic"
+    # Users > Roles > Reports: Bandwidth Usage = Traffic, Payment Reports = Collection, Sales Reports = Customers and Seller profit
+    tab_fn = {"traffic": "rep.bandwidth", "collection": "rep.payment", "customers": "rep.sales", "profit": "rep.sales"}
+    tabs = tuple(k for k in ("traffic", "collection", "customers", "profit") if core.can_fn(tab_fn[k])) + \
+        (("server",) if g.me["role"] == "admin" else ())
+    if not tabs:
+        abort(403)
+    tab = request.args.get("tab") if request.args.get("tab") in tabs else tabs[0]
     start, end = core.date_range(29)
     span = (start, end)
     days = [start + timedelta(days=i) for i in range((end - start).days + 1)]

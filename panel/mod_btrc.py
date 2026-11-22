@@ -115,9 +115,14 @@ def rows_for(start, end):
     return out
 
 
+def _no_sellers():
+    if core.my_downline() is not None:
+        abort(403)
+
+
 @route("/reports/btrc", module="reports")
-@admin_required
 def btrc_report():
+    _no_sellers()
     start, end = _month()
     rows = rows_for(start, end)
     st = _settings()
@@ -200,8 +205,8 @@ def _xlsx(columns, rows):
 
 
 @route("/reports/btrc.xlsx", module="reports")
-@admin_required
 def btrc_xlsx():
+    _no_sellers()
     start, end = _month()
     rows = rows_for(start, end)
     audit("export", "btrc report", "%s: %d customers" % (start.strftime("%Y-%m"), len(rows)))

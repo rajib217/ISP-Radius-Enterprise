@@ -9,27 +9,27 @@
 
 {% if edit %}
 <div class="sv-actions">
-  <a class="btn sm primary" href="{{ url_for('subscriber_activation', username=sub.username, next=url_for('subscriber_view', sid=sub.id)) }}">{{ icon('refresh') }}Activation</a>
-  <button class="btn sm primary" data-open="migrate-dlg" data-fill='{{ {"plan_id": sub.plan_id or ""}|tojson }}'>{{ icon('layers') }}Migration</button>
-  <button class="btn sm primary" data-open="balance-dlg">{{ icon('wallet') }}Add Balance</button>
-  <a class="btn sm primary" href="{{ url_for('subscriber_edit', sid=sub.id) }}">{{ icon('edit') }}Edit Profile</a>
-  <button class="btn sm primary" data-open="svc-dlg">{{ icon('sliders') }}Service Settings</button>
-  {% if online %}<form method="post" action="{{ url_for('subscriber_kick', sid=sub.id) }}" data-confirm="Disconnect {{ sub.username }} now? The router will reconnect them automatically.">{{ csrf_input() }}<button class="btn sm solid-danger" type="submit">{{ icon('power') }}Disconnect</button></form>{% endif %}
-  <form method="post" action="{{ url_for('subscriber_toggle', sid=sub.id) }}" {% if sub.status == 'active' %}data-confirm="Disable the profile of {{ sub.username }}? They will be disconnected and cannot log in until you enable it."{% endif %}>{{ csrf_input() }}<button class="btn sm solid-danger" type="submit">{{ icon('pause' if sub.status == 'active' else 'play') }}{{ 'Profile Disable' if sub.status == 'active' else 'Profile Enable' }}</button></form>
-  <form method="post" action="{{ url_for('subscriber_net', sid=sub.id) }}" {% if not sub.net_disabled %}data-confirm="Disable the internet of {{ sub.username }}? Login is refused until you enable it again."{% endif %}>{{ csrf_input() }}<button class="btn sm solid-danger" type="submit">{{ icon('shield') }}{{ 'Enable Net' if sub.net_disabled else 'Disable Net' }}</button></form>
+  {% if can_fn('sub.activation') or can_fn('sub.mass_activation') %}<a class="btn sm primary" href="{{ url_for('subscriber_activation', username=sub.username, next=url_for('subscriber_view', sid=sub.id)) }}">{{ icon('refresh') }}Activation</a>{% endif %}
+  {% if can_fn('sub.migration') %}<button class="btn sm primary" data-open="migrate-dlg" data-fill='{{ {"plan_id": sub.plan_id or ""}|tojson }}'>{{ icon('layers') }}Migration</button>{% endif %}
+  {% if can_fn('sub.balance') %}<button class="btn sm primary" data-open="balance-dlg">{{ icon('wallet') }}Add Balance</button>{% endif %}
+  {% if can_fn('sub.edit') %}<a class="btn sm primary" href="{{ url_for('subscriber_edit', sid=sub.id) }}">{{ icon('edit') }}Edit Profile</a>{% endif %}
+  {% if can_fn('sub.service') %}<button class="btn sm primary" data-open="svc-dlg">{{ icon('sliders') }}Service Settings</button>{% endif %}
+  {% if online and can_fn('sub.disconnect') %}<form method="post" action="{{ url_for('subscriber_kick', sid=sub.id) }}" data-confirm="Disconnect {{ sub.username }} now? The router will reconnect them automatically.">{{ csrf_input() }}<button class="btn sm solid-danger" type="submit">{{ icon('power') }}Disconnect</button></form>{% endif %}
+  {% if can_fn('sub.profile_off' if sub.status == 'active' else 'sub.profile_on') %}<form method="post" action="{{ url_for('subscriber_toggle', sid=sub.id) }}" {% if sub.status == 'active' %}data-confirm="Disable the profile of {{ sub.username }}? They will be disconnected and cannot log in until you enable it."{% endif %}>{{ csrf_input() }}<button class="btn sm solid-danger" type="submit">{{ icon('pause' if sub.status == 'active' else 'play') }}{{ 'Profile Disable' if sub.status == 'active' else 'Profile Enable' }}</button></form>{% endif %}
+  {% if can_fn('sub.net_on' if sub.net_disabled else 'sub.net_off') %}<form method="post" action="{{ url_for('subscriber_net', sid=sub.id) }}" {% if not sub.net_disabled %}data-confirm="Disable the internet of {{ sub.username }}? Login is refused until you enable it again."{% endif %}>{{ csrf_input() }}<button class="btn sm solid-danger" type="submit">{{ icon('shield') }}{{ 'Enable Net' if sub.net_disabled else 'Disable Net' }}</button></form>{% endif %}
   <form method="post" action="{{ url_for('subscriber_sync', sid=sub.id) }}">{{ csrf_input() }}<button class="btn sm primary" type="submit">{{ icon('refresh') }}Sync</button></form>
   <a class="btn sm primary" href="{{ url_for('diagnose_page', user=sub.username) }}">{{ icon('search') }}Why Refused?</a>
   <a class="btn sm primary" href="#reports" data-tab-link="reports">{{ icon('chart') }}Usage Graph</a>
-  <button class="btn sm primary" data-open="invoice-dlg">{{ icon('file') }}New Invoice</button>
+  {% if can_fn('sub.invoice') %}<button class="btn sm primary" data-open="invoice-dlg">{{ icon('file') }}New Invoice</button>{% endif %}
   <button class="btn sm primary" data-open="notify-dlg">{{ icon('bell') }}Send Notification</button>
-  <button class="btn sm primary" data-open="photo-dlg">{{ icon('upload') }}Photo</button>
-  <button class="btn sm primary" data-open="pw-dlg">{{ icon('user') }}Password</button>
-  <button class="btn sm primary" type="button" data-reveal="pw" data-reveal-label>{{ icon('eye') }}Toggle Password</button>
-  {% if can('documents') %}<a class="btn sm primary" href="#documents" data-tab-link="documents">{{ icon('folder') }}Document</a>{% endif %}
-  <a class="btn sm primary" href="#attributes" data-tab-link="attributes">{{ icon('grid') }}Attributes</a>
-  {% if can('notes') %}<a class="btn sm primary" href="{{ url_for('notes', sub=sub.id) }}">{{ icon('note') }}Note</a>{% endif %}
-  <button class="btn sm primary" data-open="grace-dlg">{{ icon('pin') }}Grace Period</button>
-  <form method="post" action="{{ url_for('subscriber_reset_mac', sid=sub.id) }}" data-confirm="Clear the MAC binding of {{ sub.username }}?">{{ csrf_input() }}<button class="btn sm primary" type="submit">{{ icon('refresh') }}Reset MAC Address</button></form>
+  {% if can_fn('sub.photo') %}<button class="btn sm primary" data-open="photo-dlg">{{ icon('upload') }}Photo</button>{% endif %}
+  {% if can_fn('sub.password') %}<button class="btn sm primary" data-open="pw-dlg">{{ icon('user') }}Password</button>{% endif %}
+  {% if can_fn('sub.toggle_pw') %}<button class="btn sm primary" type="button" data-reveal="pw" data-reveal-label>{{ icon('eye') }}Toggle Password</button>{% endif %}
+  {% if can('documents') and can_fn('sub.document') %}<a class="btn sm primary" href="#documents" data-tab-link="documents">{{ icon('folder') }}Document</a>{% endif %}
+  {% if can_fn('sub.attr_view') %}<a class="btn sm primary" href="#attributes" data-tab-link="attributes">{{ icon('grid') }}Attributes</a>{% endif %}
+  {% if can('notes') and can_fn('sub.note') %}<a class="btn sm primary" href="{{ url_for('notes', sub=sub.id) }}">{{ icon('note') }}Note</a>{% endif %}
+  {% if can_fn('sub.grace') %}<button class="btn sm primary" data-open="grace-dlg">{{ icon('pin') }}Grace Period</button>{% endif %}
+  {% if can_fn('sub.reset_mac') %}<form method="post" action="{{ url_for('subscriber_reset_mac', sid=sub.id) }}" data-confirm="Clear the MAC binding of {{ sub.username }}?">{{ csrf_input() }}<button class="btn sm primary" type="submit">{{ icon('refresh') }}Reset MAC Address</button></form>{% endif %}
 </div>
 {% endif %}
 
@@ -46,10 +46,10 @@
     </div>
     <details class="dd sv-more"><summary class="btn sm primary">Actions &#9662;</summary>
       <div class="dd-menu">
-        {% if edit %}<a href="{{ url_for('subscriber_edit', sid=sub.id) }}">Edit profile</a>{% endif %}
+        {% if edit and can_fn('sub.edit') %}<a href="{{ url_for('subscriber_edit', sid=sub.id) }}">Edit profile</a>{% endif %}
         {% if can('tickets', 'edit') %}<a href="{{ url_for('ticket_new', sub=sub.id) }}">New ticket</a>{% endif %}
         {% if can('sms', 'edit') and sub.phone %}<a href="{{ url_for('sms_compose', username=sub.username) }}">Send SMS</a>{% endif %}
-        {% if me.role == 'admin' %}<form method="post" action="{{ url_for('subscriber_delete', sid=sub.id) }}" data-confirm="Permanently delete {{ sub.username }}? Their login stops working. Usage history is kept.">{{ csrf_input() }}<button type="submit" class="danger-link">Delete subscriber</button></form>{% endif %}
+        {% if edit and can_fn('sub.delete') %}<form method="post" action="{{ url_for('subscriber_delete', sid=sub.id) }}" data-confirm="Permanently delete {{ sub.username }}? Their login stops working. Usage history is kept.">{{ csrf_input() }}<button type="submit" class="danger-link">Delete subscriber</button></form>{% endif %}
       </div></details>
   </div>
   <div class="kpis ksv">
@@ -63,13 +63,13 @@
   </div>
   <nav class="sv-tabs" aria-label="Sections">
     {% for key, label, ic in [('profile','Profile','user'),('reports','Reports','chart'),('ledgers','Ledgers','file'),('invoices','Invoices','file'),('payments','Payments','card'),('online','Online Payments','wallet'),('messages','SMS Deliveries','phone'),('notifications','App Notifications','bell'),('services','Services','sliders'),('fees','Extra Service Fee','dollar'),('attributes','Attributes','grid'),('mac','MAC Address','server'),('documents','Documents','folder'),('logins','Login Log','shield'),('sessions','Session Log','activity'),('coa','CoA Logs','power'),('activity','Activities','chart'),('tickets','Tickets','ticket')] %}
-    {% if key not in ('documents',) or can('documents') %}{% if key != 'tickets' or can('tickets') %}<a href="#{{ key }}" data-tab="{{ key }}">{{ icon(ic) }}{{ label }}</a>{% endif %}{% endif %}
+    {% if (key != 'documents' or (can('documents') and can_fn('sub.document'))) and (key != 'fees' or can_fn('sub.fee_view')) and (key != 'attributes' or can_fn('sub.attr_view')) %}{% if key != 'tickets' or can('tickets') %}<a href="#{{ key }}" data-tab="{{ key }}">{{ icon(ic) }}{{ label }}</a>{% endif %}{% endif %}
     {% endfor %}
   </nav>
 </section>
 
 <div class="sv-pane" id="tab-profile">
-<section class="panel live-rate" data-rate-src="{{ url_for('subscriber_rate', sid=sub.id) }}" aria-label="Live speed">
+{% if can_fn('net.live') %}<section class="panel live-rate" data-rate-src="{{ url_for('subscriber_rate', sid=sub.id) }}" aria-label="Live speed">
   <div class="panel-head"><h2>{{ icon('activity') }}Live speed (RX / TX)</h2>
     <span class="aside" data-lr-note>Loading…</span></div>
   <div class="lr-body">
@@ -86,13 +86,13 @@
       <div class="lr-scale"><span data-lr-max></span><span>while this page is open · updates every 30 s</span></div>
     </div>
   </div>
-</section>
+</section>{% endif %}
 <div class="cards3">
   <section class="panel kvc"><div class="panel-head"><h2>{{ icon('user') }}Personal Information</h2></div>
     <div class="kvc-body">
       <div class="who"><span class="pavatar sm ph">{{ icon('user') }}</span><div><b>{{ sub.full_name or sub.username }}</b><small>{{ sub.username }}</small></div></div>
       <dl><dt>Phone</dt><dd>{{ sub.phone or '—' }}</dd><dt>Serial</dt><dd>{{ sub.serial or '—' }}</dd><dt>Identity (NID)</dt><dd>{{ sub.identity or '—' }}</dd><dt>Email</dt><dd>{{ sub.email or '—' }}</dd>
-      <dt>Password</dt><dd><span class="secret" id="pw" data-value="{{ password }}" data-shown="0">••••••••</span> <button class="btn sm icon" type="button" data-reveal="pw" aria-label="Show password" title="Show password">{{ icon('eye') }}</button> <button class="btn sm icon" type="button" data-copy="pw" aria-label="Copy password">{{ icon('copy') }}</button></dd></dl>
+      <dt>Password</dt><dd>{% if can_fn('sub.toggle_pw') %}<span class="secret" id="pw" data-value="{{ password }}" data-shown="0">••••••••</span> <button class="btn sm icon" type="button" data-reveal="pw" aria-label="Show password" title="Show password">{{ icon('eye') }}</button> <button class="btn sm icon" type="button" data-copy="pw" aria-label="Copy password">{{ icon('copy') }}</button>{% else %}<span class="muted">••••••••</span>{% endif %}</dd></dl>
     </div></section>
   <section class="panel kvc"><div class="panel-head"><h2>{{ icon('briefcase') }}Company Information</h2></div>
     <div class="kvc-body"><dl><dt>ISP</dt><dd>{{ x.isp_name }}</dd><dt>Area</dt><dd>{{ sub.area or '—' }}</dd><dt>Salesperson</dt><dd>{{ sub.created_by or '—' }}</dd><dt>Created At</dt><dd>{{ sub.created_at|dt }}</dd></dl></div></section>
@@ -229,13 +229,13 @@
     <div class="kvc-body"><dl><dt>Policy</dt><dd>{{ sub.policy_group or '—' }}</dd><dt>Connected Policy</dt><dd>{{ x.groups|join(', ') or '—' }}</dd><dt>Total Policies</dt><dd>{{ x.groups|length }}</dd></dl></div></section>
 </div></div>
 
-<div class="sv-pane" id="tab-fees" hidden><section class="panel"><div class="panel-head"><h2>Taxes and fees added to this package</h2></div>
+{% if can_fn('sub.fee_view') %}<div class="sv-pane" id="tab-fees" hidden><section class="panel"><div class="panel-head"><h2>Taxes and fees added to this package</h2></div>
   {% if t.fees %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th>Type</th><th class="num">Value</th><th class="num">Amount on {{ currency }} {{ sub.price|money if sub.price is not none else 0 }}</th></tr></thead><tbody>{% for f in t.fees %}<tr><td>{{ f.name }}</td><td>{{ f.kind|capitalize }}</td><td class="num">{{ f.value|money }}{{ '%' if f.mode == 'percent' }}</td><td class="num">{{ ((sub.price|float * f.value|float / 100) if f.mode == 'percent' else f.value|float)|money }}</td></tr>{% endfor %}</tbody></table></div>
-  <p class="muted" style="padding:0 18px 14px">Renewal total: {{ currency }} {{ renew_amount|money }}. One-off charges are under Invoices.</p>{% else %}<div class="empty"><p>No taxes or fees on this package.</p></div>{% endif %}</section></div>
+  <p class="muted" style="padding:0 18px 14px">Renewal total: {{ currency }} {{ renew_amount|money }}. One-off charges are under Invoices.</p>{% else %}<div class="empty"><p>No taxes or fees on this package.</p></div>{% endif %}</section></div>{% endif %}
 
-<div class="sv-pane" id="tab-attributes" hidden><section class="panel"><div class="panel-head"><h2>RADIUS attributes</h2><span class="aside">read only</span></div>
+{% if can_fn('sub.attr_view') %}<div class="sv-pane" id="tab-attributes" hidden><section class="panel"><div class="panel-head"><h2>RADIUS attributes</h2><span class="aside">read only</span></div>
   {% if t.attrs %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>List</th><th>Attribute</th><th>Op</th><th>Value</th></tr></thead><tbody>{% for a in t.attrs %}<tr><td>{{ a.table }}</td><td class="mono">{{ a.attribute }}</td><td class="mono">{{ a.op }}</td><td class="mono">{{ a.value }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><p>No attributes.</p></div>{% endif %}
-  {% if x.groups %}<p class="muted" style="padding:0 18px 14px">Groups: {{ x.groups|join(', ') }}</p>{% endif %}</section></div>
+  {% if x.groups %}<p class="muted" style="padding:0 18px 14px">Groups: {{ x.groups|join(', ') }}</p>{% endif %}</section></div>{% endif %}
 
 <div class="sv-pane" id="tab-mac" hidden><section class="panel"><div class="panel-head"><h2>MAC address</h2>{% if edit %}<span class="aside"><button class="btn sm" data-open="mac-dlg" data-fill='{{ {"mac": sub.mac_bind}|tojson }}'>{{ 'Change' if sub.mac_bind else 'Bind' }}</button></span>{% endif %}</div>
   <div class="panel-body"><p>Bound to: {% if sub.mac_bind %}<b class="mono">{{ sub.mac_bind }}</b>{% else %}<span class="muted">not bound{% if sub.auto_mac %} (Auto Mac Lock will bind the next device){% endif %}</span>{% endif %}</p></div>

@@ -23,7 +23,7 @@
 <div class="notice warn" role="status">{{ icon('alert') }}<div><strong>Fill in {{ missing|join(', ') }}</strong><p>BTRC needs the division, district and thana of your service area. Save them below; they go into every row.</p></div></div>
 {% endif %}
 
-<section class="panel">
+{% if me.role == 'admin' %}<section class="panel">
   <div class="panel-head"><h2>Report settings</h2><span class="aside">Used for every customer in the sheet</span></div>
   <form method="post" action="{{ url_for('btrc_settings') }}" class="panel-body">
     {{ csrf_input() }}<input type="hidden" name="month" value="{{ month }}">
@@ -35,7 +35,7 @@
     </div>
     <div style="margin-top:12px"><button class="btn primary" type="submit">Save settings</button></div>
   </form>
-</section>
+</section>{% endif %}
 
 <section class="panel" style="margin-top:16px">
   <div class="panel-head"><h2>{{ '{:,}'.format(total) }} customer{{ '' if total == 1 else 's' }} activated or renewed in {{ start.strftime('%B %Y') }}</h2>

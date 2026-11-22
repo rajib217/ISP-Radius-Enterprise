@@ -4,7 +4,7 @@
 {% block content %}
 <div class="page-head">
   <div><h1>Extra Service Fees</h1><p class="sub">One-off charges for a customer (installation, cable, router, reconnection). Unpaid charges show as the customer's Balance.</p></div>
-  {% if can('subscribers', 'edit') %}<div class="actions"><button class="btn primary" data-open="charge-dlg" data-new>{{ icon('plus') }}Add charge</button></div>{% endif %}
+  {% if can('subscribers', 'edit') and can_fn('sub.fee_add') %}<div class="actions"><button class="btn primary" data-open="charge-dlg" data-new>{{ icon('plus') }}Add charge</button></div>{% endif %}
 </div>
 <section class="kpis" style="margin-top:0"><div class="kpi"><span class="k">Charges</span><span class="v">{{ '{:,}'.format(tot.c) }}</span></div><div class="kpi"><span class="k">Unpaid in total</span><span class="v">{{ tot.due|money }}</span></div></section>
 <section class="panel">
@@ -26,8 +26,8 @@
       <td data-card="key"><span class="pill {{ 'ok' if r.paid else 'warn' }}">{{ 'Paid' if r.paid else 'Unpaid' }}</span></td>
       <td class="hide-sm">{{ r.created_by }}</td>
       <td class="act" data-card="actions">{% if can('subscribers', 'edit') %}
-        {% if not r.paid %}<form class="inline" method="post" action="{{ url_for('charge_paid', cid=r.id) }}" data-confirm="Mark as paid and record the payment?">{{ csrf_input() }}<button class="btn sm" type="submit">{{ icon('check') }}Paid</button></form>{% endif %}
-        <form class="inline" method="post" action="{{ url_for('charge_delete', cid=r.id) }}" data-confirm="Delete this charge?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete charge" title="Delete charge">{{ icon('trash') }}</button></form>{% endif %}</td>
+        {% if not r.paid and can_fn('sub.fee_edit') %}<form class="inline" method="post" action="{{ url_for('charge_paid', cid=r.id) }}" data-confirm="Mark as paid and record the payment?">{{ csrf_input() }}<button class="btn sm" type="submit">{{ icon('check') }}Paid</button></form>{% endif %}
+        {% if can_fn('sub.fee_delete') %}<form class="inline" method="post" action="{{ url_for('charge_delete', cid=r.id) }}" data-confirm="Delete this charge?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete charge" title="Delete charge">{{ icon('trash') }}</button></form>{% endif %}{% endif %}</td>
     </tr>{% endfor %}</tbody>
   </table></div>
   {{ pager(pg, keep, 'charges') }}

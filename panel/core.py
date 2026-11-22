@@ -441,6 +441,38 @@ def load_funcs(role, perms):
     return pc.effective(ticked, perms)
 
 
+_funcs_upgraded = False
+
+
+def upgrade_role_funcs():
+    """Once (settings key perm_enforce_v1): tick permcatalog.NOW_ENFORCED for every role that could already use them,
+    so wiring those ticks in takes nothing away from anyone. Later saves on Users > Roles decide as usual."""
+    global _funcs_upgraded
+    if _funcs_upgraded:
+        return
+    import permcatalog as pc
+    db_ = get_db()
+    with db_.cursor() as cur:
+        cur.execute("INSERT IGNORE INTO settings (skey, svalue) VALUES ('perm_enforce_v1', %s)",
+                    (datetime.now().strftime("%Y-%m-%d %H:%M"),))
+        if cur.rowcount == 1:                    # this process is the first: the others find the key already there
+            rows = []
+            for role, _label in role_list():
+                if role == "admin":
+                    continue
+                perms = _load_perms(role)
+                for k in pc.NOW_ENFORCED:
+                    mod, flags = pc.KEY_INFO[k]
+                    if mod is None or RANK.get(perms.get(mod, "none"), 0) >= RANK["view" if "v" in flags else "edit"]:
+                        rows.append((role, k))
+            if rows:
+                cur.executemany("INSERT INTO role_funcs (role, fkey, allowed) VALUES (%s, %s, 1) "
+                                "ON DUPLICATE KEY UPDATE allowed = 1", rows)
+            cur.executemany("UPDATE role_funcs SET allowed = 0 WHERE fkey = %s", [(k,) for k in pc.NOW_CLEARED])
+    db_.commit()
+    _funcs_upgraded = True
+
+
 def can_fn(key):
     me = getattr(g, "me", None)
     if me and me["role"] == "admin":
