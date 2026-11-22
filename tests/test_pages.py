@@ -608,6 +608,61 @@ def check_rules(flask_app, ids):
           and 'class="pp-logo"' in flask_app.test_client().get("/portal/login").get_data(as_text=True),
           "portal redesign: logo, profile tiles, Overview / Invoices / Ledger / Payments / My details tabs, extra charges show as unpaid")
     run("DELETE FROM sub_charges WHERE name = 'CI portal router fee'")
+    # ---- portal sign-in stays until Sign out (customers only); staff keep the 12-hour limit
+    _ss = flask_app.session_interface.get_signing_serializer(flask_app)
+    _cookie_name = flask_app.config.get("SESSION_COOKIE_NAME", "session")
+
+    def _old_cookie(data, hours):
+        _real, _then = time.time, time.time() - hours * 3600
+        time.time = lambda: _then
+        try:
+            return _ss.dumps(dict(data, _permanent=True))
+        finally:
+            time.time = _real
+
+    def _client_with(val):
+        c = flask_app.test_client()
+        c.set_cookie(_cookie_name, val)
+        return c
+
+    _upw = one("SELECT value FROM radcheck WHERE username = 'uttara.shop' AND attribute = 'Cleartext-Password'")["value"]
+
+    def _portal_login(c):
+        with c.session_transaction() as _s:
+            _s["csrf"] = "ci"
+        return c.post("/portal/login", data={"_csrf": "ci", "username": "uttara.shop", "password": _upw})
+
+    _lc = flask_app.test_client()
+    _lr = _portal_login(_lc)
+    _sc = _lr.headers.get("Set-Cookie", "")
+    _exp = re.search(r"Expires=([^;]+)", _sc)
+    _exp_days = int(((datetime.strptime(_exp.group(1).strip(), "%a, %d %b %Y %H:%M:%S GMT") - datetime(1970, 1, 1)).total_seconds()
+                     - time.time()) // 86400) if _exp else 0
+    _adm_id = one("SELECT id FROM panel_admins WHERE username = 'admin'")["id"]
+    _cust_old = _client_with(_old_cookie({"cid": _psid, "csrf": "ci"}, 24 * 30)).get("/portal")
+    _staff_old = _client_with(_old_cookie({"uid": _adm_id, "csrf": "ci"}, 13)).get("/")
+    _staff_new = _client_with(_old_cookie({"uid": _adm_id, "csrf": "ci"}, 1)).get("/")
+    _both = _client_with(_old_cookie({"uid": _adm_id, "cid": _psid, "csrf": "ci"}, 13))
+    _both_portal, _both_staff = _both.get("/portal"), _both.get("/")
+    check(_lr.status_code == 302 and _exp_days >= 390 and _cust_old.status_code == 200
+          and _staff_old.status_code == 302 and "/login" in _staff_old.headers.get("Location", "")
+          and _staff_new.status_code == 200 and _both_portal.status_code == 200
+          and _both_staff.status_code == 302 and "/login" in _both_staff.headers.get("Location", ""),
+          "a customer stays signed in (400-day cookie, still in after 30 days away); staff are still signed out after 12 hours")
+    _lc.get("/portal")
+    run("UPDATE radcheck SET value = 'ci-new-pass' WHERE username = 'uttara.shop' AND attribute = 'Cleartext-Password'")
+    _after_pw = _lc.get("/portal")
+    run("UPDATE radcheck SET value = %s WHERE username = 'uttara.shop' AND attribute = 'Cleartext-Password'", (_upw,))
+    _lc2 = flask_app.test_client()
+    _portal_login(_lc2)
+    with _lc2.session_transaction() as _s2:
+        _csrf2 = _s2.get("csrf", "")
+    _in = _lc2.get("/portal").status_code
+    _lc2.post("/portal/logout", data={"_csrf": _csrf2})
+    _out = _lc2.get("/portal")
+    check(_after_pw.status_code == 302 and _in == 200 and _out.status_code == 302,
+          "a portal sign-in ends when the password is changed, and when the customer presses Sign out")
+    run("DELETE FROM audit_log WHERE action IN ('portal_login', 'portal_login_failed')")
     # ---- portal: live speed JSON, own photo upload / remove
     _rate = pc.get("/portal/rate")
     _png = b"\x89PNG\r\n\x1a\n" + b"\0" * 64
@@ -1051,6 +1106,9 @@ def check_rules(flask_app, ids):
     check(_pg.status_code == 200 and "বিল অপরিশোধিত" in _pg_html and _ex["username"] in _pg_html and "01700000999" in _pg_html
           and "পরিশোধ করতে হবে" in _pg_html and "no-store" in _pg.headers.get("Cache-Control", ""),
           "the unpaid-bill page opens without sign-in and shows the customer found by their session IP, with the phone")
+    check('class="hero"' in _pg_html and 'class="due"' in _pg_html and "সাবস্ক্রাইবার আইডি" in _pg_html
+          and str(_ex["id"]) in _pg_html and "location.reload()" in _pg_html and "<script src" not in _pg_html,
+          "notice redesign: hero, amount due, subscriber ID, try-again button, nothing loaded from outside")
     check("বিল অপরিশোধিত" in _gen and _ex["username"] not in _gen and "ইউজার আইডি" not in _gen,
           "an unknown address gets the general message only (no customer details)")
     _sp = _set.get("/settings/expired-notice").get_data(as_text=True)

@@ -9,12 +9,14 @@ import secrets
 import shutil
 import subprocess
 from collections import deque
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 
 from flask import (Flask, Response, abort, flash, g, jsonify, redirect,
                    render_template, request, session, url_for)
 from markupsafe import Markup
+from flask.sessions import SecureCookieSessionInterface
+from itsdangerous import BadSignature
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -53,6 +55,47 @@ app.config.update(
     PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
     MAX_CONTENT_LENGTH=4 * 1024 ** 3,   # only the backup upload may be large; gate() holds every other page to 20 MB
 )
+
+CUSTOMER_SESSION = timedelta(days=400)     # browsers keep a cookie 400 days at most; every visit starts it again
+STAFF_KEYS = ("uid", "pending_uid", "pending_since", "pending_next")
+
+
+class PanelSessions(SecureCookieSessionInterface):
+    """Staff (admins, resellers, ...) are signed out after 12 hours without a page. A customer signed in to the portal
+    stays signed in, like a phone app, until they press Sign out (or their password changes, see mod_portal._need):
+    their cookie lives 400 days and every visit renews it. A browser holding both keeps the staff limit for the staff
+    part only."""
+
+    @staticmethod
+    def customer_only(data):
+        return bool(data.get("cid")) and not any(data.get(k) for k in STAFF_KEYS)
+
+    def open_session(self, app, request):
+        s = self.get_signing_serializer(app)
+        if s is None:
+            return None
+        val = request.cookies.get(self.get_cookie_name(app))
+        if not val:
+            return self.session_class()
+        try:
+            data, stamp = s.loads(val, max_age=int(CUSTOMER_SESSION.total_seconds()), return_timestamp=True)
+        except BadSignature:
+            return self.session_class()
+        if not self.customer_only(data):
+            age = datetime.now(stamp.tzinfo) - stamp
+            if age > app.permanent_session_lifetime:
+                if not data.get("cid"):
+                    return self.session_class()
+                data = {k: v for k, v in data.items() if k in ("cid", "cpw", "csrf", "_permanent")}
+        return self.session_class(data)
+
+    def get_expiration_time(self, app, session):
+        if session.permanent and self.customer_only(session):
+            return datetime.now(timezone.utc) + CUSTOMER_SESSION
+        return super().get_expiration_time(app, session)
+
+
+app.session_interface = PanelSessions()
 
 
 

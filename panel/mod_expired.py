@@ -57,7 +57,7 @@ def expired_notice():
     sub, plan = _customer_by_ip(request.remote_addr)
     info = None
     if request.args.get("preview") == "1" and session.get("uid"):          # Settings > Expired notice: Preview
-        info = {"name": "Labib Hasan", "username": "labib@ahammedpur", "plan": "10 Mbps Home",
+        info = {"id": 1024, "name": "Labib Hasan", "username": "labib@ahammedpur", "plan": "10 Mbps Home",
                 "ended": datetime.now() - timedelta(hours=5), "amount": 500.0, "balance": 0.0}
     elif sub:
         end = radius.account_end(sub, plan)
@@ -65,13 +65,14 @@ def expired_notice():
             import mod_subs
             price = mod_subs.customer_price(sub, plan) if plan else 0.0
             bal = round(float(sub.get("balance") or 0), 2)
-            info = {"name": sub.get("full_name") or "", "username": sub["username"],
+            info = {"id": sub["id"], "name": sub.get("full_name") or "", "username": sub["username"],
                     "plan": (plan or {}).get("label") or (plan or {}).get("name") or "",
                     "ended": end, "amount": max(round(price - bal, 2), 0.0), "balance": bal}
     import mod_settings
     html = render_template("expired_notice.html", s=s, info=info, phone=s.get("expired_notice_phone") or s.get("support_phone") or "",
                            message=s.get("expired_notice_msg") or DEFAULT_MSG, pay_url=_pay_url(s),
-                           isp=s.get("isp_name") or "", brand=mod_settings.brand_urls(), currency=s.get("currency") or "BDT")
+                           isp=s.get("isp_name") or "", brand=mod_settings.brand_urls(), currency=s.get("currency") or "BDT",
+                           id_ref=s.get("bksms_on") == "1")
     return Response(html, headers={"Cache-Control": "no-store, max-age=0"})
 
 

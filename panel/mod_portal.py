@@ -42,11 +42,33 @@ def _sub():
              "LEFT JOIN plans p ON p.id = s.plan_id WHERE s.id = %s", (sid,), one=True)
 
 
+def pw_mark(username):
+    """A short fingerprint of the customer's current password. The portal keeps a customer signed in until Sign out
+    (app.PanelSessions); when the password is changed (by the office, or on another phone) every old sign-in ends."""
+    import hashlib
+    from flask import current_app
+    pw = q("SELECT value FROM radcheck WHERE username = %s AND attribute = 'Cleartext-Password' LIMIT 1", (username,), one=True)
+    if not pw:
+        return ""
+    return hashlib.sha256(("%s|%s" % (current_app.secret_key, pw["value"])).encode()).hexdigest()[:16]
+
+
+def _sign_out():
+    session.pop("cid", None)
+    session.pop("cpw", None)
+
+
 def _need():
     _on()
     sub = _sub()
     if not sub:
-        session.pop("cid", None)
+        _sign_out()
+        return None
+    mark = pw_mark(sub["username"])
+    if "cpw" not in session:            # signed in before this check existed: start it now
+        session["cpw"] = mark
+    elif not mark or not secrets.compare_digest(session["cpw"], mark):
+        _sign_out()
         return None
     return sub
 
@@ -102,6 +124,7 @@ def portal_login():
                 session.pop("cid", None)
                 session["cid"] = sub["id"]
                 session["csrf"] = secrets.token_hex(16)
+                session["cpw"] = pw_mark(sub["username"])
                 session.permanent = True
                 audit("portal_login", sub["username"], who=sub["username"])
                 commit()
@@ -120,7 +143,7 @@ def portal_slash():
 
 @route("/portal/logout", methods=["POST"])
 def portal_logout():
-    session.pop("cid", None)
+    _sign_out()
     return redirect(url_for("portal_login"))
 
 
@@ -369,6 +392,7 @@ def portal_password():
             radius.sync_subscriber(c, sub["username"], mod_subs._plan(sub["plan_id"]), sub["status"], sub["expiry_date"],
                                    sub["static_ip"], password=new)
         audit("portal_password", sub["username"], who=sub["username"])
+        session["cpw"] = pw_mark(sub["username"])      # this phone stays signed in; other sign-ins end
         commit()
         flash("Password changed. Use the new one on your router too.", "success")
     return redirect(url_for("portal") + "#account")
