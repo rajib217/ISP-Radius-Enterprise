@@ -42,6 +42,67 @@
   </div>
 </section>
 
+<section class="panel" style="max-width:860px;margin-top:16px" id="gsm">
+  <div class="panel-head"><h2>USB GSM modem on this server</h2>
+    <span class="aside">
+      {% if not gsm.running %}<span class="badge bad">Service not running</span>
+      {% elif not gsm.on %}<span class="badge mute">Off</span>
+      {% elif gsm.connected %}<span class="badge ok">Connected</span>
+      {% else %}<span class="badge bad">Not connected</span>{% endif %}
+    </span></div>
+  <div class="panel-body stack">
+    <p class="muted" style="margin:0">Instead of a phone: a SIM800C (or any AT-command USB GSM modem) with the bKash number's SIM, plugged into
+      this server's USB port. The panel reads its SMS every 5 seconds, books the bKash payments by the same rules as above, and deletes
+      them from the SIM. The switch <b>Renew customers from forwarded bKash SMS</b> above must be on too.</p>
+    {% if gsm.running and gsm.on %}
+    <dl class="kv">
+      <dt>Status</dt><dd>{% if gsm.connected %}<span class="g">Connected</span>{% else %}<span class="r">Not connected</span>{% endif %}{% if gsm.error %}<div class="muted" style="font-weight:400">{{ gsm.error }}</div>{% endif %}</dd>
+      <dt>Port</dt><dd class="mono">{{ gsm.port or '—' }}</dd>
+      {% if gsm.connected or gsm.model %}
+      <dt>Modem</dt><dd>{{ gsm.model or '—' }}</dd>
+      <dt>SIM</dt><dd>{% if gsm.sim == 'READY' %}<span class="g">Ready</span>{% else %}<span class="r">{{ gsm.sim or '—' }}</span>{% endif %}</dd>
+      <dt>Network</dt><dd>{{ gsm.operator or '—' }}{% if gsm.registered %} · {% if gsm.registered in ('home', 'roaming') %}<span class="g">registered ({{ gsm.registered }})</span>{% else %}<span class="r">{{ gsm.registered }}</span>{% endif %}{% endif %}</dd>
+      <dt>Signal</dt><dd>{% if gsm.signal is not none %}<span class="mono" aria-hidden="true">{% for b in range(5) %}{{ '▮' if b < gsm.bars else '▯' }}{% endfor %}</span> {{ gsm.bars }}/5 (CSQ {{ gsm.signal }}){% else %}No signal{% endif %}</dd>
+      {% endif %}
+      <dt>SMS read</dt><dd>{{ gsm.sms_read or 0 }} since {{ (gsm.started_at or '')[:16]|replace('T', ' ') }}{% if gsm.last_sms_at %} · last {{ gsm.last_sms_at[:16]|replace('T', ' ') }} from {{ gsm.last_sms_from }}{% endif %}</dd>
+      <dt>Checked</dt><dd>{{ (gsm.checked_at or '—')[:19]|replace('T', ' ') }}</dd>
+    </dl>
+    {% elif not gsm.running %}
+    <div class="note warn">The modem service (isp-panel-gsm) is not running. Run <code>sudo ./install.sh</code> once after this update; it installs the service and the USB rule.</div>
+    {% endif %}
+    <form method="post" class="stack" autocomplete="off">
+      {{ csrf_input() }}<input type="hidden" name="part" value="gsm">
+      <label class="check"><input type="checkbox" name="gsm_on" value="1" {{ 'checked' if s.gsm_on == '1' }}> Read SMS from the USB GSM modem</label>
+      <div class="grid-2">
+        <div class="field"><label class="lbl" for="gsm-port">Port</label>
+          <input id="gsm-port" name="gsm_port" value="{{ gsm_port }}" list="gsm-ports" maxlength="128" spellcheck="false">
+          <datalist id="gsm-ports"><option value="auto">{% for p in ports %}<option value="{{ p }}">{% endfor %}</datalist>
+          <div class="help"><b>auto</b> finds the modem by itself. Seen on this server now: {% if ports %}<span class="mono">{{ ports|join(', ') }}</span>{% else %}no USB serial device{% endif %}.</div></div>
+        <div class="field"><label class="lbl" for="gsm-baud">Speed (baud)</label>
+          <select id="gsm-baud" name="gsm_baud">{% for b in bauds %}<option value="{{ b }}" {{ 'selected' if b == gsm_baud }}>{{ b }}</option>{% endfor %}</select>
+          <div class="help">SIM800C finds the speed by itself; 115200 works.</div></div>
+      </div>
+      <div class="row-gap"><button class="btn primary" type="submit">Save</button>
+        <button class="btn" type="submit" formaction="{{ url_for('bksms_modem_reconnect') }}" formnovalidate>{{ icon('refresh') }}Reconnect</button></div>
+    </form>
+    <ul class="muted" style="margin:0;padding-left:18px;display:grid;gap:4px;font-size:13px">
+      <li>Put the SIM of the bKash number in the modem and plug it in. SIM800C works on <b>2G (GSM) only</b>: it needs your operator's 2G network where the server is.</li>
+      <li>Give the modem its antenna, and a good USB port or a powered hub: when sending to the network it draws up to 2 A for a moment, and a weak port makes it restart.</li>
+      <li>bKash's other SMS (such as the login code for the bKash app) also arrive here: see <b>SMS on the modem</b> below.</li>
+    </ul>
+  </div>
+</section>
+
+{% if inbox %}
+<section class="panel" style="margin-top:16px">
+  <div class="panel-head"><h2>SMS on the modem</h2><span class="aside">Last 20, kept 7 days</span></div>
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Received</th><th>From</th><th>Message</th><th>Result</th></tr></thead>
+    <tbody>{% for m in inbox %}<tr><td class="nowrap">{{ m.received_at|dt }}</td><td class="mono">{{ m.sender }}</td><td style="white-space:pre-wrap">{{ m.text }}</td><td>{{ m.result }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% endif %}
+
 <section class="panel" style="margin-top:16px">
   <div class="panel-head"><h2>Received payments</h2>
     <span class="aside"><a href="{{ url_for('settings_bksms') }}" class="{{ 'on' if not show }}">All</a>
@@ -52,7 +113,7 @@
       <tbody>
       {% for r in rows %}
         <tr>
-          <td class="nowrap">{{ (r.paid_at or r.created_at)|dt }}</td>
+          <td class="nowrap">{{ (r.paid_at or r.created_at)|dt }}<div class="muted" style="font-size:12px">{{ 'Modem' if r.source == 'modem' else 'Phone' }}</div></td>
           <td class="mono">{{ r.trx_id }}</td>
           <td class="num">{{ '{:,.2f}'.format(r.amount) }}</td>
           <td class="mono">{{ r.payer }}</td>

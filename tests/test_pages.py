@@ -1389,6 +1389,93 @@ def check_rules(flask_app, ids):
           "bKash SMS auto-renew: renews from the reference, each TrxID once, only with the token and from bKash; small "
           "payments go to the balance; masked numbers wait for one click; a reseller's customer credits the reseller "
           "(%s %s %s %s %s)" % (_r1.get_json(), _r3, _r4, _r5, (_rbal1 - _rbal0, 5000 - _cost)))
+    # ---- USB GSM modem (SIM800C): PDU decoding, long SMS in parts, the service books bKash SMS, the page shows its state
+    import gsmlib as _G
+    import gsmd as _gd
+
+    def _pack7(septs, fill=0):
+        bits = 0
+        for k, sv in enumerate(septs):
+            bits |= sv << (fill + 7 * k)
+        return bits.to_bytes((fill + 7 * len(septs) + 7) // 8, "little")
+
+    def _pdu(text, sender="bKash", udh=b"", ucs2=False):
+        sa = _pack7([_G.GSM7.index(ch) for ch in sender])
+        head = "00" + "%02X" % (0x04 | (0x40 if udh else 0)) + "%02X" % ((len(sender) * 7 + 3) // 4) + "D0" + sa.hex()
+        head += "00" + ("08" if ucs2 else "00") + "62112211700000"
+        if ucs2:
+            ud = udh + text.encode("utf-16-be")
+            return (head + "%02X" % len(ud) + ud.hex()).upper()
+        fill = (7 - (len(udh) * 8) % 7) % 7 if udh else 0
+        body = _pack7([_G.GSM7.index(ch) for ch in text], len(udh) * 8 + fill)
+        ud = bytes(a | b for a, b in zip(udh + bytes(len(body) - len(udh)), body))
+        return (head + "%02X" % ((len(udh) * 8 + fill) // 7 + len(text)) + ud.hex()).upper()
+
+    _classic = _G.decode_pdu("07911326040000F0040B911346610089F60000208062917314080CC8F71D14969741F977FD07")
+    _gb = one("SELECT * FROM subscribers WHERE created_by = %s AND status = 'active' AND plan_id IS NOT NULL ORDER BY id DESC LIMIT 1",
+              (_adm_name,))
+    run("UPDATE subscribers SET balance = 0 WHERE id = %s", (_gb["id"],))
+    _long = ("You have received payment Tk 5,000.00 from 01999000222. Ref %d. Fee Tk 0.00. Balance Tk 9,000.00. "
+             "TrxID CIGSM00001 at 22/11/2026 11:07" % _gb["id"])
+    _half = len(_long) // 2
+    _pa = _pdu(_long[:_half], udh=bytes([5, 0, 3, 77, 2, 1]))
+    _pb = _pdu(_long[_half:], udh=bytes([5, 0, 3, 77, 2, 2]))
+    _bn = _pdu("আপনার বিকাশ কোড 123456", ucs2=True)
+    _lone = _pdu("part one of three that never completes", udh=bytes([5, 0, 3, 9, 3, 1]))
+    _dp = [_G.decode_pdu(x) for x in (_pa, _pb, _bn)]
+    _cm = _G.parse_cmgl(["+CMGL: 3,0,,40", _pa, "+CMGL: 4,0,,41", _pb, "", "OK"])
+
+    class _FakeModem:
+        def __init__(self, port, baud):
+            self.port, self.deleted, self.closed = port, [], False
+            self.box = {3: _pa, 4: _pb, 5: _bn, 6: _lone, 7: "0001000B911346610089F60000"}   # 7 = a sent copy
+        def setup(self): pass
+        def close(self): self.closed = True
+        def status(self):
+            return {"model": "SIM800C", "sim": "READY", "operator": "CI Mobile", "signal": 20, "registered": "home"}
+        def messages(self): return sorted(self.box.items())
+        def delete(self, idx):
+            self.deleted.append(idx); self.box.pop(idx, None); return True
+
+    _made = []
+    _gs = adm.post("/settings/bkash-sms", data={"_csrf": "ci", "part": "gsm", "gsm_on": "1", "gsm_port": "auto", "gsm_baud": "115200"})
+    _gbad = adm.post("/settings/bkash-sms", data={"_csrf": "ci", "part": "gsm", "gsm_on": "1", "gsm_port": "/dev/../etc/passwd"})
+    _port_kept = one("SELECT svalue FROM settings WHERE skey = 'gsm_port'")["svalue"]
+    _svc = _gd.Service(flask_app, opener=lambda p, b: _made.append(_FakeModem(p, b)) or _made[-1], finder=lambda b: "/dev/ci-modem")
+    _wait = _svc.tick()
+    _fm = _made[0] if _made else None
+    _gpay = one("SELECT * FROM sms_payments WHERE trx_id = 'CIGSM00001'")
+    _gb2 = one("SELECT expiry_date FROM subscribers WHERE id = %s", (_gb["id"],))
+    _inbox = run_q("SELECT sender, text, result FROM gsm_inbox WHERE text NOT LIKE 'CI sample%%' ORDER BY id")
+    _st1 = dict(_svc.state)
+    _G.write_state(_st1)
+    _gpage = adm.get("/settings/bkash-sms").get_data(as_text=True)
+    _rc_file = adm.post("/settings/bkash-sms/modem/reconnect", data={"_csrf": "ci"})
+    _reconn = os.path.exists(_G.RECONNECT_FILE)
+    _svc.tick()
+    _reopened = len(_made) == 2 and _made[0].closed and not os.path.exists(_G.RECONNECT_FILE)
+    _rs_rc = client(ids["reseller"]).post("/settings/bkash-sms/modem/reconnect", data={"_csrf": "ci"}).status_code
+    run("UPDATE settings SET svalue = '0' WHERE skey = 'gsm_on'")
+    _off_wait = _svc.tick()
+    check(len(_G.GSM7) == 128 and _classic and _classic["sender"] == "+31641600986" and _classic["text"] == "How are you?"
+          and _dp[0]["sender"] == "bKash" and _dp[0]["part"] == (77, 2, 1) and _dp[0]["text"] + _dp[1]["text"] == _long
+          and _dp[2]["text"] == "আপনার বিকাশ কোড 123456" and _dp[0]["time"].strftime("%Y-%m-%d %H:%M") == "2026-11-22 11:07"
+          and _cm == [(3, _pa), (4, _pb)],
+          "GSM modem: SMS PDUs decode (GSM alphabet, Bangla, long SMS parts, alphanumeric sender)")
+    check(_gs.status_code == 302 and _gbad.status_code == 302 and _port_kept == "auto" and _wait == _gd.POLL and _fm
+          and _fm.port == "/dev/ci-modem" and sorted(_fm.deleted) == [3, 4, 5, 7] and 6 in _fm.box
+          and _gpay and _gpay["source"] == "modem" and _gpay["status"] == "renewed" and _gpay["username"] == _gb["username"]
+          and _gb2["expiry_date"] > (_gb["expiry_date"] or date.today())
+          and len(_inbox) == 2 and {r["text"]: r["result"] for r in _inbox}.get(_long) == "renewed"
+          and {r["text"]: r["result"] for r in _inbox}.get("আপনার বিকাশ কোড 123456", "").startswith("ignored")
+          and _st1["connected"] and _st1["sms_read"] == 2 and _st1["operator"] == "CI Mobile"
+          and "Connected" in _gpage and "CI Mobile" in _gpage and "SIM800C" in _gpage and "SMS on the modem" in _gpage
+          and "আপনার বিকাশ কোড" in _gpage and "Modem" in _gpage
+          and _rc_file.status_code == 302 and _reconn and _reopened and _rs_rc == 403
+          and _off_wait == _gd.IDLE and not _svc.state["connected"],
+          "GSM modem service: books a bKash SMS that came in two parts, keeps every SMS for the admin, deletes them from the "
+          "SIM, waits for missing parts, reconnects on request, and the page shows Connected, network and signal (%s %s)"
+          % (_fm.deleted if _fm else None, _svc.state.get("error")))
     return bad
 
 

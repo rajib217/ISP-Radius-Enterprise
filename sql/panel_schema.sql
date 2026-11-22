@@ -789,3 +789,16 @@ CREATE TABLE IF NOT EXISTS sms_payments (
   UNIQUE KEY uq_trx (trx_id),
   KEY idx_status (status, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- where the SMS came from: the phone's forwarder app, or the USB GSM modem on the server (isp-panel-gsm)
+ALTER TABLE sms_payments ADD COLUMN IF NOT EXISTS source VARCHAR(8) NOT NULL DEFAULT 'phone';
+
+-- every SMS the USB GSM modem receives (bKash OTPs too), for the admin in Settings > bKash SMS; kept 7 days
+CREATE TABLE IF NOT EXISTS gsm_inbox (
+  id          INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  sender      VARCHAR(64)  NOT NULL DEFAULT '',
+  text        TEXT NOT NULL,
+  sms_time    DATETIME NULL,
+  result      VARCHAR(64)  NOT NULL DEFAULT '',
+  received_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_received (received_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -2,7 +2,8 @@
 SMS to the panel (any SMS-forwarder app that can POST to a web address), and the panel renews the customer.
 
   Settings > bKash SMS  (/settings/bkash-sms)     switch, allowed senders, the forwarder address, the received
-                                                   payments and the ones waiting for a hand match
+                                                   payments and the ones waiting for a hand match; the USB GSM
+                                                   modem (SIM800C) on the server and its state (gsmd.py, gsmlib.py)
   /sms-in/<token>  (POST, no sign-in)              where the phone sends the SMS; the secret token is the only
                                                    thing that keeps others from faking payments
 
@@ -230,19 +231,28 @@ def sms_in(token=None):
     if s.get("bksms_on") != "1":
         return jsonify({"ok": False, "status": "off"})
     text, sender = _incoming()
+    return jsonify(ingest(text, sender, "phone"))
+
+
+def ingest(text, sender, source):
+    """Use one SMS (from the phone's forwarder app, or from the USB modem through gsmd.py). Returns
+    {'ok', 'status': off / ignored / duplicate / unmatched / renewed / balance, ...}. Needs a request context."""
+    s = cfg()
+    if s.get("bksms_on") != "1":
+        return {"ok": False, "status": "off"}
     if not sender_ok(sender, s.get("bksms_senders", DEFAULT_SENDERS)):
-        return jsonify({"ok": True, "status": "ignored", "why": "sender is not allowed"})
+        return {"ok": True, "status": "ignored", "why": "sender is not allowed"}
     p = parse(text)
     if not p:
-        return jsonify({"ok": True, "status": "ignored", "why": "not a bKash received-payment SMS"})
+        return {"ok": True, "status": "ignored", "why": "not a bKash received-payment SMS"}
     with get_db().cursor() as cur:
-        cur.execute("INSERT IGNORE INTO sms_payments (trx_id, amount, payer, ref, sms_text, paid_at, status) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, 'working')",
-                    (p["trx"], p["amount"], p["payer"][:32], p["ref"], text[:500], p["paid_at"]))
+        cur.execute("INSERT IGNORE INTO sms_payments (trx_id, amount, payer, ref, sms_text, paid_at, status, source) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, 'working', %s)",
+                    (p["trx"], p["amount"], p["payer"][:32], p["ref"], text[:500], p["paid_at"], source[:8]))
         new_id = cur.lastrowid if cur.rowcount == 1 else None
     commit()
     if not new_id:
-        return jsonify({"ok": True, "status": "duplicate", "trx": p["trx"]})
+        return {"ok": True, "status": "duplicate", "trx": p["trx"]}
     row = q("SELECT * FROM sms_payments WHERE id = %s", (new_id,), one=True)
     sub, how, sure = find(p)
     if not sure:
@@ -251,7 +261,7 @@ def sms_in(token=None):
         audit("bkash_sms_unmatched", p["trx"], "%.2f from %s, Ref %s: %s" % (p["amount"], p["payer"], p["ref"], how),
               who="bkash-sms")
         commit()
-        return jsonify({"ok": True, "status": "unmatched", "trx": p["trx"]})
+        return {"ok": True, "status": "unmatched", "trx": p["trx"]}
     try:
         status, msg = settle(row, sub, "bkash-sms")
     except Exception as exc:
@@ -259,8 +269,8 @@ def sms_in(token=None):
         core.x("UPDATE sms_payments SET status = 'unmatched', message = %s, subscriber_id = %s WHERE id = %s",
                (("Could not book it automatically (%s): %s" % (how, exc))[:255], sub["id"], new_id))
         commit()
-        return jsonify({"ok": True, "status": "unmatched", "trx": p["trx"]})
-    return jsonify({"ok": True, "status": status, "trx": p["trx"], "username": sub["username"]})
+        return {"ok": True, "status": "unmatched", "trx": p["trx"]}
+    return {"ok": True, "status": status, "trx": p["trx"], "username": sub["username"]}
 
 
 # --------------------------------------------------------------------------------------------- settings page
@@ -268,6 +278,8 @@ def sms_in(token=None):
 @admin_required
 def settings_bksms():
     s = cfg()
+    if request.method == "POST" and request.form.get("part") == "gsm":
+        return _save_gsm(request.form)
     if request.method == "POST":
         f = request.form
         import db
@@ -291,9 +303,61 @@ def settings_bksms():
     counts = {r["status"]: r["c"] for r in q("SELECT status, COUNT(*) AS c FROM sms_payments GROUP BY status")}
     token = s.get("bksms_token") or ""
     hook = url_for("sms_in", token=token, _external=True) if token else ""
+    import gsmlib
+    gsm = gsmlib.read_state()
+    gsm["bars"] = gsmlib.bars(gsm.get("signal"))
+    inbox = q("SELECT * FROM gsm_inbox ORDER BY id DESC LIMIT 20") if s.get("gsm_on") == "1" or gsm.get("sms_read") else []
     return render_template("settings_bksms.html", s=s, tab="bksms", rows=rows, counts=counts, hook=hook, show=show,
                            states=STATES, senders=s.get("bksms_senders", DEFAULT_SENDERS) if "bksms_senders" in s
-                           else DEFAULT_SENDERS)
+                           else DEFAULT_SENDERS, gsm=gsm, ports=gsmlib.candidate_ports(), bauds=gsmlib.BAUDS, inbox=inbox,
+                           gsm_port=s.get("gsm_port") or "auto", gsm_baud=int(s.get("gsm_baud") or 115200))
+
+
+RX_PORT = re.compile(r"/dev/[A-Za-z0-9._/:+-]{1,120}")
+
+
+def _save_gsm(f):
+    """Settings > bKash SMS > USB GSM modem."""
+    import db
+    import gsmlib
+    port = (f.get("gsm_port") or "auto").strip()
+    if port != "auto" and (not RX_PORT.fullmatch(port) or ".." in port):
+        flash("The port is a device such as /dev/ttyUSB0 or /dev/gsm-modem, or Auto. Nothing was saved.", "error")
+        return redirect(url_for("settings_bksms"))
+    try:
+        baud = int(f.get("gsm_baud") or 115200)
+        assert baud in gsmlib.BAUDS
+    except (ValueError, AssertionError):
+        baud = 115200
+    on = "1" if f.get("gsm_on") == "1" else "0"
+    with get_db().cursor() as cur:
+        db.save_setting(cur, "gsm_on", on)
+        db.save_setting(cur, "gsm_port", port)
+        db.save_setting(cur, "gsm_baud", str(baud))
+    audit("settings_saved", "GSM modem", "%s, %s at %d" % ("on" if on == "1" else "off", port, baud))
+    commit()
+    _ask_reconnect()
+    flash(("Saved. The modem service connects within about 15 seconds; reload this page to see it."
+           if on == "1" else "Saved. The modem is not read any more."), "success")
+    return redirect(url_for("settings_bksms"))
+
+
+def _ask_reconnect():
+    import gsmlib
+    try:
+        with open(gsmlib.RECONNECT_FILE, "w") as fh:
+            fh.write("1")
+    except OSError:
+        pass
+
+
+@route("/settings/bkash-sms/modem/reconnect", methods=["POST"])
+@admin_required
+def bksms_modem_reconnect():
+    _ask_reconnect()
+    audit("gsm_reconnect", "GSM modem", "")
+    flash("The modem service reconnects within about 15 seconds; reload this page to see it.", "success")
+    return redirect(url_for("settings_bksms"))
 
 
 def _row(pid, status="unmatched"):

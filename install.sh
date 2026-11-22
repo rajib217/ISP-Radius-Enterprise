@@ -21,7 +21,7 @@ DB_RADIUS_USER=radius
 DB_PANEL_USER=radius_panel
 # Raise when a change needs this installer (new service, unit change, FreeRADIUS or Caddy config): update.sh then
 # refuses to deploy and asks for "sudo ./install.sh" once, instead of half-applying it.
-INSTALLER_VERSION=4
+INSTALLER_VERSION=5
 ADMIN_USER="${ADMIN_USER:-}"
 TIMEZONE="${TIMEZONE-Asia/Dhaka}"
 
@@ -727,6 +727,39 @@ ProtectHome=yes
 WantedBy=multi-user.target
 EOF
 
+# USB GSM modem (SIM800C) on this server: reads its SMS for the bKash auto-renew (Settings > bKash SMS). Idle until it
+# is switched on there; the only process that opens the modem's serial port.
+cat > /etc/systemd/system/isp-panel-gsm.service <<'EOF'
+[Unit]
+Description=ISP RADIUS Panel USB GSM modem (bKash SMS)
+After=network.target mariadb.service
+
+[Service]
+User=isp-panel
+Group=isp-panel
+SupplementaryGroups=dialout
+WorkingDirectory=__APP__
+EnvironmentFile=/etc/isp-panel/panel.env
+ExecStart=/usr/bin/python3 __APP__/gsmd.py
+Restart=always
+RestartSec=5
+PrivateTmp=yes
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+usermod -aG dialout isp-panel 2>/dev/null || true
+# the usual USB-serial chips of SIM800C boards (CH340, CP210x, FTDI, PL2303): a fixed name /dev/gsm-modem, and
+# ModemManager (when installed) keeps its hands off, or it would grab the port from the panel
+cat > /etc/udev/rules.d/99-isp-panel-gsm.rules <<'EOF'
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="gsm-modem", GROUP="dialout", MODE="0660", ENV{ID_MM_DEVICE_IGNORE}="1"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", SYMLINK+="gsm-modem", GROUP="dialout", MODE="0660", ENV{ID_MM_DEVICE_IGNORE}="1"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", SYMLINK+="gsm-modem", GROUP="dialout", MODE="0660", ENV{ID_MM_DEVICE_IGNORE}="1"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="067b", ATTRS{idProduct}=="2303", SYMLINK+="gsm-modem", GROUP="dialout", MODE="0660", ENV{ID_MM_DEVICE_IGNORE}="1"
+EOF
+udevadm control --reload-rules 2>/dev/null && udevadm trigger --subsystem-match=tty 2>/dev/null || true
+
 cat > /etc/systemd/system/isp-panel-maint.service <<'EOF'
 [Unit]
 Description=ISP RADIUS Panel maintenance (stale sessions, snapshots, cleanup)
@@ -835,7 +868,7 @@ unset BKASH_SECRET BKASH_PASS
 [[ "$SEED" == *router-* ]] && systemctl restart freeradius    # FreeRADIUS reads its router list at start
 
 systemctl daemon-reload
-systemctl enable --now isp-panel.service isp-panel-sender.service isp-panel-noc.service isp-panel-maint.timer isp-panel-backup.timer \
+systemctl enable --now isp-panel.service isp-panel-sender.service isp-panel-noc.service isp-panel-gsm.service isp-panel-maint.timer isp-panel-backup.timer \
   isp-panel-fwsync.timer
 
 # ------------------------------------------------------------------ Caddy (HTTPS)
@@ -880,7 +913,7 @@ if systemctl list-unit-files nginx.service >/dev/null 2>&1 && systemctl is-enabl
 fi
 systemctl enable caddy
 systemctl restart caddy
-systemctl restart isp-panel.service isp-panel-sender.service isp-panel-noc.service
+systemctl restart isp-panel.service isp-panel-sender.service isp-panel-noc.service isp-panel-gsm.service
 
 # ------------------------------------------------------------------ firewall
 c_ok "Configuring the firewall (UFW)"

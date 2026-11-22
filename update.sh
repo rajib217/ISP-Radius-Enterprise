@@ -183,7 +183,7 @@ reload_panel() {
   else
     systemctl restart isp-panel.service      # older unit without ExecReload: a few seconds of panel downtime
   fi
-  systemctl try-restart isp-panel-sender.service isp-panel-noc.service
+  systemctl try-restart isp-panel-sender.service isp-panel-noc.service isp-panel-gsm.service
 }
 reload_panel
 
