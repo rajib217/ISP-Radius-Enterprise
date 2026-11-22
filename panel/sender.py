@@ -38,7 +38,8 @@ def mark(conn, cur, row, error):
 
 def work(conn, cur, s):
     sent = 0
-    for channel, ready, rate in (("sms", bool(s["sms_url"]), s["sms_rate"]),
+    # SMS through the USB GSM modem are sent by isp-panel-gsm (gsmd.py), the only process that may open its port
+    for channel, ready, rate in (("sms", bool(s["sms_url"]) and s.get("sms_via") != "modem", s["sms_rate"]),
                                  ("email", bool(s["smtp_host"]), s["email_rate"])):
         if not ready:
             continue

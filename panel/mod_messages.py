@@ -6,6 +6,7 @@ from flask import abort, flash, g, jsonify, redirect, render_template, request, 
 
 import core
 import msglib
+import sendlib
 from core import BASE_FROM, EMAIL_RE, audit, cfg, commit, get_db, insert, pager, q, route, x
 
 SUB_COLS = "s.id, s.username, s.full_name, s.phone, s.email, s.expiry_date, p.label AS plan_label, p.price"
@@ -35,7 +36,7 @@ def _templates(kind):
 
 
 def _gateway_ready(channel, s):
-    return bool(s["sms_url"]) if channel == "sms" else bool(s["smtp_host"])
+    return sendlib.sms_ready(s) if channel == "sms" else bool(s["smtp_host"])
 
 
 # ===================================================================== compose

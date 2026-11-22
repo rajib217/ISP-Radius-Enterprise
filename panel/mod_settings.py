@@ -4,11 +4,11 @@ import os
 import re
 import zoneinfo
 
-from flask import abort, flash, redirect, render_template, request, send_file, url_for
+from flask import abort, flash, g, redirect, render_template, request, send_file, url_for
 
 import db
 import sendlib
-from core import EMAIL_RE, admin_required, audit, cfg, commit, get_db, q, route
+from core import EMAIL_RE, admin_required, audit, cfg, commit, get_db, q, route, x
 import core
 import msglib
 
@@ -89,7 +89,9 @@ def settings_sms():
             assert fmt in ("intl", "local", "plus")
             cc = "".join(ch for ch in f.get("sms_country_code", "") if ch.isdigit())
             assert len(cc) <= 4
-            new = {"sms_url": url[:1000], "sms_method": method, "sms_body": f.get("sms_body", "").strip()[:1000],
+            via = f.get("sms_via", "http")
+            assert via in ("http", "modem")
+            new = {"sms_via": via, "sms_url": url[:1000], "sms_method": method, "sms_body": f.get("sms_body", "").strip()[:1000],
                    "sms_success": f.get("sms_success", "").strip()[:200], "sms_sender": f.get("sms_sender", "").strip()[:64],
                    "sms_rate": _int(f, "sms_rate", 1, 3000), "sms_country_code": cc, "sms_number_format": fmt}
         except (ValueError, AssertionError):
@@ -99,9 +101,17 @@ def settings_sms():
         _save(new)
         audit("settings_sms_saved")
         commit()
-        flash("SMS gateway saved. Send a test message to make sure it works.", "success")
+        if new["sms_via"] == "modem" and s.get("gsm_on") != "1":
+            flash("Saved. SMS will go through the USB GSM modem once it is switched on in Settings > bKash SMS "
+                  "auto-renew (USB GSM modem); until then they wait in the queue.", "warn")
+        else:
+            flash("SMS gateway saved. Send a test message to make sure it works.", "success")
         return redirect(url_for("settings_sms"))
-    return render_template("settings_sms.html", s=s, tab="sms")
+    import gsmlib
+    gsm = gsmlib.read_state()
+    gsm["bars"] = gsmlib.bars(gsm.get("signal"))
+    waiting = q("SELECT COUNT(*) AS c FROM outbox WHERE channel = 'sms' AND status = 'pending'", one=True)["c"]
+    return render_template("settings_sms.html", s=s, tab="sms", gsm=gsm, waiting=waiting)
 
 
 @route("/settings/sms/test", methods=["POST"])
@@ -111,6 +121,13 @@ def settings_sms_test():
     number = msglib.normalize_phone(request.form.get("to", ""), s["sms_country_code"], s["sms_number_format"])
     if not number:
         flash("Enter a valid phone number to send the test to.", "error")
+        return redirect(url_for("settings_sms"))
+    if s.get("sms_via") == "modem":         # only the modem service may open the port: queue it for that service
+        x("INSERT INTO outbox (channel, to_addr, body, created_by) VALUES ('sms', %s, %s, %s)",
+          (number, "Test message from your ISP panel.", g.me["username"]))
+        commit()
+        flash("Test SMS for %s is queued for the USB GSM modem; it goes out within about 10 seconds. Its result shows "
+              "in Messages > SMS history." % number, "success")
         return redirect(url_for("settings_sms"))
     try:
         reply = sendlib.send_sms(s, number, "Test message from your ISP panel.")

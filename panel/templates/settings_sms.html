@@ -1,13 +1,33 @@
 {% extends "settings_base.html" %}
 {% from "_macros.html" import icon %}
 {% block title %}SMS settings{% endblock %}
-{% block ssub %}Connect your SMS provider. Any provider with an HTTP API works.{% endblock %}
+{% block ssub %}Send customer SMS through your SMS provider (any HTTP API) or through the USB GSM modem on this server.{% endblock %}
 {% block sbody %}
 <div class="split">
 <form method="post" class="stack">
   {{ csrf_input() }}
   <section class="panel">
-    <div class="panel-head"><h2>Gateway</h2></div>
+    <div class="panel-head"><h2>Send SMS through</h2>
+      <span class="aside">{% if s.sms_via == 'modem' %}{% if not gsm.running %}<span class="badge bad">Modem service not running</span>{% elif s.gsm_on != '1' %}<span class="badge warn">Modem is off</span>{% elif gsm.connected %}<span class="badge ok">Modem connected</span>{% else %}<span class="badge bad">Modem not connected</span>{% endif %}{% endif %}</span></div>
+    <div class="panel-body stack">
+      <label class="check"><input type="radio" name="sms_via" value="http" {{ 'checked' if s.sms_via != 'modem' }}> An SMS provider's HTTP API (the gateway below)</label>
+      <label class="check"><input type="radio" name="sms_via" value="modem" {{ 'checked' if s.sms_via == 'modem' }}> The USB GSM modem on this server (SIM800C)</label>
+      {% if s.sms_via == 'modem' %}
+      <dl class="kv">
+        <dt>Modem</dt><dd>{% if gsm.running and s.gsm_on == '1' and gsm.connected %}<span class="g">Connected</span> · {{ gsm.operator or '—' }} · signal {{ gsm.bars }}/5{% else %}<span class="r">{{ gsm.error or 'Not connected' }}</span>{% endif %}</dd>
+        <dt>Sent by the modem</dt><dd>{{ gsm.sms_sent or 0 }}{% if gsm.last_sent_at %} · last {{ gsm.last_sent_at[:16]|replace('T', ' ') }}{% endif %}</dd>
+        {% if gsm.send_error %}<dt>Last problem</dt><dd class="r">{{ gsm.send_error }}</dd>{% endif %}
+        <dt>Waiting</dt><dd>{{ waiting }} SMS</dd>
+      </dl>
+      {% endif %}
+      <div class="help">The modem is set up and switched on in <a href="{{ url_for('settings_bksms') }}#gsm">Settings &gt; bKash SMS auto-renew</a>.
+        It sends at most 10 SMS a minute (fewer if <i>SMS per minute</i> below is lower), Bangla too; a long message goes as several SMS.
+        Your operator charges each SMS to the SIM, and sending many SMS from one SIM can get it barred: for large bulk messages an SMS
+        provider is the better road.</div>
+    </div>
+  </section>
+  <section class="panel">
+    <div class="panel-head"><h2>HTTP gateway</h2></div>
     <div class="panel-body stack">
       <div class="field"><label class="lbl" for="g-url">API address</label><input id="g-url" name="sms_url" value="{{ s.sms_url }}" spellcheck="false" placeholder="https://sms.example.com/api/send?key=YOURKEY&amp;to={to}&amp;text={message}">
         <div class="help">Copy the sending address from your provider and put <span class="mono">{to}</span> and <span class="mono">{message}</span> where the number and text go. <span class="mono">{sender}</span> is also available. Values are URL-encoded for you.</div></div>

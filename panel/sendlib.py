@@ -83,6 +83,13 @@ def _fill(template, values, encode):
     return template
 
 
+def sms_ready(s):
+    """Whether customer SMS can go out: the HTTP gateway is set, or (Settings > SMS) the USB GSM modem sends them."""
+    if s.get("sms_via") == "modem":
+        return s.get("gsm_on") == "1"
+    return bool(s.get("sms_url"))
+
+
 def send_sms(s, to, body):
     """Call the configured HTTP gateway. The URL may contain {to}, {message} and {sender}."""
     url_t = (s.get("sms_url") or "").strip()

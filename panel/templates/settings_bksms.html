@@ -65,6 +65,7 @@
       <dt>Signal</dt><dd>{% if gsm.signal is not none %}<span class="mono" aria-hidden="true">{% for b in range(5) %}{{ '▮' if b < gsm.bars else '▯' }}{% endfor %}</span> {{ gsm.bars }}/5 (CSQ {{ gsm.signal }}){% else %}No signal{% endif %}</dd>
       {% endif %}
       <dt>SMS read</dt><dd>{{ gsm.sms_read or 0 }} since {{ (gsm.started_at or '')[:16]|replace('T', ' ') }}{% if gsm.last_sms_at %} · last {{ gsm.last_sms_at[:16]|replace('T', ' ') }} from {{ gsm.last_sms_from }}{% endif %}</dd>
+      <dt>SMS sent</dt><dd>{% if s.sms_via == 'modem' %}{{ gsm.sms_sent or 0 }} customer SMS{% if gsm.last_sent_at %} · last {{ gsm.last_sent_at[:16]|replace('T', ' ') }}{% endif %}{% if gsm.send_error %} · <span class="r">{{ gsm.send_error }}</span>{% endif %}{% else %}Not used for customer SMS (<a href="{{ url_for('settings_sms') }}">Settings &gt; SMS</a>){% endif %}</dd>
       <dt>Checked</dt><dd>{{ (gsm.checked_at or '—')[:19]|replace('T', ' ') }}</dd>
     </dl>
     {% elif not gsm.running %}

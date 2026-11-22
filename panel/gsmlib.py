@@ -150,6 +150,97 @@ def join_parts(items, now=None, wait=600):
     return whole, waiting
 
 
+
+# --------------------------------------------------------------------------------------------- sending (SMS-SUBMIT)
+_GSM7_INDEX = {ch: i for i, ch in enumerate(GSM7)}
+_GSM7_EXT_INDEX = {ch: code for code, ch in GSM7_EXT.items()}
+MAX_PARTS = 7                       # 7 parts = about 1000 GSM characters, the panel's SMS limit
+
+
+def _to_septets(text):
+    """GSM 7-bit codes for the text (an extension character takes two), or None when it needs Unicode."""
+    out = []
+    for ch in text:
+        if ch in _GSM7_INDEX:
+            out.append(_GSM7_INDEX[ch])
+        elif ch in _GSM7_EXT_INDEX:
+            out += [0x1B, _GSM7_EXT_INDEX[ch]]
+        else:
+            return None
+    return out
+
+
+def _pack(septets, fill_bits=0):
+    bits = 0
+    for k, sv in enumerate(septets):
+        bits |= sv << (fill_bits + 7 * k)
+    return bits.to_bytes((fill_bits + 7 * len(septets) + 7) // 8, "little")
+
+
+def _number(to, cc="880"):
+    """(type of address, digits): international when it starts with the country code (or +), else national."""
+    raw = (to or "").strip()
+    digits = re.sub(r"\D", "", raw)
+    if digits.startswith("00"):
+        digits = digits[2:]
+        raw = "+"
+    if not 3 <= len(digits) <= 20:
+        raise ModemError("%r is not a phone number" % to)
+    intl = raw.startswith("+") or bool(cc and digits.startswith(cc) and len(digits) > len(cc) + 6)
+    return (0x91 if intl else 0x81), digits
+
+
+def encode_sms(to, text, ref=0, cc="880"):
+    """SMS-SUBMIT PDUs (hex, with the SIM's own SMS centre) for one message: GSM alphabet when every character
+    fits, otherwise Unicode (Bangla); split in parts with a joining header when it is too long for one SMS.
+    Returns [(pdu hex, length for AT+CMGS)]."""
+    toa, digits = _number(to, cc)
+    addr = "%02X%02X" % (len(digits), toa) + bytes.fromhex(
+        "".join(b + a for a, b in zip(*[iter(digits + ("F" if len(digits) % 2 else ""))] * 2))).hex().upper()
+    sept = _to_septets(text)
+    if sept is not None:
+        one, each = 160, 153
+        if len(sept) <= one:
+            chunks = [sept]
+        else:
+            chunks, cur = [], []
+            for k, sv in enumerate(sept):          # never split an escape pair across two parts
+                if len(cur) >= each or (len(cur) == each - 1 and sv == 0x1B):
+                    chunks.append(cur)
+                    cur = []
+                cur.append(sv)
+            chunks.append(cur)
+    else:
+        units = text.encode("utf-16-be")
+        one, each = 140, 134
+        if len(units) <= one:
+            chunks = [units]
+        else:
+            chunks, cur = [], b""
+            for k in range(0, len(units), 2):        # whole UTF-16 units; a surrogate pair stays together
+                u = units[k:k + 2]
+                if len(cur) >= each or (len(cur) == each - 2 and 0xD8 <= u[0] <= 0xDB):
+                    chunks.append(cur)
+                    cur = b""
+                cur += u
+            chunks.append(cur)
+    if len(chunks) > MAX_PARTS:
+        raise ModemError("the message is too long (%d SMS parts, at most %d)" % (len(chunks), MAX_PARTS))
+    out, total = [], len(chunks)
+    for seq, chunk in enumerate(chunks, 1):
+        udh = bytes([5, 0, 3, ref & 0xFF, total, seq]) if total > 1 else b""
+        if sept is not None:
+            fill = (7 - (len(udh) * 8) % 7) % 7 if udh else 0
+            body = _pack(chunk, len(udh) * 8 + fill)
+            ud = bytes(a | b for a, b in zip(udh + bytes(max(len(body) - len(udh), 0)), body)) if udh else body
+            udl, dcs = (len(udh) * 8 + fill) // 7 + len(chunk), 0x00
+        else:
+            ud, dcs = udh + chunk, 0x08
+            udl = len(ud)
+        tpdu = "%02X00" % (0x41 if udh else 0x01) + addr + "00%02X" % dcs + "%02X" % udl + ud.hex().upper()
+        out.append(("00" + tpdu, len(tpdu) // 2))
+    return out
+
 # --------------------------------------------------------------------------------------------- the serial port
 def candidate_ports():
     """Serial devices a USB modem can be: the stable name from the installer's udev rule first."""
@@ -161,6 +252,9 @@ def candidate_ports():
                 seen.add(real)
                 out.append(p)
     return out
+
+
+RX_FINAL = re.compile(r"\r\n(OK|ERROR|\+CMS ERROR[^\r]*|\+CME ERROR[^\r]*)\r\n")
 
 
 class ModemError(Exception):
@@ -267,6 +361,45 @@ class Modem:
 
     def delete(self, idx):
         return self.cmd("AT+CMGD=%d" % int(idx), 5)[0]
+
+    def _wait_for(self, done, timeout):
+        buf, end = b"", time.time() + timeout
+        while time.time() < end:
+            r, _, _ = select.select([self.fd], [], [], 0.2)
+            if r:
+                try:
+                    chunk = os.read(self.fd, 4096)
+                except OSError as e:
+                    raise ModemError("the modem went away (%s)" % (e.strerror or e))
+                if not chunk:
+                    raise ModemError("the modem went away")
+                buf += chunk
+                text = buf.decode("latin-1")
+                hit = done(text)
+                if hit:
+                    return text
+        return None
+
+    def send_sms(self, to, text, cc="880"):
+        """Send one message (in as many parts as it needs). Raises ModemError with the modem's reason."""
+        import termios
+        self._ref = (getattr(self, "_ref", 0) + 1) & 0xFF
+        for pdu, length in encode_sms(to, text, self._ref, cc):
+            try:
+                termios.tcflush(self.fd, termios.TCIFLUSH)
+                os.write(self.fd, ("AT+CMGS=%d\r" % length).encode("ascii"))
+            except OSError as e:
+                raise ModemError("the modem went away (%s)" % (e.strerror or e))
+            got = self._wait_for(lambda s: ">" in s or "ERROR" in s, 10)
+            if not got or ">" not in got:
+                os.write(self.fd, b"\x1b")                       # ESC: drop the half-started message
+                raise ModemError("the modem did not take the SMS: %s" % ((got or "no answer").strip()[:120]))
+            os.write(self.fd, pdu.encode("ascii") + b"\x1a")      # Ctrl-Z: send
+            got = self._wait_for(lambda s: RX_FINAL.search(s), 60)
+            if not got or "+CMGS" not in got or RX_FINAL.search(got).group(1) != "OK":
+                reason = re.search(r"\+CM[SE] ERROR:?\s*([^\r\n]*)", got or "")
+                raise ModemError("the network refused the SMS: %s"
+                                 % (reason.group(1) if reason else (got or "no answer").strip()[:120]))
 
 
 def find_port(baud):

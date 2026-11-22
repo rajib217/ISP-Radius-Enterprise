@@ -1476,6 +1476,69 @@ def check_rules(flask_app, ids):
           "GSM modem service: books a bKash SMS that came in two parts, keeps every SMS for the admin, deletes them from the "
           "SIM, waits for missing parts, reconnects on request, and the page shows Connected, network and signal (%s %s)"
           % (_fm.deleted if _fm else None, _svc.state.get("error")))
+    # ---- the USB GSM modem as the SMS gateway: encoding, the service sends the outbox, the HTTP sender leaves it alone
+    def _as_deliver(pdu):
+        b = bytes.fromhex(pdu)
+        tp = b[1:]
+        n = (tp[2] + 1) // 2
+        rest = tp[4 + n:]
+        return (bytes([0, 0x04 | (tp[0] & 0x40)]) + tp[2:4 + n] + rest[:2] + bytes.fromhex("62112211700000") + rest[2:]).hex()
+
+    _known = _G.encode_sms("+46708251358", "hellohello")
+    _lt = "Dear customer, " * 25 + "{ok}"
+    _lp = [_G.decode_pdu(_as_deliver(x)) for x, _ in _G.encode_sms("8801711000000", _lt, 5)]
+    _bt = "প্রিয় গ্রাহক, আপনার বিল ৫০০ টাকা। " * 6
+    _bp = [_G.decode_pdu(_as_deliver(x)) for x, _ in _G.encode_sms("01711000000", _bt, 6)]
+    check(_known == [("0001000B916407281553F800000AE8329BFD4697D9EC37", 22)]
+          and "".join(p["text"] for p in _lp) == _lt and all(p["part"][1] == len(_lp) > 1 for p in _lp)
+          and "".join(p["text"] for p in _bp) == _bt and len(_bp) > 1 and _bp[0]["sender"] == "01711000000"
+          and _lp[0]["sender"] == "+8801711000000",
+          "GSM modem: outgoing SMS encode (GSM alphabet, Bangla, long SMS in joined parts, local and international numbers)")
+
+    class _SendModem(_FakeModem):
+        def __init__(self, port, baud):
+            _FakeModem.__init__(self, port, baud)
+            self.box, self.sent = {}, []
+        def send_sms(self, to, text, cc="880"):
+            if to.endswith("000000000"):
+                raise _G.ModemError("the network refused the SMS: 500")
+            self.sent.append((to, text, cc))
+
+    run("UPDATE settings SET svalue = '1' WHERE skey = 'gsm_on'")
+    _sv = adm.post("/settings/sms", data={"_csrf": "ci", "sms_via": "modem", "sms_url": "", "sms_method": "GET",
+                                          "sms_number_format": "intl", "sms_country_code": "880", "sms_rate": "60"})
+    run("UPDATE outbox SET status = 'sent' WHERE channel = 'sms' AND status = 'pending'")
+    for _to in ("8801711000001", "8801000000000", "8801711000003"):
+        run("INSERT INTO outbox (channel, to_addr, body, created_by) VALUES ('sms', %s, %s, 'ci')", (_to, "CI modem " + _to))
+    import sender as _sender
+    _sc = db.connect()
+    with _sc.cursor() as _cur:
+        _http_sent = _sender.work(_sc, _cur, db.load_settings(_cur))
+    _sc.close()
+    _made2 = []
+    _svc2 = _gd.Service(flask_app, opener=lambda p, b: _made2.append(_SendModem(p, b)) or _made2[-1], finder=lambda b: "/dev/ci-modem")
+    _svc2.tick()
+    _ob = {r["to_addr"]: r for r in run_q("SELECT to_addr, status, tries, error FROM outbox WHERE body LIKE 'CI modem%%'")}
+    _svc2.tick()
+    _ob2 = {r["to_addr"]: r for r in run_q("SELECT to_addr, status, tries FROM outbox WHERE body LIKE 'CI modem%%'")}
+    _G.write_state(dict(_svc2.state))
+    _sms_page = adm.get("/settings/sms").get_data(as_text=True)
+    _tq = adm.post("/settings/sms/test", data={"_csrf": "ci", "to": "01711000009"})
+    _queued = one("SELECT COUNT(*) AS c FROM outbox WHERE channel = 'sms' AND status = 'pending' AND body = 'Test message from your ISP panel.'")["c"]
+    _compose = adm.get("/messages/sms").get_data(as_text=True) if any(r.rule == "/messages/sms" for r in flask_app.url_map.iter_rules()) else ""
+    run("UPDATE settings SET svalue = 'http' WHERE skey = 'sms_via'")
+    run("UPDATE settings SET svalue = '0' WHERE skey = 'gsm_on'")
+    _sm = _made2[0] if _made2 else None
+    check(_sv.status_code == 302 and _http_sent == 0 and _sm and len(_sm.sent) == 2
+          and _ob["8801711000001"]["status"] == "sent" and _ob["8801000000000"]["status"] == "pending"
+          and _ob["8801000000000"]["tries"] == 1 and _ob["8801000000000"]["error"].startswith("Modem:")
+          and _ob["8801711000003"]["status"] == "pending" and _ob2["8801711000003"]["status"] == "sent"
+          and _ob2["8801000000000"]["tries"] == 2
+          and _svc2.state.get("sms_sent") == 2
+          and "Send SMS through" in _sms_page and "Modem connected" in _sms_page and _tq.status_code == 302 and _queued == 1,
+          "USB GSM modem as the SMS gateway: the service sends the waiting customer SMS (2 a round), retries a refused one, "
+          "the HTTP sender leaves them alone, and Settings > SMS shows the modem (%s %s)"
+          % (_sm.sent if _sm else None, {k: (v["status"], v["tries"]) for k, v in _ob.items()}))
     return bad
 
 
