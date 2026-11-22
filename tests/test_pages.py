@@ -602,7 +602,7 @@ def check_rules(flask_app, ids):
     _ph = pc.get("/portal").get_data(as_text=True)
     _photo_anon = flask_app.test_client().get("/portal/photo")
     check(all('id="%s"' % k in _ph for k in ("overview", "invoices", "ledger", "payments", "account"))
-          and 'class="pp-logo"' in _ph and 'class="kpis ksv pp-kpis"' in _ph and "CI portal router fee" in _ph
+          and 'class="pp-logo"' in _ph and 'class="ph-stats"' in _ph and "CI portal router fee" in _ph
           and "Unpaid" in _ph and 'data-l="Debit"' in _ph and 'data-cards="off"' in _ph and 'href="/portal#ledger"' in _ph
           and pc.get("/portal/photo").status_code == 404 and _photo_anon.status_code in (302, 404)
           and 'class="pp-logo"' in flask_app.test_client().get("/portal/login").get_data(as_text=True),
@@ -1385,7 +1385,10 @@ def check_rules(flask_app, ids):
           and _r5.get("status") == "renewed" and abs((_rbal1 - _rbal0) - (5000 - _cost)) < 0.01
           and _res_page == 403 and 'href="/settings/bkash-sms"' in _bs_html
           and one("SELECT username FROM sms_payments WHERE trx_id = 'CIBK000001'")["username"] == _a["username"]
-          and ('Subscriber ID</dt><dd class="mono">%d<' % ids["portal_sub"]) in _portal_html,
+          and ('Subscriber ID</dt><dd class="mono">%d<' % ids["portal_sub"]) in _portal_html
+          and all(k in _portal_html for k in ('class="ph-hero', 'class="ph-ring', 'data-copy-text="%d"' % ids["portal_sub"],
+                                               ">Connection<", ">My package<", ">Billing<", ">My account<", "Next bill",
+                                               "Customer since", 'data-tab="account"', "data-lr-down", "data-pp-photo")),
           "bKash SMS auto-renew: renews from the reference, each TrxID once, only with the token and from bKash; small "
           "payments go to the balance; masked numbers wait for one click; a reseller's customer credits the reseller "
           "(%s %s %s %s %s)" % (_r1.get_json(), _r3, _r4, _r5, (_rbal1 - _rbal0, 5000 - _cost)))

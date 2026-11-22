@@ -257,9 +257,30 @@ def portal():
         from datetime import datetime
         uptime = max(0, int((datetime.now() - online["acctstarttime"]).total_seconds()))
     import mod_subview as sv
-    return render_template("portal.html", sub=sub, state=state, left=left, usage=usage, online=online, sessions=sessions,
+    # everything else the customer may see about their own connection
+    last = q("SELECT acctstarttime, acctstoptime, framedipaddress, callingstationid FROM radacct WHERE username = %s "
+             "ORDER BY radacctid DESC LIMIT 1", (user,), one=True)
+    try:
+        onu = q("SELECT rx_dbm, status, last_seen FROM onus WHERE username = %s ORDER BY last_seen DESC LIMIT 1",
+                (user,), one=True)
+    except Exception:                  # the OLT tables are optional
+        onu = None
+    plan = mod_subs._plan(sub["plan_id"]) if sub.get("plan_id") else None
+    ends = mod_subs.end_moment(sub, plan)
+    total_days = int(sub.get("validity_days") or 30)
+    ring = 0 if state != "active" else (100 if left is None else max(0, min(100, int(round((left + 1) * 100 / total_days)))))
+    nid = (sub.get("identity") or "").strip()
+    terms = pay_terms(sub)
+    info = {"ends": ends, "ring": ring, "last": last, "onu": onu, "plan": plan,
+            "ip": (online or {}).get("framedipaddress") or sub.get("static_ip") or (last or {}).get("framedipaddress") or "",
+            "mac": (last or {}).get("callingstationid") or "",
+            "nid": ("•••• " + nid[-4:]) if len(nid) > 4 else nid,
+            "next_bill": terms["amount"] or (mod_subs.customer_price(sub, plan) if plan else 0.0),
+            "last_pay": payments[0] if payments else None,
+            "id_ref": s.get("bksms_on") == "1"}
+    return render_template("portal.html", sub=sub, state=state, left=left, usage=usage, online=online, sessions=sessions, info=info,
                            invoices=sv.invoices(payments, charges), ledger=sv.ledger(sub, payments, charges, balance_rows),
-                           payments=payments, tries=pending, terms=pay_terms(sub), isp=s.get("isp_name", ""),
+                           payments=payments, tries=pending, terms=terms, isp=s.get("isp_name", ""),
                            cur=s.get("currency", ""), can_pw=s.get("sub_reset_pw") == "1", due=due, used_gb=used_gb,
                            uptime=uptime, photo=_photo_v(sv._photo_path(sub["id"])), owner=_owner(sub),
                            phone=s.get("support_phone", ""))
