@@ -768,3 +768,24 @@ UPDATE radpostauth p SET p.pass = '' WHERE p.pass <> '' AND (p.reply <> 'Access-
 
 -- the reseller a router belongs to (NAS > Edit > Reseller): they and their downline see its New PPPoE requests
 ALTER TABLE nas ADD COLUMN IF NOT EXISTS seller VARCHAR(64) NOT NULL DEFAULT '';
+
+-- bKash SMS auto-renew (Settings > bKash SMS): the "You have received ..." SMS an Android phone forwards to /sms-in;
+-- each TrxID is used once
+CREATE TABLE IF NOT EXISTS sms_payments (
+  id            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  trx_id        VARCHAR(32)  NOT NULL,
+  amount        DECIMAL(10,2) NOT NULL,
+  payer         VARCHAR(32)  NOT NULL DEFAULT '',
+  ref           VARCHAR(64)  NOT NULL DEFAULT '',
+  sms_text      VARCHAR(500) NOT NULL DEFAULT '',
+  paid_at       DATETIME NULL,
+  subscriber_id INT UNSIGNED NULL,
+  username      VARCHAR(64)  NOT NULL DEFAULT '',
+  status        VARCHAR(16)  NOT NULL DEFAULT 'unmatched',
+  message       VARCHAR(255) NOT NULL DEFAULT '',
+  payment_id    INT UNSIGNED NULL,
+  done_by       VARCHAR(64)  NOT NULL DEFAULT '',
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_trx (trx_id),
+  KEY idx_status (status, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

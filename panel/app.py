@@ -267,11 +267,11 @@ def gate():
         return None
     if (request.content_length or 0) > 20 * 1024 * 1024 and request.endpoint != "backup_upload":
         abort(413)
-    if request.method == "POST":
+    if request.method == "POST" and request.endpoint != "sms_in":     # the bKash SMS phone signs with its own token
         sent = request.form.get("_csrf") or request.headers.get("X-CSRF-Token", "")
         if not session.get("csrf") or not secrets.compare_digest(sent, session["csrf"]):
             abort(400, "Your session expired. Reload the page and try again.")
-    if request.endpoint in ("login", "login_2fa", "branding", "healthz", "expired_notice", "pwa_manifest", "pwa_sw", "pwa_icon", "pwa_offline") \
+    if request.endpoint in ("login", "login_2fa", "branding", "healthz", "expired_notice", "sms_in", "pwa_manifest", "pwa_sw", "pwa_icon", "pwa_offline") \
             or (request.endpoint or "").startswith("portal") or (request.endpoint is None and request.path.startswith("/portal")):
         return None          # the customer portal has its own sign-in (mod_portal.py)
     uid = session.get("uid")
@@ -1634,6 +1634,7 @@ import mod_tickets  # noqa: E402,F401
 import mod_messages  # noqa: E402,F401
 import mod_notify  # noqa: E402,F401
 import mod_coa  # noqa: E402,F401
+import mod_bksms  # noqa: E402,F401
 import mod_settings  # noqa: E402,F401
 import mod_notes  # noqa: E402,F401
 import mod_documents  # noqa: E402,F401

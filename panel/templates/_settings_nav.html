@@ -20,4 +20,5 @@
   {{ link('expired', 'Expired notice', 'power', url_for('settings_expired')) }}
   <h6>Payment gateways</h6>
   {% for slug, name, ic in gateways %}{{ link('gw-' ~ slug, name, ic, url_for('settings_gateway', slug=slug)) }}{% endfor %}
+  {{ link('bksms', 'bKash SMS auto-renew', 'phone', url_for('settings_bksms')) }}
 </nav>

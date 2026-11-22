@@ -183,6 +183,7 @@
     <div class="panel-head"><h2>{{ icon('user') }}My details</h2></div>
     <dl class="pp-kv">
       <dt>Name</dt><dd>{{ sub.full_name or '—' }}</dd>
+      <dt>Subscriber ID</dt><dd class="mono">{{ sub.id }}</dd>
       <dt>Username</dt><dd class="mono">{{ sub.username }}</dd>
       <dt>Phone</dt><dd>{{ sub.phone or '—' }}</dd>
       {% if sub.email %}<dt>Email</dt><dd>{{ sub.email }}</dd>{% endif %}

@@ -1,0 +1,83 @@
+{% extends "settings_base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}bKash SMS auto-renew{% endblock %}
+{% block ssub %}Renew customers by themselves from the bKash "You have received" SMS on your office phone.{% endblock %}
+{% block sbody %}
+<form method="post" class="stack" style="max-width:860px" autocomplete="off">
+  {{ csrf_input() }}
+  <section class="panel">
+    <div class="panel-head"><h2>Settings</h2>
+      <span class="aside">{% if s.bksms_on == '1' %}<span class="badge ok">On</span>{% else %}<span class="badge mute">Off</span>{% endif %}</span></div>
+    <div class="panel-body stack">
+      <p class="muted" style="margin:0">The customer sends money to your bKash number and writes their <b>subscriber ID</b> (the ID column of the subscriber list,
+        also shown in their portal) in <b>Reference</b>; their username or mobile number works too. An SMS-forwarder app on the phone that gets bKash's SMS sends it here. The package is renewed when the money
+        plus the customer's balance covers the price; otherwise the money goes into their balance. Each TrxID is used only once.</p>
+      <label class="check"><input type="checkbox" name="bksms_on" value="1" {{ 'checked' if s.bksms_on == '1' }}> Renew customers from forwarded bKash SMS</label>
+      <div class="field" style="max-width:420px"><label class="lbl" for="bs-senders">Accept SMS only from</label>
+        <input id="bs-senders" name="bksms_senders" value="{{ senders }}" maxlength="200" spellcheck="false">
+        <div class="help">The sender name the phone shows for bKash's SMS; several separated by commas. Leave empty only if your app cannot send the sender.</div></div>
+      <div class="row-gap"><button class="btn primary" type="submit">Save</button>
+        {% if hook %}<button class="btn" type="submit" name="new_token" value="1" onclick="return confirm('Make a new address? The old one stops working at once.')">{{ icon('refresh') }}Make a new address</button>{% endif %}</div>
+    </div>
+  </section>
+</form>
+
+<section class="panel" style="max-width:860px;margin-top:16px">
+  <div class="panel-head"><h2>Phone set-up</h2><span class="aside">Any Android "SMS forwarder to URL / webhook" app</span></div>
+  <div class="panel-body stack">
+    {% if hook %}
+    <div class="field"><label class="lbl">Forward to (POST)</label>
+      <pre class="pre mono" id="bs-hook" style="margin:0;white-space:pre-wrap;word-break:break-all">{{ hook }}</pre>
+      <div class="row-gap" style="margin-top:6px"><button class="btn" type="button" onclick="navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('bs-hook').textContent)">{{ icon('copy') }}Copy</button></div>
+      <div class="help">Keep this address secret, like a password: whoever has it can send payments in. If it leaks, make a new address.</div></div>
+    <ol class="muted" style="margin:0;padding-left:18px;display:grid;gap:4px;font-size:13px">
+      <li>Install an SMS-forwarder app on the phone that holds the bKash number, and let it run in the background (turn off battery saving for it).</li>
+      <li>Add a rule: sender <code>bKash</code>, forward to the address above, method POST.</li>
+      <li>Body: JSON such as <code>{"from": "%from%", "text": "%text%"}</code> (use your app's own placeholders). A form, or the SMS alone as the body, also works.</li>
+      <li>Send yourself a small test payment with a subscriber ID in Reference and watch it appear below.</li>
+    </ol>
+    {% else %}
+    <p class="muted" style="margin:0">Press <b>Save</b> once to make the address for the phone.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="panel" style="margin-top:16px">
+  <div class="panel-head"><h2>Received payments</h2>
+    <span class="aside"><a href="{{ url_for('settings_bksms') }}" class="{{ 'on' if not show }}">All</a>
+      {% for k, v in states.items() if k != 'working' %} · <a href="{{ url_for('settings_bksms', show=k) }}">{{ v[1] }} ({{ counts.get(k, 0) }})</a>{% endfor %}</span></div>
+  <div class="tbl-wrap">
+    <table class="tbl">
+      <thead><tr><th>When</th><th>TrxID</th><th class="num">Amount</th><th>From</th><th>Reference</th><th>Customer</th><th>Result</th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>
+          <td class="nowrap">{{ (r.paid_at or r.created_at)|dt }}</td>
+          <td class="mono">{{ r.trx_id }}</td>
+          <td class="num">{{ '{:,.2f}'.format(r.amount) }}</td>
+          <td class="mono">{{ r.payer }}</td>
+          <td>{{ r.ref or '—' }}</td>
+          <td>{% if r.status in ('renewed', 'balance') and r.sub_name %}<a href="{{ url_for('subscriber_view', sid=r.subscriber_id) }}">{{ r.sub_name }}</a>{% else %}{{ r.username or '—' }}{% endif %}</td>
+          <td>
+            <span class="badge {{ states.get(r.status, ('mute', r.status))[0] }}">{{ states.get(r.status, ('mute', r.status))[1] }}</span>
+            {% if r.message %}<div class="muted" style="font-size:12px">{{ r.message }}</div>{% endif %}
+            {% if r.status == 'unmatched' %}
+            <form method="post" action="{{ url_for('bksms_apply', pid=r.id) }}" class="row-gap" style="margin-top:6px">
+              {{ csrf_input() }}
+              <input name="username" value="{{ r.sub_name or '' }}" placeholder="username" required style="max-width:160px" spellcheck="false" aria-label="Customer username for TrxID {{ r.trx_id }}">
+              <button class="btn sm primary" type="submit">Book for this customer</button>
+            </form>
+            <form method="post" action="{{ url_for('bksms_ignore', pid=r.id) }}" style="margin-top:4px" onsubmit="return confirm('Ignore TrxID {{ r.trx_id }}? It will never be booked.')">
+              {{ csrf_input() }}<button class="btn sm" type="submit">Ignore</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="muted">No bKash SMS received yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

@@ -88,7 +88,7 @@ def connect():
 SECRET_KEYS = {
     "bkash_key", "bkash_secret", "bkash_pass", "bkash_token_cache",
     "tg_token", "nat_token", "gdrive_client_secret", "gdrive_refresh_token",
-    "smtp_pass", "noc_snmp_community", "gmap_key", "sms_url", "push_vapid_private",
+    "smtp_pass", "noc_snmp_community", "gmap_key", "sms_url", "push_vapid_private", "bksms_token",
 }
 _ENC_PREFIX = "enc:v1:"
 _fernet = None

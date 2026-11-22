@@ -1311,6 +1311,84 @@ def check_rules(flask_app, ids):
     old = adm.get("/reports/btrc.xlsx?month=2001-01")
     old_rows = _re2.findall(r"<row ", _z2.ZipFile(_io2.BytesIO(old.data)).read("xl/worksheets/sheet1.xml").decode())
     check(len(old_rows) == 1, "a month with no activations gives only the header row")
+    # ---- bKash SMS auto-renew: a forwarded "You have received" SMS renews the customer once, from a phone with a token
+    import mod_bksms as _bks
+    _p = _bks.parse("You have received payment Tk 500.00 from 0171XXXX583. Ref Jony Tnt. Fee Tk 0.00. Balance Tk 51,370.00. "
+                   "TrxID DKM2S0CT80 at 22/11/2026 11:07")
+    _p2 = _bks.parse("You have received Tk 1,250.50 from 01712345678. Fee Tk 0.00. Balance Tk 1,500.00. TrxID ABC12XYZ9 at 01/12/2026 09:05")
+    check(_p and _p["amount"] == 500.0 and _p["payer"] == "0171XXXX583" and _p["ref"] == "Jony Tnt" and _p["trx"] == "DKM2S0CT80"
+          and _p["paid_at"].strftime("%Y-%m-%d %H:%M") == "2026-11-22 11:07"
+          and _p2 and _p2["amount"] == 1250.5 and _p2["ref"] == "" and _p2["payer"] == "01712345678"
+          and _bks.parse("Your OTP is 1234") is None and _bks.parse("Cash Out Tk 500.00 to 0171. TrxID AB12CD34EF") is None,
+          "bKash SMS parser reads amount, payer, reference, TrxID and time")
+    _bs = adm.post("/settings/bkash-sms", data={"_csrf": "ci", "bksms_on": "1", "bksms_senders": "bKash"})
+    _bs_html = adm.get("/settings/bkash-sms").get_data(as_text=True)
+    _tok = _re2.search(r"/sms-in/([A-Za-z0-9_-]{20,})", _bs_html)
+    _tok = _tok.group(1) if _tok else "missing"
+    _anon = flask_app.test_client()
+    _adm_name = one("SELECT username FROM panel_admins WHERE id = %s", (ids["admin"],))["username"]
+    _a = one("SELECT * FROM subscribers WHERE created_by = %s AND status = 'active' AND plan_id IS NOT NULL ORDER BY id LIMIT 1",
+             (_adm_name,))
+    run("UPDATE subscribers SET balance = 0 WHERE id = %s", (_a["id"],))
+
+    def _sms(text, sender="bKash", token=None, form=False):
+        url = "/sms-in/" + (_tok if token is None else token)
+        body = {"from": sender, "text": text}
+        return _anon.post(url, data=body) if form else _anon.post(url, json=body)
+
+    _t1 = "You have received payment Tk 5,000.00 from 01999000111. Ref %s. Fee Tk 0.00. Balance Tk 9,000.00. TrxID CIBK000001 at 22/11/2026 11:07"
+    _r1 = _sms(_t1 % _a["id"])                        # Reference = the subscriber ID
+    _a2 = one("SELECT * FROM subscribers WHERE id = %s", (_a["id"],))
+    _pay = one("SELECT * FROM payments WHERE subscriber_id = %s ORDER BY id DESC LIMIT 1", (_a["id"],))
+    _r1b = _sms(_t1 % ("ID %d" % _a["id"]))
+    _pays = one("SELECT COUNT(*) AS c FROM payments WHERE note LIKE '%%CIBK000001%%'")["c"]
+    _bad = [_sms(_t1 % _a["username"], token="wrong-token").status_code, _anon.post("/sms-in", json={"text": "x"}).status_code]
+    _other = _sms(_t1.replace("CIBK000001", "CIBK000002") % _a["username"], sender="Grameenphone").get_json()
+    # paid from a customer's registered mobile with no reference, sent as a form: too little to renew, so it goes to the balance
+    _b = one("SELECT * FROM subscribers WHERE created_by = %s AND status = 'active' AND plan_id IS NOT NULL AND id <> %s "
+             "ORDER BY id LIMIT 1", (_adm_name, _a["id"]))
+    run("UPDATE subscribers SET balance = 0 WHERE id = %s", (_b["id"],))
+    _r3 = _sms("You have received Tk 10.00 from %s. Fee Tk 0.00. Balance Tk 10.00. TrxID CIBK000003 at 22/11/2026 12:00" % _b["phone"],
+               form=True).get_json()
+    _b2 = one("SELECT balance, expiry_date FROM subscribers WHERE id = %s", (_b["id"],))
+    # a masked number only suggests the customer; the admin books it with one click
+    _masked = _b["phone"][:4] + "XXXX" + _b["phone"][-3:]
+    _r4 = _sms("You have received payment Tk 20.00 from %s. Ref Someone Else. Fee Tk 0.00. Balance Tk 1.00. TrxID CIBK000004 "
+               "at 22/11/2026 12:05" % _masked).get_json()
+    _row4 = one("SELECT * FROM sms_payments WHERE trx_id = 'CIBK000004'")
+    _un_html = adm.get("/settings/bkash-sms?show=unmatched").get_data(as_text=True)
+    _ap = adm.post("/settings/bkash-sms/%d/apply" % _row4["id"], data={"_csrf": "ci", "username": _b["username"]})
+    _ap2 = adm.post("/settings/bkash-sms/%d/apply" % _row4["id"], data={"_csrf": "ci", "username": _b["username"]})
+    _b3 = one("SELECT balance FROM subscribers WHERE id = %s", (_b["id"],))
+    # a reseller's customer: the reseller is credited with the money and pays their own package cost from it
+    _rsub = one("SELECT s.* FROM subscribers s JOIN user_plans up ON up.plan_id = s.plan_id AND up.user_id = %s "
+                "WHERE s.created_by = %s AND s.status = 'active' ORDER BY s.id LIMIT 1", (ids["reseller"], _res_name))
+    _rbal0 = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
+    _cost = float(one("SELECT price FROM user_plans WHERE user_id = %s AND plan_id = %s", (ids["reseller"], _rsub["plan_id"]))["price"])
+    _r5 = _sms(_t1.replace("CIBK000001", "CIBK000005") % _rsub["username"]).get_json()   # a username works too
+    _rbal1 = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
+    _res_page = client(ids["reseller"]).get("/settings/bkash-sms").status_code
+    _pc = flask_app.test_client()
+    with _pc.session_transaction() as _ps:
+        _ps["cid"] = ids["portal_sub"]
+    _portal_html = _pc.get("/portal").get_data(as_text=True)
+    check(_bs.status_code == 302 and _tok != "missing" and _r1.get_json().get("status") == "renewed"
+          and _a2["expiry_date"] > (_a["expiry_date"] or date.today()) and _pay and _pay["method"] == "bKash"
+          and abs(float(_a2["balance"]) - (5000 - float(_pay["amount"]))) < 0.01
+          and _r1b.get_json().get("status") == "duplicate" and _pays == 1 and _bad == [403, 403]
+          and _other.get("status") == "ignored" and not one("SELECT id FROM sms_payments WHERE trx_id = 'CIBK000002'")
+          and _r3.get("status") == "balance" and abs(float(_b2["balance"]) - 10) < 0.01 and _b2["expiry_date"] == _b["expiry_date"]
+          and _r4.get("status") == "unmatched" and _row4["subscriber_id"] == _b["id"] and "Book for this customer" in _un_html
+          and ('value="%s"' % _b["username"]) in _un_html
+          and _ap.status_code == 302 and abs(float(_b3["balance"]) - 30) < 0.01
+          and one("SELECT status FROM sms_payments WHERE id = %s", (_row4["id"],))["status"] == "balance"
+          and _r5.get("status") == "renewed" and abs((_rbal1 - _rbal0) - (5000 - _cost)) < 0.01
+          and _res_page == 403 and 'href="/settings/bkash-sms"' in _bs_html
+          and one("SELECT username FROM sms_payments WHERE trx_id = 'CIBK000001'")["username"] == _a["username"]
+          and ('Subscriber ID</dt><dd class="mono">%d<' % ids["portal_sub"]) in _portal_html,
+          "bKash SMS auto-renew: renews from the reference, each TrxID once, only with the token and from bKash; small "
+          "payments go to the balance; masked numbers wait for one click; a reseller's customer credits the reseller "
+          "(%s %s %s %s %s)" % (_r1.get_json(), _r3, _r4, _r5, (_rbal1 - _rbal0, 5000 - _cost)))
     return bad
 
 
