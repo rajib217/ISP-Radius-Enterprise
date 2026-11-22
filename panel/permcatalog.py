@@ -128,6 +128,9 @@ TABS = [
                                    I("led.export", "Export", "Excel and CSV download of the ledger", "vno")]),
         G("bKash Payments", None, [I("bkp.module", "Module", "Resellers / sub-resellers / retailers: their own and their downline's bKash checkouts. Staff with Accounting access always have it.", "vgno"),
                                    I("bkp.export", "Export", "Excel and CSV download of bKash payments", "vno")]),
+        # on for resellers / sub-resellers / retailers until unticked: each sees only their own (and downline's) customers
+        G("bKash SMS Payments", None, [I("bks.module", "Module", "Resellers / sub-resellers / retailers: the bKash SMS payments of their own and their downline's customers. Staff with Accounting access always have it.", "vgn"),
+                                       I("bks.export", "Export", "Excel and CSV download of bKash SMS payments", "vno")]),
         G("Payment Reports", "accounting", [I("pay.module", "Module", "", "vg"), I("pay.receipt", "View Receipt", "", "v"),
                                             I("pay.export", "Export", "", "v")]),
         G("Cashflow", "accounting", [I("cf.module", "Module", "", "vg"), I("cf.add", "Add"), I("cf.edit", "Edit"), I("cf.delete", "Delete"),

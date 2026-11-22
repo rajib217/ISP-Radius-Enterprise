@@ -105,41 +105,10 @@
 {% endif %}
 
 <section class="panel" style="margin-top:16px">
-  <div class="panel-head"><h2>Received payments</h2>
-    <span class="aside"><a href="{{ url_for('settings_bksms') }}" class="{{ 'on' if not show }}">All</a>
-      {% for k, v in states.items() if k != 'working' %} · <a href="{{ url_for('settings_bksms', show=k) }}">{{ v[1] }} ({{ counts.get(k, 0) }})</a>{% endfor %}</span></div>
-  <div class="tbl-wrap">
-    <table class="tbl">
-      <thead><tr><th>When</th><th>TrxID</th><th class="num">Amount</th><th>From</th><th>Reference</th><th>Customer</th><th>Result</th></tr></thead>
-      <tbody>
-      {% for r in rows %}
-        <tr>
-          <td class="nowrap">{{ (r.paid_at or r.created_at)|dt }}<div class="muted" style="font-size:12px">{{ 'Modem' if r.source == 'modem' else 'Phone' }}</div></td>
-          <td class="mono">{{ r.trx_id }}</td>
-          <td class="num">{{ '{:,.2f}'.format(r.amount) }}</td>
-          <td class="mono">{{ r.payer }}</td>
-          <td>{{ r.ref or '—' }}</td>
-          <td>{% if r.status in ('renewed', 'balance') and r.sub_name %}<a href="{{ url_for('subscriber_view', sid=r.subscriber_id) }}">{{ r.sub_name }}</a>{% else %}{{ r.username or '—' }}{% endif %}</td>
-          <td>
-            <span class="badge {{ states.get(r.status, ('mute', r.status))[0] }}">{{ states.get(r.status, ('mute', r.status))[1] }}</span>
-            {% if r.message %}<div class="muted" style="font-size:12px">{{ r.message }}</div>{% endif %}
-            {% if r.status == 'unmatched' %}
-            <form method="post" action="{{ url_for('bksms_apply', pid=r.id) }}" class="row-gap" style="margin-top:6px">
-              {{ csrf_input() }}
-              <input name="username" value="{{ r.sub_name or '' }}" placeholder="username" required style="max-width:160px" spellcheck="false" aria-label="Customer username for TrxID {{ r.trx_id }}">
-              <button class="btn sm primary" type="submit">Book for this customer</button>
-            </form>
-            <form method="post" action="{{ url_for('bksms_ignore', pid=r.id) }}" style="margin-top:4px" onsubmit="return confirm('Ignore TrxID {{ r.trx_id }}? It will never be booked.')">
-              {{ csrf_input() }}<button class="btn sm" type="submit">Ignore</button>
-            </form>
-            {% endif %}
-          </td>
-        </tr>
-      {% else %}
-        <tr><td colspan="7" class="muted">No bKash SMS received yet.</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
+  <div class="panel-body row-gap" style="justify-content:space-between;align-items:center">
+    <div><b>Received payments</b> are in <b>Accounting &gt; bKash SMS Payments</b>, with search, dates, Excel / CSV, and the payments that need a match.
+      Resellers see their own customers' payments there.</div>
+    <a class="btn" href="{{ url_for('bksms_payments') }}">{{ icon('file') }}Open bKash SMS Payments{% if counts.get('unmatched') %} · {{ counts.get('unmatched') }} need a match{% endif %}</a>
   </div>
 </section>
 {% endblock %}

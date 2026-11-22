@@ -1,4 +1,5 @@
 """Accounting > bKash Payments: every bKash checkout the panel started, with its bKash result.
+(Accounting > bKash SMS Payments, money read from bKash's SMS, is at the end of this file.)
 
   portal_payments -> "Customer renewal"   (customers renewing in the portal)
   topups          -> "Balance top-up"     (resellers adding balance with Add Balance)
@@ -175,3 +176,120 @@ def bkash_payments_xlsx():
     head, data, f = _export()
     return Response(_xlsx(head, data), mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={
         "Content-Disposition": "attachment; filename=bkash-payments-%s-to-%s.xlsx" % (f["from"], f["to"])})
+
+
+# ===================================================================== Accounting > bKash SMS Payments
+# Money received on the bKash number and read from bKash's SMS (phone forwarder app or the USB GSM modem), what the panel
+# did with it (renewed, added to the balance, waiting for a match, ignored). Same permission pattern as above, its own
+# ticks (Users > Roles > Accounting > bKash SMS Payments): staff with Accounting access see all and book the unmatched
+# ones (admin); resellers / sub-resellers / retailers see their own customers' payments (and their downline's) only.
+SMS_STATES = [("renewed", "Renewed"), ("balance", "Added to balance"), ("unmatched", "Needs a match"), ("ignored", "Ignored")]
+
+
+def _sms_allowed():
+    me = g.me
+    if me["role"] == "admin":
+        return "all"
+    if me["role"] in core.SELLER_ROLES:
+        return "mine" if core.can_fn("bks.module") else None
+    return "all" if (core.can("accounting") or core.can_fn("bks.module")) else None
+
+
+def _sms_can_export(scope):
+    if g.me["role"] == "admin" or core.can_fn("bks.export"):
+        return True
+    return scope == "all" and core.can("accounting", "edit")
+
+
+def _sms_filters():
+    f = _filters()
+    a = request.args
+    f["status"] = a.get("status") if a.get("status") in dict(SMS_STATES) else ""
+    f["source"] = a.get("source") if a.get("source") in ("phone", "modem") else ""
+    return f
+
+
+def _sms_where(f, scope, with_status=True):
+    lo = datetime.combine(f["from"], datetime.min.time())
+    hi = datetime.combine(f["to"] + timedelta(days=1), datetime.min.time())
+    w = " WHERE p.status <> 'working' AND COALESCE(p.paid_at, p.created_at) >= %s AND COALESCE(p.paid_at, p.created_at) < %s"
+    args = [lo, hi]
+    if scope == "mine":
+        names = list(core.my_downline() or [])
+        if not names:
+            return None, []
+        # only payments booked to (or suggested for) one of their customers; an unknown payer's money stays with staff
+        w += " AND p.status IN ('renewed', 'balance') AND s.created_by IN (%s)" % ",".join(["%s"] * len(names))
+        args += names
+    if with_status and f["status"]:
+        w += " AND p.status = %s"
+        args.append(f["status"])
+    if f["source"]:
+        w += " AND p.source = %s"
+        args.append(f["source"])
+    if f["q"]:
+        like = "%" + f["q"].replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        w += " AND (p.trx_id LIKE %s OR p.payer LIKE %s OR p.ref LIKE %s OR p.username LIKE %s OR s.username LIKE %s)"
+        args += [like] * 5
+    return w, args
+
+
+SMS_FROM = " FROM sms_payments p LEFT JOIN subscribers s ON s.id = p.subscriber_id"
+
+
+@route("/bkash-sms-payments")
+def bksms_payments():
+    scope = _sms_allowed() or abort(403)
+    f = _sms_filters()
+    w, args = _sms_where(f, scope)
+    total = q("SELECT COUNT(*) AS c" + SMS_FROM + w, args, one=True)["c"] if w else 0
+    pg = core.pager(total)
+    rows = q("SELECT p.*, s.username AS sub_name, s.created_by AS owner" + SMS_FROM + w +
+             " ORDER BY COALESCE(p.paid_at, p.created_at) DESC, p.id DESC LIMIT %s OFFSET %s", args + [pg["per"], pg["offset"]]) if total else []
+    sums = {k: {"n": 0, "amount": 0.0} for k, _ in SMS_STATES}
+    w2, args2 = _sms_where(f, scope, with_status=False)
+    if w2:
+        for r in q("SELECT p.status, COUNT(*) AS n, COALESCE(SUM(p.amount), 0) AS amount" + SMS_FROM + w2 + " GROUP BY p.status", args2):
+            if r["status"] in sums:
+                sums[r["status"]] = {"n": int(r["n"]), "amount": float(r["amount"])}
+    keep = {k: v for k, v in request.args.items() if k != "page"}
+    return render_template("bksms_payments.html", rows=rows, pg=pg, f=f, keep=keep, states=SMS_STATES, sums=sums, scope=scope,
+                           can_export=_sms_can_export(scope), can_book=g.me["role"] == "admin")
+
+
+def _sms_export():
+    scope = _sms_allowed() or abort(403)
+    if not _sms_can_export(scope):
+        abort(403)
+    f = _sms_filters()
+    w, args = _sms_where(f, scope)
+    rows = q("SELECT p.*, s.username AS sub_name" + SMS_FROM + w + " ORDER BY COALESCE(p.paid_at, p.created_at) DESC, p.id DESC "
+             "LIMIT %d" % EXPORT_CAP, args) if w else []
+    names = dict(SMS_STATES)
+    head = ["ID", "Paid at", "bKash Trx ID", "Amount", "From (bKash number)", "Reference", "Customer", "Result", "Message", "Source", "Booked by"]
+    data = [["SMS-%d" % r["id"], (r["paid_at"] or r["created_at"]).strftime("%Y-%m-%d %H:%M"), r["trx_id"], float(r["amount"] or 0),
+             r["payer"] or "", r["ref"] or "", r["sub_name"] or r["username"] or "", names.get(r["status"], r["status"]),
+             r["message"] or "", "Modem" if r["source"] == "modem" else "Phone", r["done_by"] or ""] for r in rows]
+    audit("export", "bkash sms payments", "%d rows, %s to %s" % (len(data), f["from"], f["to"]))
+    commit()
+    return head, data, f
+
+
+@route("/bkash-sms-payments.csv")
+def bksms_payments_csv():
+    head, data, f = _sms_export()
+    out = io.StringIO()
+    out.write("﻿")
+    w = csv.writer(out)
+    w.writerow(head)
+    for row in data:
+        w.writerow([_safe(c) for c in row])
+    return Response(out.getvalue(), mimetype="text/csv; charset=utf-8", headers={
+        "Content-Disposition": "attachment; filename=bkash-sms-payments-%s-to-%s.csv" % (f["from"], f["to"])})
+
+
+@route("/bkash-sms-payments.xlsx")
+def bksms_payments_xlsx():
+    head, data, f = _sms_export()
+    return Response(_xlsx(head, data), mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={
+        "Content-Disposition": "attachment; filename=bkash-sms-payments-%s-to-%s.xlsx" % (f["from"], f["to"])})

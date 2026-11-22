@@ -1496,7 +1496,8 @@ def check_rules(flask_app, ids):
     _r4 = _sms("You have received payment Tk 20.00 from %s. Ref Someone Else. Fee Tk 0.00. Balance Tk 1.00. TrxID CIBK000004 "
                "at 22/11/2026 12:05" % _masked).get_json()
     _row4 = one("SELECT * FROM sms_payments WHERE trx_id = 'CIBK000004'")
-    _un_html = adm.get("/settings/bkash-sms?show=unmatched").get_data(as_text=True)
+    _old_link = adm.get("/settings/bkash-sms?show=unmatched")
+    _un_html = adm.get("/bkash-sms-payments?status=unmatched").get_data(as_text=True)
     _ap = adm.post("/settings/bkash-sms/%d/apply" % _row4["id"], data={"_csrf": "ci", "username": _b["username"]})
     _ap2 = adm.post("/settings/bkash-sms/%d/apply" % _row4["id"], data={"_csrf": "ci", "username": _b["username"]})
     _b3 = one("SELECT balance FROM subscribers WHERE id = %s", (_b["id"],))
@@ -1532,6 +1533,30 @@ def check_rules(flask_app, ids):
           "bKash SMS auto-renew: renews from the reference, each TrxID once, only with the token and from bKash; small "
           "payments go to the balance; masked numbers wait for one click; a reseller's customer credits the reseller "
           "(%s %s %s %s %s)" % (_r1.get_json(), _r3, _r4, _r5, (_rbal1 - _rbal0, 5000 - _cost)))
+    # ---- Accounting > bKash SMS Payments: the list moved out of Settings; resellers see only their own customers' payments
+    _sp_adm = adm.get("/bkash-sms-payments?from=2026-01-01&to=2027-12-31").get_data(as_text=True)
+    _sp_set = adm.get("/settings/bkash-sms").get_data(as_text=True)
+    _rc2 = client(ids["reseller"])
+    _sp_res = _rc2.get("/bkash-sms-payments?from=2026-01-01&to=2027-12-31")
+    _sp_res_html = _sp_res.get_data(as_text=True)
+    _sp_menu = side_menu(_rc2.get("/").get_data(as_text=True))
+    _sp_adm_menu = side_menu(adm.get("/").get_data(as_text=True))
+    _sp_csv = adm.get("/bkash-sms-payments.csv?from=2026-01-01&to=2027-12-31").get_data(as_text=True)
+    _sp_res_csv = _rc2.get("/bkash-sms-payments.csv?from=2026-01-01&to=2027-12-31").status_code
+    _rs_book = _rc2.post("/settings/bkash-sms/%d/ignore" % _row4["id"], data={"_csrf": "ci"}).status_code
+    run("INSERT INTO role_funcs (role, fkey, allowed) VALUES ('reseller', 'bks.module', 0) ON DUPLICATE KEY UPDATE allowed = 0")
+    _sp_off = client(ids["reseller"]).get("/bkash-sms-payments").status_code
+    run("DELETE FROM role_funcs WHERE role = 'reseller' AND fkey = 'bks.module'")
+    _acct = _sp_adm_menu.split('data-key="acct"', 1)[-1].split("</details>", 1)[0]
+    check(_old_link.status_code == 302 and "/bkash-sms-payments?status=unmatched" in _old_link.headers.get("Location", "")
+          and "CIBK000001" in _sp_adm and "CIBK000005" in _sp_adm and "Received payments</h2>" not in _sp_set
+          and 'href="/bkash-sms-payments"' in _sp_set and "CIBK000001" in _sp_csv
+          and _acct.find('href="/bkash-payments"') < _acct.find('href="/bkash-sms-payments"') and _acct.find('href="/bkash-payments"') >= 0
+          and _sp_res.status_code == 200 and "CIBK000005" in _sp_res_html and "CIBK000001" not in _sp_res_html
+          and "CIBK000004" not in _sp_res_html and "CIBK000003" not in _sp_res_html and "Book for this customer" not in _sp_res_html
+          and 'href="/bkash-sms-payments"' in _sp_menu and _sp_res_csv == 403 and _rs_book == 403 and _sp_off == 403,
+          "bKash SMS Payments under Accounting (after bKash Payments): staff see all and book the unmatched; a reseller sees "
+          "only their own customers' payments, cannot book or export without the ticks, and loses it when unticked")
     # ---- USB GSM modem (SIM800C): PDU decoding, long SMS in parts, the service books bKash SMS, the page shows its state
     import gsmlib as _G
     import gsmd as _gd

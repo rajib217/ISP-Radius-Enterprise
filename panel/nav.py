@@ -69,6 +69,7 @@ STRUCTURE = [
         _i("Dues", "dues"),
         _i("Ledger Reports", "ledger", ["ledger", "ledger_csv", "ledger_xlsx"], own="led.module"),
         _i("bKash Payments", "bkash_payments", ["bkash_payments", "bkash_payments_csv", "bkash_payments_xlsx"], own="bkp.module"),
+        _i("bKash SMS Payments", "bksms_payments", ["bksms_payments", "bksms_payments_csv", "bksms_payments_xlsx"], own="bks.module"),
     ]),
     _g("inv", "Inventory", "archive", module="inventory", items=[
         _i("Items", "inventory", none_of=["low"]),

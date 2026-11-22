@@ -334,11 +334,12 @@ class Modem:
     def status(self):
         st = {"model": "", "sim": "", "operator": "", "signal": None, "registered": ""}
         ok, lines = self.cmd("AT+CGMM", 3)
-        st["model"] = (lines[0] if ok and lines else "")[:40]
+        # SIM800C answers "SIM800"; ZTE / Huawei sticks answer "+CGMM: MF193A"
+        st["model"] = re.sub(r"^\+CGMM:\s*", "", lines[0] if ok and lines else "")[:40]
         ok, lines = self.cmd("ATI", 3)
-        if ok and lines and lines[0] and lines[0] not in st["model"]:
+        if ok and lines and lines[0] and lines[0] not in st["model"] and not lines[0].startswith("Manufacturer"):
             st["model"] = ("%s · %s" % (st["model"], lines[0]) if st["model"] else lines[0])[:80]
-        st["sim"] = self.value("AT+CPIN?", "+CPIN:") or "no SIM"
+        st["sim"] = self.sim_state()
         csq = self.value("AT+CSQ", "+CSQ:")
         try:
             rssi = int(csq.split(",")[0])
@@ -352,6 +353,20 @@ class Modem:
         m = re.search(r'"([^"]+)"', cops)
         st["operator"] = m.group(1)[:40] if m else ""
         return st
+
+    def sim_state(self):
+        """READY, SIM PIN, PH-NET PIN (a stick locked to another operator) ... or why the modem cannot read the SIM, in
+        its own words (SIM not inserted, SIM failure, SIM busy). A SIM put in while the modem had power is only read
+        after the modem is unplugged and plugged in again."""
+        ok, lines = self.cmd("AT+CPIN?", 5)
+        for x in lines if ok else ():
+            if x.startswith("+CPIN:"):
+                return x[6:].strip()
+        why = next((re.sub(r"^\+CME ERROR:\s*", "", x) for x in reversed(lines) if x.startswith(("+CME ERROR", "ERROR"))), "")
+        if why.isdigit():
+            why = {"10": "SIM not inserted", "11": "SIM PIN required", "13": "SIM failure", "14": "SIM busy",
+                   "15": "SIM wrong"}.get(why, "error " + why)
+        return ("no SIM: " + why if why and why != "ERROR" else "no SIM")[:60]
 
     def messages(self):
         ok, lines = self.cmd("AT+CMGL=4", 15)

@@ -296,10 +296,8 @@ def settings_bksms():
         flash("Saved. A new address was made: put it in the phone's forwarder app, the old one no longer works."
               if f.get("new_token") == "1" else "Saved.", "success")
         return redirect(url_for("settings_bksms"))
-    show = request.args.get("show", "")
-    where, args = ("WHERE p.status = %s", (show,)) if show in STATES else ("", ())
-    rows = q("SELECT p.*, s.username AS sub_name FROM sms_payments p LEFT JOIN subscribers s ON s.id = p.subscriber_id "
-             + where + " ORDER BY p.id DESC LIMIT 200", args)
+    if request.args.get("show") in STATES:          # old links to the list, which is under Accounting now
+        return redirect(url_for("bksms_payments", status=request.args["show"]))
     counts = {r["status"]: r["c"] for r in q("SELECT status, COUNT(*) AS c FROM sms_payments GROUP BY status")}
     token = s.get("bksms_token") or ""
     hook = url_for("sms_in", token=token, _external=True) if token else ""
@@ -307,7 +305,7 @@ def settings_bksms():
     gsm = gsmlib.read_state()
     gsm["bars"] = gsmlib.bars(gsm.get("signal"))
     inbox = q("SELECT * FROM gsm_inbox ORDER BY id DESC LIMIT 20") if s.get("gsm_on") == "1" or gsm.get("sms_read") else []
-    return render_template("settings_bksms.html", s=s, tab="bksms", rows=rows, counts=counts, hook=hook, show=show,
+    return render_template("settings_bksms.html", s=s, tab="bksms", counts=counts, hook=hook,
                            states=STATES, senders=s.get("bksms_senders", DEFAULT_SENDERS) if "bksms_senders" in s
                            else DEFAULT_SENDERS, gsm=gsm, ports=gsmlib.candidate_ports(), bauds=gsmlib.BAUDS, inbox=inbox,
                            gsm_port=s.get("gsm_port") or "auto", gsm_baud=int(s.get("gsm_baud") or 115200))
@@ -374,11 +372,11 @@ def bksms_apply(pid):
     sub = q("SELECT * FROM subscribers WHERE username = %s", ((request.form.get("username") or "").strip(),), one=True)
     if not sub:
         flash("No customer has that username. Nothing was changed.", "error")
-        return redirect(url_for("settings_bksms", show="unmatched"))
+        return _back()
     row = _row(pid)
     if not row:
         flash("This payment was already booked or ignored.", "error")
-        return redirect(url_for("settings_bksms"))
+        return _back()
     try:
         status, msg = settle(row, sub, g.me["username"])
     except Exception:
@@ -387,7 +385,7 @@ def bksms_apply(pid):
         commit()
         raise
     flash("%s: %s" % (sub["username"], msg), "success")
-    return redirect(url_for("settings_bksms", show="unmatched"))
+    return _back()
 
 
 @route("/settings/bkash-sms/<int:pid>/ignore", methods=["POST"])
@@ -400,4 +398,8 @@ def bksms_ignore(pid):
         audit("bkash_sms_ignored", row["trx_id"], "%.2f from %s" % (float(row["amount"]), row["payer"]))
         commit()
         flash("Ignored. TrxID %s will not be used again." % row["trx_id"], "success")
-    return redirect(url_for("settings_bksms", show="unmatched"))
+    return _back()
+
+
+def _back():
+    return redirect(core.safe_next(request.form.get("next")) or url_for("bksms_payments", status="unmatched"))

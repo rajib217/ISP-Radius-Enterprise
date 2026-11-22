@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, pager %}
+{% block title %}bKash SMS Payments{% endblock %}
+{% set badge = {'renewed': 'ok', 'balance': 'info', 'unmatched': 'warn', 'ignored': 'mute'} %}
+{% set state_names = dict(states) %}
+{% block content %}
+<div class="page-head">
+  <div><h1>bKash SMS Payments</h1>
+    <p class="sub">{{ 'Payments of your customers and your downline\'s customers' if scope == 'mine' else 'Money received on the bKash number, read from bKash\'s SMS' }} · {{ f['from']|d }} to {{ f['to']|d }}</p></div>
+  <div class="actions">
+    {% if can_export %}
+    <a class="btn" href="{{ url_for('bksms_payments_xlsx', **keep) }}">{{ icon('download') }}Excel</a>
+    <a class="btn" href="{{ url_for('bksms_payments_csv', **keep) }}">{{ icon('file') }}CSV</a>
+    {% endif %}
+    {% if me.role == 'admin' %}<a class="btn" href="{{ url_for('settings_bksms') }}">{{ icon('sliders') }}Settings</a>{% endif %}
+    <button class="btn" type="button" onclick="window.print()">{{ icon('printer') }}Print</button>
+  </div>
+</div>
+
+<section class="kpi-grid bkp-sum" aria-label="Totals for this period">
+  <div class="kcard"><span class="kcard-top"><span class="kcard-k">Renewed</span></span><span class="kcard-v num">{{ currency }} {{ sums.renewed.amount|money }}</span>
+    <span class="kcard-s">{{ sums.renewed.n }} payment{{ '' if sums.renewed.n == 1 else 's' }} renewed a package</span></div>
+  <div class="kcard"><span class="kcard-top"><span class="kcard-k">Added to balance</span></span><span class="kcard-v num">{{ currency }} {{ sums.balance.amount|money }}</span>
+    <span class="kcard-s">{{ sums.balance.n }} too small to renew</span></div>
+  <div class="kcard"><span class="kcard-top"><span class="kcard-k">Needs a match</span></span><span class="kcard-v num">{{ sums.unmatched.n }}</span>
+    <span class="kcard-s">{{ currency }} {{ sums.unmatched.amount|money }} waiting{% if scope == 'mine' %} for the office{% endif %}</span></div>
+  <div class="kcard"><span class="kcard-top"><span class="kcard-k">Ignored</span></span><span class="kcard-v num">{{ sums.ignored.n }}</span><span class="kcard-s">never booked</span></div>
+</section>
+
+<section class="panel">
+  <form class="filters panel-body" method="get" style="padding-bottom:0">
+    <div class="search">{{ icon('search') }}<input type="search" name="q" value="{{ f.q }}" placeholder="Trx ID, bKash number, reference or username" aria-label="Search"></div>
+    <select name="status" aria-label="Result"><option value="">All results</option>
+      {% for k, label in states %}<option value="{{ k }}" {{ 'selected' if f.status == k }}>{{ label }}</option>{% endfor %}</select>
+    <select name="source" aria-label="Source"><option value="">Phone and modem</option>
+      <option value="phone" {{ 'selected' if f.source == 'phone' }}>Phone (forwarder app)</option>
+      <option value="modem" {{ 'selected' if f.source == 'modem' }}>USB GSM modem</option></select>
+    <input type="date" name="from" value="{{ f['from'].isoformat() }}" aria-label="From">
+    <input type="date" name="to" value="{{ f['to'].isoformat() }}" aria-label="To">
+    <select name="per" aria-label="Rows per page">{% for n in (25, 50, 100, 200) %}<option {{ 'selected' if pg.per == n }}>{{ n }}</option>{% endfor %}</select>
+    <button class="btn" type="submit">{{ icon('filter') }}Filter</button>
+  </form>
+
+  {% if rows %}
+  <div class="listbar"><span class="muted">Showing {{ pg.first }} to {{ pg.last }} of {{ '{:,}'.format(pg.total) }} records</span>{{ pager(pg, keep, 'bksms_payments') }}</div>
+  <div class="tbl-wrap"><table class="tbl led-tbl">
+    <thead><tr><th>ID</th><th>Paid at</th><th>bKash Trx ID</th><th class="num">Amount</th><th>From</th><th>Reference</th><th>Customer</th><th>Result</th></tr></thead>
+    <tbody>{% for r in rows %}
+      <tr>
+        <td class="mono muted" data-label="ID">SMS-{{ r.id }}</td>
+        <td class="nowrap" data-label="Paid at" data-card="key"><span class="led-chip">{{ (r.paid_at or r.created_at).strftime('%Y-%m-%d %H:%M') }}</span><div class="muted" style="font-size:12px">{{ 'Modem' if r.source == 'modem' else 'Phone' }}</div></td>
+        <td data-label="Trx ID"><span class="led-chip mono">{{ r.trx_id }}</span></td>
+        <td class="num" data-label="Amount" data-card="key"><b>{{ r.amount|money }}</b></td>
+        <td class="mono" data-label="From">{{ r.payer or '—' }}</td>
+        <td data-label="Reference">{{ r.ref or '—' }}</td>
+        <td data-label="Customer" data-card="title">{% if r.sub_name and r.status in ('renewed', 'balance') %}<a class="led-acct sub" href="{{ url_for('subscriber_view', sid=r.subscriber_id) }}">{{ r.sub_name }}</a>{% elif r.sub_name %}<span class="muted">suggested: {{ r.sub_name }}</span>{% else %}{{ r.username or '—' }}{% endif %}</td>
+        <td data-label="Result" data-card="key">
+          <span class="badge {{ badge.get(r.status, 'mute') }}">{{ state_names.get(r.status, r.status) }}</span>
+          {% if r.message %}<div class="muted" style="font-size:12px">{{ r.message }}</div>{% endif %}
+          {% if r.done_by and r.status in ('renewed', 'balance', 'ignored') %}<div class="muted" style="font-size:12px">by {{ r.done_by }}</div>{% endif %}
+          {% if can_book and r.status == 'unmatched' %}
+          <form method="post" action="{{ url_for('bksms_apply', pid=r.id) }}" class="row-gap" style="margin-top:6px">
+            {{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path }}">
+            <input name="username" value="{{ r.sub_name or '' }}" placeholder="username" required style="max-width:160px" spellcheck="false" aria-label="Customer username for TrxID {{ r.trx_id }}">
+            <button class="btn sm primary" type="submit">Book for this customer</button>
+          </form>
+          <form method="post" action="{{ url_for('bksms_ignore', pid=r.id) }}" style="margin-top:4px" data-confirm="Ignore TrxID {{ r.trx_id }}? It will never be booked.">
+            {{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path }}"><button class="btn sm" type="submit">Ignore</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>{% endfor %}</tbody>
+  </table></div>
+  <div class="listbar"><span class="muted">Showing {{ pg.first }} to {{ pg.last }} of {{ '{:,}'.format(pg.total) }} records</span>{{ pager(pg, keep, 'bksms_payments') }}</div>
+  {% else %}<div class="empty"><h3>No bKash SMS payments</h3><p>Nothing matches these filters between {{ f['from']|d }} and {{ f['to']|d }}. Try a longer date range.</p></div>{% endif %}
+</section>
+{% endblock %}
