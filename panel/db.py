@@ -13,6 +13,7 @@ DEFAULT_SETTINGS = {
     "sla_cat_hardware": "", "sla_cat_other": "",
     "ticket_auto_assign": "1", "ticket_sms_on": "1", "ticket_app_on": "1", "ticket_otp_on": "0",
     "ticket_portal_on": "1", "ticket_portal_route": "office", "ticket_low_rating": "2",
+    "ticket_purge_on": "1", "ticket_purge_month": "",
     # expired customers: kept online in the "expired-notice" RADIUS group (MikroTik address list "expired") and shown
     # the unpaid-bill page (mod_expired.py) instead of being refused
     "expired_notice_on": "0", "expired_notice_phone": "", "expired_notice_msg": "", "expired_notice_rate": "256k/256k",

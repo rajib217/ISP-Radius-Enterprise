@@ -178,3 +178,98 @@ def rating_alert(cur, s, t, stars, note):
     if ok:
         cur.execute("UPDATE tickets SET alerted = alerted | %s WHERE id = %s", (ALERT_RATING, t["id"]))
     return ok
+
+
+# ===================================================================== monthly clean-up of closed tickets
+_STAT_COLS = ("n", "fix_sum", "fix_n", "reply_sum", "reply_n", "met", "timed", "rating_sum", "rating_n", "portal", "visits")
+_STAT_SQL = ("COUNT(*) AS n, "
+             "COALESCE(SUM(TIMESTAMPDIFF(MINUTE, t.created_at, COALESCE(t.closed_at, t.updated_at))), 0) AS fix_sum, COUNT(*) AS fix_n, "
+             "COALESCE(SUM(CASE WHEN t.first_reply_at IS NOT NULL THEN TIMESTAMPDIFF(MINUTE, t.created_at, t.first_reply_at) END), 0) AS reply_sum, "
+             "SUM(t.first_reply_at IS NOT NULL) AS reply_n, "
+             "SUM(t.due_at IS NOT NULL AND COALESCE(t.closed_at, t.updated_at) <= t.due_at) AS met, SUM(t.due_at IS NOT NULL) AS timed, "
+             "COALESCE(SUM(t.rating), 0) AS rating_sum, COUNT(t.rating) AS rating_n, SUM(t.source = 'portal') AS portal, "
+             "SUM(t.arrived_at IS NOT NULL) AS visits")
+
+
+def first_of_month(day):
+    return day.replace(day=1)
+
+
+def purge_closed(conn, cur, s, data_dir, today=None):
+    """On the 1st of each month (or the first run after it): add the numbers of every ticket closed before this month to
+    ticket_month_stats, then delete those tickets with their messages, materials and photos. Open tickets stay.
+    Runs once a month (settings key ticket_purge_month). Returns how many tickets were removed."""
+    import os
+    from datetime import date
+    if s.get("ticket_purge_on") != "1":
+        return 0
+    today = today or date.today()
+    month = today.strftime("%Y-%m")
+    if s.get("ticket_purge_month") == month:
+        return 0
+    cutoff = first_of_month(today)
+    old = ("FROM tickets t WHERE t.status IN ('resolved', 'closed') AND COALESCE(t.closed_at, t.updated_at) < %s")
+    cur.execute("SELECT COUNT(*) AS c " + old, (cutoff,))
+    total = int(cur.fetchone()["c"])
+    if total:
+        mon = "DATE_FORMAT(COALESCE(t.closed_at, t.updated_at), '%%Y-%%m')"
+        groups = (("all", "''", "''", ""),
+                  ("tech", "CAST(t.assigned_to AS CHAR)", "COALESCE(NULLIF(a.full_name, ''), a.username)",
+                   " JOIN panel_admins a ON a.id = t.assigned_to"),
+                  ("area", "COALESCE(NULLIF(s.area, ''), '(no area)')", "COALESCE(NULLIF(s.area, ''), '(no area)')",
+                   " JOIN subscribers s ON s.id = t.subscriber_id"),
+                  ("cat", "t.category", "t.category", ""))
+        rows = []
+        for kind, ref, name, join in groups:
+            cur.execute("SELECT " + mon + " AS month, " + ref + " AS ref, MAX(" + name + ") AS name, " + _STAT_SQL +
+                        " FROM tickets t" + join + " WHERE t.status IN ('resolved', 'closed') AND COALESCE(t.closed_at, t.updated_at) < %s"
+                        " GROUP BY month, ref", (cutoff,))
+            for r in cur.fetchall():
+                rows.append((r["month"], kind, str(r["ref"] or "")[:64], str(r["name"] or "")[:128]) +
+                            tuple(int(r[c] or 0) for c in _STAT_COLS))
+        if rows:
+            cur.executemany("INSERT INTO ticket_month_stats (month, kind, ref, name, " + ", ".join(_STAT_COLS) + ") VALUES (" +
+                            ", ".join(["%s"] * (4 + len(_STAT_COLS))) + ") ON DUPLICATE KEY UPDATE name = VALUES(name), " +
+                            ", ".join("%s = %s + VALUES(%s)" % (c, c, c) for c in _STAT_COLS), rows)
+        # the photos of the work go with the tickets
+        cur.execute("SELECT r.photo FROM ticket_replies r JOIN tickets t ON t.id = r.ticket_id WHERE r.photo <> '' AND "
+                    "t.status IN ('resolved', 'closed') AND COALESCE(t.closed_at, t.updated_at) < %s", (cutoff,))
+        photos = [r["photo"] for r in cur.fetchall()]
+        for sub in ("ticket_replies r", "ticket_materials r"):
+            cur.execute("DELETE r FROM " + sub + " JOIN tickets t ON t.id = r.ticket_id WHERE t.status IN ('resolved', 'closed') "
+                        "AND COALESCE(t.closed_at, t.updated_at) < %s", (cutoff,))
+        cur.execute("DELETE t " + old, (cutoff,))
+        for name in photos:
+            path = os.path.join(data_dir, "ticket_photos", os.path.basename(name))
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+    cur.execute("INSERT INTO settings (skey, svalue) VALUES ('ticket_purge_month', %s) ON DUPLICATE KEY UPDATE svalue = VALUES(svalue)",
+                (month,))
+    conn.commit()
+    return total
+
+
+def month_stats(cur, limit=12):
+    """Saved monthly numbers, newest month first: [{'month', 'all': row, 'tech': [rows], 'area': [rows], 'cat': [rows]}]."""
+    try:
+        cur.execute("SELECT * FROM ticket_month_stats WHERE month IN (SELECT month FROM (SELECT DISTINCT month FROM ticket_month_stats "
+                    "ORDER BY month DESC LIMIT %s) m) ORDER BY month DESC, kind, n DESC", (limit,))
+        rows = cur.fetchall()
+    except Exception:
+        return []
+    out, by = [], {}
+    for r in rows:
+        for a, b, key in (("fix_sum", "fix_n", "fix_min"), ("reply_sum", "reply_n", "reply_min"), ("rating_sum", "rating_n", "rating")):
+            r[key] = (r[a] / r[b]) if r[b] else None
+        r["in_time"] = (r["met"] * 100.0 / r["timed"]) if r["timed"] else None
+        m = by.get(r["month"])
+        if not m:
+            m = by[r["month"]] = {"month": r["month"], "all": None, "tech": [], "area": [], "cat": []}
+            out.append(m)
+        if r["kind"] == "all":
+            m["all"] = r
+        elif r["kind"] in m:
+            m[r["kind"]].append(r)
+    return out

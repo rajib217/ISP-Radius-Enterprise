@@ -628,7 +628,7 @@ def ticket_report():
     if seller():
         abort(403)
     days = request.args.get("days", 30, type=int)
-    days = days if days in (7, 30, 90, 365) else 30
+    days = days if days in (7, 30) else 30
     since = datetime.now() - timedelta(days=days)
     tot = q("SELECT COUNT(*) AS opened, SUM(status IN ('resolved', 'closed')) AS closed, "
             "SUM(status IN ('open', 'pending')) AS still_open, "
@@ -660,8 +660,11 @@ def ticket_report():
                  "JOIN inventory_items i ON i.id = m.item_id WHERE m.created_at >= %s GROUP BY i.id ORDER BY qty DESC LIMIT 10", (since,))
     except Exception:
         mats = []
+    with get_db().cursor() as cur:
+        months = ticketlib.month_stats(cur)
     return render_template("ticket_report.html", days=days, tot=tot, techs=techs, areas=areas, cats=cats, repeat=repeat,
-                           mats=mats, all_cats=ALL_CATEGORIES, hours_text=hours_text)
+                           mats=mats, all_cats=ALL_CATEGORIES, hours_text=hours_text, months=months,
+                           purge_on=core.cfg().get("ticket_purge_on") == "1")
 
 
 # ===================================================================== settings
@@ -683,7 +686,8 @@ def ticket_settings():
                         flash("Time limits are numbers of hours (minutes for the nobody-took-it alert).", "error")
                         return redirect(url_for("ticket_settings"))
                     vals[k] = v
-                for k in ("sla_on", "ticket_auto_assign", "ticket_sms_on", "ticket_app_on", "ticket_otp_on", "ticket_portal_on"):
+                for k in ("sla_on", "ticket_auto_assign", "ticket_sms_on", "ticket_app_on", "ticket_otp_on", "ticket_portal_on",
+                          "ticket_purge_on"):
                     vals[k] = "1" if f.get(k) == "1" else "0"
                 vals["ticket_portal_route"] = "seller" if f.get("ticket_portal_route") == "seller" else "office"
                 for k, v in vals.items():

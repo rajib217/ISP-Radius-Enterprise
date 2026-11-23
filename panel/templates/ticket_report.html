@@ -4,8 +4,8 @@
 {% block content %}
 {% set timed = (tot.sla_met or 0) + (tot.sla_missed or 0) %}
 <div class="page-head">
-  <div><h1>Ticket report</h1><p class="sub">The office's tickets opened in the last {{ days }} days: how fast they are fixed, who fixes them and where problems repeat.</p></div>
-  <div class="chips">{% for d in (7, 30, 90, 365) %}<a class="chip {{ 'on' if days == d }}" href="{{ url_for('ticket_report', days=d) }}">{{ d }} days</a>{% endfor %}</div>
+  <div><h1>Ticket report</h1><p class="sub">The office's tickets opened in the last {{ days }} days: how fast they are fixed, who fixes them and where problems repeat.{% if purge_on %} Closed tickets are removed on the 1st of each month; earlier months are under <a href="#past">Past months</a>.{% endif %}</p></div>
+  <div class="chips">{% for d in (7, 30) %}<a class="chip {{ 'on' if days == d }}" href="{{ url_for('ticket_report', days=d) }}">{{ d }} days</a>{% endfor %}</div>
 </div>
 <div class="th-stats tk-kpis">
   <div class="th-stat"><span class="th-v">{{ tot.opened or 0 }}</span><span class="th-k">Opened <small>· {{ tot.portal or 0 }} from the portal</small></span></div>
@@ -34,4 +34,19 @@
     {% for m in mats %}<tr><td>{{ m.name }}</td><td class="num">{{ m.qty }} {{ m.unit }}</td><td class="num">{{ m.jobs }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
   </section>
 </div>
+<section class="panel" id="past" style="margin-top:16px"><div class="panel-head"><h2>{{ icon('archive') }}Past months</h2><span class="aside">kept when the closed tickets are removed</span></div>
+  {% if months %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Month</th><th class="num">Closed</th><th class="num">Avg fix</th><th class="num">First answer</th><th class="num">In time</th><th class="num">Rating</th><th class="num hide-sm">Portal</th><th class="num hide-sm">Visits</th></tr></thead>
+    <tbody>{% for m in months %}{% set a = m.all %}<tr>
+      <td><b>{{ m.month }}</b>
+        {% if m.tech or m.area %}<details class="tk-month"><summary>Details</summary>
+          {% if m.tech %}<b>Per person</b><ul>{% for r in m.tech %}<li>{{ r.name }}: {{ r.n }} done · avg {{ hours_text(r.fix_min) }}{% if r.in_time is not none %} · {{ '%d' % r.in_time }}% in time{% endif %}{% if r.rating %} · {{ '%.1f' % r.rating }} ★{% endif %}</li>{% endfor %}</ul>{% endif %}
+          {% if m.area %}<b>Areas</b><ul>{% for r in m.area[:8] %}<li>{{ r.name }}: {{ r.n }}</li>{% endfor %}</ul>{% endif %}
+          {% if m.cat %}<b>Categories</b><ul>{% for r in m.cat %}<li>{{ all_cats.get(r.name, r.name) }}: {{ r.n }}</li>{% endfor %}</ul>{% endif %}
+        </details>{% endif %}</td>
+      {% if a %}<td class="num">{{ a.n }}</td><td class="num">{{ hours_text(a.fix_min) }}</td><td class="num">{{ hours_text(a.reply_min) }}</td>
+      <td class="num">{{ ('%d%%' % a.in_time) if a.in_time is not none else '—' }}</td><td class="num">{{ ('%.1f ★' % a.rating) if a.rating else '—' }}</td>
+      <td class="num hide-sm">{{ a.portal }}</td><td class="num hide-sm">{{ a.visits }}</td>{% else %}<td colspan="7"></td>{% endif %}
+    </tr>{% endfor %}</tbody></table></div>
+  {% else %}<div class="panel-body muted">Nothing yet. On the 1st of each month, the numbers of the tickets closed before it are saved here before those tickets are removed.</div>{% endif %}
+</section>
 {% endblock %}

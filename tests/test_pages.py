@@ -2455,6 +2455,42 @@ def check_rules(flask_app, ids):
           and "staff-push" in _sw and "requireInteraction" in _sw,
           "staff app: a technician turns on job alerts; every job given to them (new, bulk, board...) rings their phone "
           "(urgent stays on screen), not when they take it themselves; a gone phone is forgotten")
+    # monthly clean-up: on the 1st, tickets closed before that month go (numbers kept per month); open ones stay
+    _old = "TIMESTAMP(DATE_FORMAT(CURDATE() - INTERVAL 2 MONTH, '%%Y-%%m-10 10:00:00'))"
+    run("INSERT INTO tickets (subscriber_id, username, subject, category, priority, status, assigned_to, created_by, created_at, "
+        "closed_at, due_at, rating, source) VALUES (%s, %s, 'ci-purge-old', 'connection', 'normal', 'resolved', %s, 'admin', "
+        + _old + " - INTERVAL 3 HOUR, " + _old + ", " + _old + " + INTERVAL 1 HOUR, 5, 'portal')", (_asub["id"], _asub["username"], _tech_uid))
+    run("INSERT INTO tickets (subscriber_id, username, subject, category, priority, status, created_by, created_at, closed_at) "
+        "VALUES (%s, %s, 'ci-purge-old-open', 'slow', 'normal', 'open', 'admin', " + _old + ", NULL)", (_asub["id"], _asub["username"]))
+    run("INSERT INTO tickets (subscriber_id, username, subject, category, priority, status, created_by, created_at, closed_at) "
+        "VALUES (%s, %s, 'ci-purge-now', 'slow', 'normal', 'closed', 'admin', NOW(), NOW())", (_asub["id"], _asub["username"]))
+    _po = one("SELECT id FROM tickets WHERE subject = 'ci-purge-old'")["id"]
+    run("INSERT INTO ticket_replies (ticket_id, author, body, internal, photo) VALUES (%s, 'tech', 'Done', 0, %s)", (_po, "t%d-00000000000000aa.png" % _po))
+    _pdir = os.path.join(os.environ["PANEL_DATA_DIR"], "ticket_photos")
+    os.makedirs(_pdir, exist_ok=True)
+    _ppath = os.path.join(_pdir, "t%d-00000000000000aa.png" % _po)
+    open(_ppath, "wb").write(b"x")
+    _month_key = _dt.date.today().strftime("%Y-%m")
+    _old_month = (_dt.date.today().replace(day=1) - _dt.timedelta(days=40)).strftime("%Y-%m")
+    setv("ticket_purge_on", "1"); setv("ticket_purge_month", "")
+    _c6 = db.connect()
+    with _c6.cursor() as _cur:
+        _n_old = _cur.execute("SELECT 1 FROM tickets WHERE status IN ('resolved', 'closed') AND COALESCE(closed_at, updated_at) < %s",
+                              (_dt.date.today().replace(day=1),))
+        _gone1 = _tl.purge_closed(_c6, _cur, db.load_settings(_cur), os.environ["PANEL_DATA_DIR"])
+        _gone2 = _tl.purge_closed(_c6, _cur, db.load_settings(_cur), os.environ["PANEL_DATA_DIR"])
+    _c6.close()
+    _left_t = {r["subject"] for r in run_q("SELECT subject FROM tickets WHERE subject LIKE %s", ("ci-purge-%",))}
+    _st_all = one("SELECT * FROM ticket_month_stats WHERE month = %s AND kind = 'all'", (_old_month,))
+    _st_tech = one("SELECT * FROM ticket_month_stats WHERE month = %s AND kind = 'tech' AND ref = %s", (_old_month, str(_tech_uid)))
+    _rp2 = adm.get("/tickets/report").get_data(as_text=True)
+    check(_gone1 == _n_old and _gone1 >= 1 and _gone2 == 0 and _left_t == {"ci-purge-old-open", "ci-purge-now"}
+          and not run_q("SELECT id FROM ticket_replies WHERE ticket_id = %s", (_po,)) and not os.path.exists(_ppath)
+          and one("SELECT svalue FROM settings WHERE skey = 'ticket_purge_month'")["svalue"] == _month_key
+          and _st_all and _st_all["n"] >= 1 and _st_all["rating_n"] >= 1 and _st_all["portal"] >= 1 and _st_all["met"] >= 1
+          and _st_tech and _st_tech["n"] >= 1 and _st_tech["fix_sum"] >= 180 and "Past months" in _rp2 and _old_month in _rp2,
+          "tickets: on the 1st, tickets closed before that month are removed with their messages and photos (open ones stay); "
+          "each month's numbers stay on Report > Past months; once a month only")
     return bad
 
 

@@ -16,6 +16,7 @@ from datetime import date, datetime, timedelta
 import db
 import msglib
 import alertlib
+import ticketlib
 import oltsync
 import radius
 
@@ -432,13 +433,20 @@ def main():
         print("alerts failed: %s" % exc)
 
     try:
-        import ticketlib
         n_tk = ticketlib.sla_run(conn, cur, s)
         if n_tk:
             print("tickets: Telegram alert for %d ticket(s) nobody took or past the time limit" % n_tk)
     except Exception as exc:   # a ticket alert must not stop the rest of the job
         conn.rollback()
         print("ticket alerts failed: %s" % exc)
+
+    try:
+        n_gone = ticketlib.purge_closed(conn, cur, s, core.DATA_DIR)
+        if n_gone:
+            print("tickets: removed %d ticket(s) closed before this month (their numbers are kept per month)" % n_gone)
+    except Exception as exc:   # the monthly clean-up must not stop the rest of the job
+        conn.rollback()
+        print("ticket clean-up failed: %s" % exc)
 
     try:
         fixed = bkash_sweep()

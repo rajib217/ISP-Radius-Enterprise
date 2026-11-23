@@ -948,3 +948,24 @@ CREATE TABLE IF NOT EXISTS staff_notifications (
   KEY idx_push (pushed_at, created_at),
   KEY idx_admin (admin_id, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Closed tickets are removed on the 1st of each month (Tickets > Settings); before that their numbers are added here,
+-- one row per month (the month the ticket was closed) and per total / person / area / category
+CREATE TABLE IF NOT EXISTS ticket_month_stats (
+  month      CHAR(7)      NOT NULL,
+  kind       VARCHAR(8)   NOT NULL,
+  ref        VARCHAR(64)  NOT NULL DEFAULT '',
+  name       VARCHAR(128) NOT NULL DEFAULT '',
+  n          INT NOT NULL DEFAULT 0,
+  fix_sum    BIGINT NOT NULL DEFAULT 0,
+  fix_n      INT NOT NULL DEFAULT 0,
+  reply_sum  BIGINT NOT NULL DEFAULT 0,
+  reply_n    INT NOT NULL DEFAULT 0,
+  met        INT NOT NULL DEFAULT 0,
+  timed      INT NOT NULL DEFAULT 0,
+  rating_sum INT NOT NULL DEFAULT 0,
+  rating_n   INT NOT NULL DEFAULT 0,
+  portal     INT NOT NULL DEFAULT 0,
+  visits     INT NOT NULL DEFAULT 0,
+  PRIMARY KEY (month, kind, ref)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
