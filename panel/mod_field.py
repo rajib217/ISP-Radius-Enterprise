@@ -13,7 +13,7 @@ Sellers see only their own downline's customers everywhere here (core.scope_sql 
 import os
 import re
 import secrets
-from datetime import date
+from datetime import date, datetime
 
 from flask import abort, flash, g, jsonify, redirect, render_template, request, send_file, url_for
 
@@ -259,6 +259,24 @@ def _job(tid):
     return t
 
 
+def job_rows(where, params, order="FIELD(t.priority, 'urgent', 'high', 'normal', 'low'), t.created_at", limit=200):
+    """Tickets with the customer's phone, address and position and the last public note (sellers: their own only)."""
+    where, params = list(where), list(params)
+    names = core.my_downline()
+    if names is not None:
+        where.append("(t.subscriber_id IS NULL OR s.created_by IN (%s))" % ",".join(["%s"] * len(names)))
+        params += list(names)
+    return q("SELECT t.*, s.id AS sid, s.full_name AS sub_name, s.phone AS sub_phone, s.address AS sub_address, "
+             "s.area AS sub_area, s.lat, s.lng, "
+             "(SELECT r.body FROM ticket_replies r WHERE r.ticket_id = t.id AND r.internal = 0 ORDER BY r.id DESC LIMIT 1) AS last_note "
+             "FROM tickets t LEFT JOIN subscribers s ON s.id = t.subscriber_id WHERE " + " AND ".join(where) +
+             " ORDER BY " + order + " LIMIT %d" % int(limit), params)
+
+
+def _job_back():
+    return redirect(core.safe_next(request.form.get("next")) or url_for("jobs"))
+
+
 @route("/jobs", module="tickets")
 def jobs():
     show = request.args.get("show", "mine")
@@ -273,15 +291,7 @@ def jobs():
         show = "mine"
         where.append("t.assigned_to = %s")
         params.append(g.me["id"])
-    names = core.my_downline()
-    if names is not None:
-        where.append("(t.subscriber_id IS NULL OR s.created_by IN (%s))" % ",".join(["%s"] * len(names)))
-        params += list(names)
-    rows = q("SELECT t.*, s.id AS sid, s.full_name AS sub_name, s.phone AS sub_phone, s.address AS sub_address, "
-             "s.area AS sub_area, s.lat, s.lng, "
-             "(SELECT r.body FROM ticket_replies r WHERE r.ticket_id = t.id AND r.internal = 0 ORDER BY r.id DESC LIMIT 1) AS last_note "
-             "FROM tickets t LEFT JOIN subscribers s ON s.id = t.subscriber_id WHERE " + " AND ".join(where) +
-             " ORDER BY FIELD(t.priority, 'urgent', 'high', 'normal', 'low'), t.created_at LIMIT 200", params)
+    rows = job_rows(where, params)
     import mod_tickets
     counts = q("SELECT SUM(status IN ('open', 'pending') AND assigned_to = %s) AS mine, "
                "SUM(status IN ('open', 'pending') AND assigned_to IS NULL) AS free FROM tickets", (g.me["id"],), one=True)
@@ -295,7 +305,7 @@ def job_start(tid):
     t = _job(tid)
     if t["status"] not in ("open", "pending"):
         flash("This job is already finished.", "warn")
-        return redirect(url_for("jobs"))
+        return _job_back()
     who = t["assigned_to"] or g.me["id"]          # taking a free job makes it yours
     insert("INSERT INTO ticket_replies (ticket_id, author, body, internal) VALUES (%s, %s, %s, 0)",
            (tid, g.me["username"], "Work started."))
@@ -303,7 +313,7 @@ def job_start(tid):
     audit("job_started", "#%d" % tid)
     commit()
     flash("Job #%d started." % tid, "success")
-    return redirect(url_for("jobs"))
+    return _job_back()
 
 
 def _save_job_photo(tid):
@@ -328,15 +338,15 @@ def job_done(tid):
     t = _job(tid)
     if t["status"] not in ("open", "pending"):
         flash("This job is already finished.", "warn")
-        return redirect(url_for("jobs"))
+        return _job_back()
     note = (request.form.get("note") or "").strip()[:5000]
     if len(note) < 3:
         flash("Write what was done (a few words) before marking the job done.", "error")
-        return redirect(url_for("jobs"))
+        return _job_back()
     photo, err = _save_job_photo(tid)
     if err:
         flash(err, "error")
-        return redirect(url_for("jobs"))
+        return _job_back()
     insert("INSERT INTO ticket_replies (ticket_id, author, body, internal, photo) VALUES (%s, %s, %s, 0, %s)",
            (tid, g.me["username"], "Done: " + note, photo))
     x("UPDATE tickets SET status = 'resolved', closed_at = NOW(), assigned_to = %s, updated_at = NOW() WHERE id = %s",
@@ -344,7 +354,65 @@ def job_done(tid):
     audit("job_done", "#%d" % tid, note[:200])
     commit()
     flash("Job #%d marked done." % tid, "success")
-    return redirect(url_for("jobs"))
+    return _job_back()
+
+
+JOB_STATES = {"working": "Still working", "parts": "Waiting for parts", "customer": "Customer not home",
+              "later": "Come back later"}
+
+
+@route("/jobs/<int:tid>/update", module="tickets", methods=["POST"])
+def job_update(tid):
+    """A progress note on a started job (where it stands, a note, maybe a photo); the job stays in progress."""
+    t = _job(tid)
+    if t["status"] not in ("open", "pending"):
+        flash("This job is already finished.", "warn")
+        return _job_back()
+    state = JOB_STATES.get(request.form.get("state"), JOB_STATES["working"])
+    note = (request.form.get("note") or "").strip()[:5000]
+    if len(note) < 3:
+        flash("Write a short note about where the job stands.", "error")
+        return _job_back()
+    photo, err = _save_job_photo(tid)
+    if err:
+        flash(err, "error")
+        return _job_back()
+    insert("INSERT INTO ticket_replies (ticket_id, author, body, internal, photo) VALUES (%s, %s, %s, 0, %s)",
+           (tid, g.me["username"], "%s: %s" % (state, note), photo))
+    x("UPDATE tickets SET status = 'pending', assigned_to = %s, updated_at = NOW() WHERE id = %s",
+      (t["assigned_to"] or g.me["id"], tid))
+    audit("job_updated", "#%d" % tid, state)
+    commit()
+    flash("Job #%d updated: %s." % (tid, state.lower()), "success")
+    return _job_back()
+
+
+# ===================================================================== technician home page
+def tech_home(notices=None):
+    """The technician's dashboard: today's jobs first, nothing about the ISP's numbers (no graphs, money or totals)."""
+    import mod_tickets
+    me = g.me["id"]
+    mine = job_rows(["t.status IN ('open', 'pending')", "t.assigned_to = %s"], [me])
+    done_today = job_rows(["t.status IN ('resolved', 'closed')", "t.assigned_to = %s", "t.closed_at >= CURDATE()"], [me],
+                          order="t.closed_at DESC", limit=20)
+    free = q("SELECT COUNT(*) AS c FROM tickets WHERE status IN ('open', 'pending') AND assigned_to IS NULL", one=True)["c"]
+    week = q("SELECT COUNT(*) AS c FROM tickets WHERE assigned_to = %s AND status IN ('resolved', 'closed') "
+             "AND closed_at >= CURDATE() - INTERVAL 6 DAY", (me,), one=True)["c"]
+    today = date.today()
+    fu = q("SELECT c.id, c.subscriber_id, c.note, c.outcome, c.follow_up, s.username, s.full_name, s.phone "
+           "FROM sub_calls c JOIN subscribers s ON s.id = c.subscriber_id "
+           "WHERE c.done = 0 AND c.follow_up IS NOT NULL AND c.follow_up <= %s AND c.created_by = %s "
+           "ORDER BY c.follow_up LIMIT 8", (today, g.me["username"]))
+    for r in fu:
+        r["code"] = core.sub_code(r["subscriber_id"])
+    counts = {"open": len(mine), "urgent": sum(1 for t in mine if t["priority"] in ("urgent", "high")),
+              "working": sum(1 for t in mine if t["status"] == "pending"), "done": len(done_today),
+              "week": int(week or 0), "free": int(free or 0), "fu": len(fu)}
+    hour = datetime.now().hour
+    greet = "Good morning" if hour < 12 else ("Good afternoon" if hour < 17 else "Good evening")
+    return render_template("tech_home.html", mine=mine, done_today=done_today, counts=counts, follow=fu,
+                           outcomes=dict(OUTCOMES), greet=greet, today=today, notices=notices or [],
+                           categories=dict(mod_tickets.CATEGORIES), priorities=dict(mod_tickets.PRIORITIES))
 
 
 @route("/tickets/photo/<name>", module="tickets")

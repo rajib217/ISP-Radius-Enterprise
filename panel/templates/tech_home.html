@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% from "_job_card.html" import job_card with context %}
+{% block title %}My day{% endblock %}
+{% block content %}
+{% set nxt = url_for('dashboard') %}
+<div class="th-hero">
+  <div>
+    <p class="th-date">{{ today.strftime('%A, %d %B') }}</p>
+    <h1>{{ greet }}, {{ (me.full_name or me.username).split(' ')[0] }}</h1>
+    <p class="sub">{% if counts.open %}You have <b>{{ counts.open }}</b> open job{{ '' if counts.open == 1 else 's' }}{% if counts.urgent %}, <b class="r">{{ counts.urgent }} urgent</b>{% endif %}.{% else %}No open jobs right now.{% endif %}</p>
+  </div>
+  <form class="th-find" method="get" action="{{ url_for('subscribers') }}" role="search">
+    {{ icon('search') }}<input type="search" name="q" placeholder="Find a customer: name, ID, phone" aria-label="Find a customer" enterkeyhint="search">
+  </form>
+</div>
+
+{% for n in notices or [] %}
+<div class="notice {{ n.kind }}" role="status">{{ icon('alert') }}<div><strong>{{ n.title }}</strong>{% if n.body %}<p>{{ n.body }}</p>{% endif %}</div></div>
+{% endfor %}
+
+<div class="th-stats" aria-label="My jobs today">
+  <a class="th-stat" href="{{ url_for('jobs') }}"><span class="th-v">{{ counts.open }}</span><span class="th-k">Open jobs</span></a>
+  <a class="th-stat {{ 'hot' if counts.urgent }}" href="{{ url_for('jobs') }}"><span class="th-v">{{ counts.urgent }}</span><span class="th-k">Urgent / high</span></a>
+  <a class="th-stat" href="{{ url_for('jobs') }}"><span class="th-v">{{ counts.working }}</span><span class="th-k">In progress</span></a>
+  <a class="th-stat good" href="{{ url_for('jobs', show='done') }}"><span class="th-v">{{ counts.done }}</span><span class="th-k">Done today <small>· {{ counts.week }} this week</small></span></a>
+</div>
+
+<div class="th-quick" aria-label="Quick actions">
+  {% if can('subscribers', 'edit') and can_fn('sub.add') %}<a class="th-q" href="{{ url_for('subscriber_new') }}">{{ icon('plus') }}<span>New customer</span></a>{% endif %}
+  {% if can('subscribers') %}<a class="th-q" href="{{ url_for('customer_map') }}">{{ icon('pin') }}<span>Customer map</span></a>{% endif %}
+  {% if can('online') %}<a class="th-q" href="{{ url_for('online') }}">{{ icon('activity') }}<span>Who is online</span></a>{% endif %}
+  {% if can('tickets', 'edit') %}<a class="th-q" href="{{ url_for('ticket_new') }}">{{ icon('ticket') }}<span>New ticket</span></a>{% endif %}
+  {% if can('subscribers') %}<a class="th-q" href="{{ url_for('follow_ups', mine=1) }}">{{ icon('phone') }}<span>Follow-ups{% if counts.fu %} <b class="th-badge">{{ counts.fu }}</b>{% endif %}</span></a>{% endif %}
+</div>
+
+<div class="th-cols">
+  <section class="th-main">
+    <div class="th-head"><h2>My jobs</h2><a href="{{ url_for('jobs') }}">See all &rarr;</a></div>
+    {% if mine %}
+      <p class="th-label">Next up</p>
+      {{ job_card(mine[0], priorities, categories, nxt, big=True) }}
+      {% if mine|length > 1 %}
+      <p class="th-label">Then</p>
+      <div class="jobs">{% for t in mine[1:] %}{{ job_card(t, priorities, categories, nxt) }}{% endfor %}</div>
+      {% endif %}
+    {% else %}
+      <section class="panel"><div class="empty"><h3>All clear</h3><p>No job is given to you right now.{% if counts.free %} There {{ 'is' if counts.free == 1 else 'are' }} {{ counts.free }} job{{ '' if counts.free == 1 else 's' }} waiting for someone.{% endif %}</p>{% if counts.free %}<a class="btn primary" href="{{ url_for('jobs', show='free') }}">Take a job</a>{% endif %}</div></section>
+    {% endif %}
+    {% if mine and counts.free %}<a class="th-free" href="{{ url_for('jobs', show='free') }}">{{ icon('ticket') }} {{ counts.free }} job{{ '' if counts.free == 1 else 's' }} not given to anyone <span>Take one &rarr;</span></a>{% endif %}
+  </section>
+
+  <aside class="th-side">
+    <section class="panel">
+      <div class="panel-head"><h2>{{ icon('phone') }}Call today</h2>{% if follow %}<span class="aside">{{ follow|length }}</span>{% endif %}</div>
+      {% if follow %}<ul class="th-list">
+        {% for r in follow %}<li>
+          <a href="{{ url_for('subscriber_view', sid=r.subscriber_id) }}#calls"><b>{{ r.full_name or r.username }}</b></a> <span class="mono muted">{{ r.code }}</span>
+          <small class="muted">{{ outcomes.get(r.outcome, r.outcome) }}{% if r.note %} · {{ r.note|truncate(60) }}{% endif %}{% if r.follow_up < today %} · <span class="r">late</span>{% endif %}</small>
+          {% if r.phone %}<a class="btn sm" href="tel:{{ r.phone }}">{{ icon('phone') }}Call</a>{% endif %}
+        </li>{% endfor %}
+      </ul>{% else %}<div class="panel-body muted">No calls to make. Notes with a <b>Call again</b> date show here on that day.</div>{% endif %}
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>{{ icon('check') }}Done today</h2>{% if done_today %}<span class="aside">{{ done_today|length }}</span>{% endif %}</div>
+      {% if done_today %}<ul class="th-list">
+        {% for t in done_today %}<li>
+          <a href="{{ url_for('ticket_view', tid=t.id) }}"><span class="mono muted">#{{ t.id }}</span> {{ t.subject }}</a>
+          <small class="muted">{{ t.sub_name or t.username or '' }} · {{ t.closed_at|ago }}</small>
+        </li>{% endfor %}
+      </ul>{% else %}<div class="panel-body muted">Finished jobs show here. Press <b>Done</b> on a job when the work is complete.</div>{% endif %}
+    </section>
+  </aside>
+</div>
+{% endblock %}

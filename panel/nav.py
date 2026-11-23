@@ -173,7 +173,7 @@ def build():
         if grp["fn"] and not grp["sellers"] and not any(core.can_fn(k) for k in (
                 (grp["fn"],) if isinstance(grp["fn"], str) else grp["fn"])):
             continue
-        if grp["key"] == "mypkg" and seller and not core.can_fn("pkg.module"):
+        if grp["key"] == "mypkg" and (seller or g.me["role"] in core.ROLE_LOCKS) and not core.can_fn("pkg.module"):
             continue                      # Users > Roles > My Packages > Module
         if grp["sellers"] and (g.me["role"] not in core.SELLER_ROLES or not core.can_fn(grp["fn"])):
             continue
@@ -225,6 +225,8 @@ def build():
 _BOTTOM = {
     "staff": [("dashboard", "Home", "home"), ("subscribers", "Subscribers", "users3"),
               ("online", "Online", "activity"), ("payments", "Payments", "dollar")],
+    "tech": [("dashboard", "Home", "home"), ("jobs", "My jobs", "ticket"),
+             ("customer_map", "Map", "pin"), ("subscribers", "Customers", "users3")],
     "seller": [("dashboard", "Home", "home"), ("subscribers", "Subscribers", "users3"),
                ("subscriber_activation", "Activate", "bolt"), ("add_balance", "Balance", "wallet")],
 }
@@ -246,7 +248,7 @@ def bottom_nav(nodes=None):
     # two seller shortcuts are pages, not menu items; gate them exactly as the dashboard does
     extra_ok = {"subscriber_activation": lambda: core.can("subscribers", "edit"),
                 "add_balance": lambda: g.me["role"] in core.SELLER_ROLES}
-    want = _BOTTOM["seller" if g.me["role"] in core.SELLER_ROLES else "staff"]
+    want = _BOTTOM["seller" if g.me["role"] in core.SELLER_ROLES else ("tech" if g.me["role"] == "technician" else "staff")]
     out = []
     for endpoint, label, icon in want:
         try:

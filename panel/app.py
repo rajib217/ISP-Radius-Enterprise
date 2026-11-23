@@ -569,6 +569,9 @@ def offline_onus():
 
 @app.route("/")
 def dashboard():
+    if g.me["role"] == "technician":             # their own day: jobs, calls, quick tools; no ISP numbers or graphs
+        import mod_field
+        return mod_field.tech_home(_notices())
     seller = core.my_downline() is not None
     tabs = dash.allowed_tabs()
     tab = request.args.get("tab") if request.args.get("tab") in dict(tabs) else (tabs[0][0] if tabs else "")

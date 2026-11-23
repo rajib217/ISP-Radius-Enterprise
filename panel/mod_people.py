@@ -117,8 +117,8 @@ def account():
 # ===================================================================== My Packages
 @route("/my-packages")
 def my_packages():
-    if g.me["role"] in core.SELLER_ROLES and not core.can_fn("pkg.module"):
-        abort(403)
+    if (g.me["role"] in core.SELLER_ROLES or g.me["role"] in core.ROLE_LOCKS) and not core.can_fn("pkg.module"):
+        abort(403)                        # technicians never (core.ROLE_LOCKS / permcatalog.ROLE_NEVER)
     allowed = core.allowed_plan_ids()
     me = g.me["username"]
     rows = q("SELECT p.*, (SELECT COUNT(*) FROM subscribers s WHERE s.plan_id = p.id) AS total, "
@@ -1170,6 +1170,8 @@ def role_permissions(role):
     saved = {r["fkey"]: r["allowed"] for r in q("SELECT fkey, allowed FROM role_funcs WHERE role = %s", (role,))}
     seller = role in core.SELLER_ROLES
     ticked = {k for k in permcatalog.KEYS if (bool(saved[k]) if k in saved else permcatalog.default_on(k, perms, seller, role))}
+    if role in core.ROLE_LOCKS:          # what this role can never have shows unticked (saving it changes nothing)
+        ticked = permcatalog.effective(ticked, perms) - permcatalog.ROLE_NEVER.get(role, frozenset())
     tabs = []
     for t in permcatalog.TABS:
         groups = [dict(g, title=("My Profile (%s)" % ptype) if g["title"].startswith("My Profile (") else g["title"])

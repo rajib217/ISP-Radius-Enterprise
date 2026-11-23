@@ -2281,3 +2281,52 @@ img.av.img, img.lav.img { object-fit: cover; padding: 0; background: var(--surfa
 .dues-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding-top: 10px; padding-bottom: 10px; }
 .tbl th.chk, .tbl td.chk { width: 36px; padding-right: 0; }
 .tbl.stmt tfoot th { border-top: 2px solid var(--border); }
+
+/* technician home ("My day"): jobs first, big touch targets, no ISP numbers */
+.th-hero { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; justify-content: space-between; margin-bottom: 16px; }
+.th-hero h1 { margin: 0; font-size: var(--text-2xl); }
+.th-hero .sub { margin: 4px 0 0; }
+.th-date { margin: 0 0 2px; color: var(--text-muted); font-size: var(--text-sm); text-transform: uppercase; letter-spacing: .04em; }
+.th-find { display: flex; align-items: center; gap: 8px; flex: 1 1 320px; max-width: 460px; padding: 0 14px; min-height: 48px;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--r-lg); }
+.th-find:focus-within { box-shadow: var(--ring); border-color: var(--accent); }
+.th-find .i { color: var(--text-muted); flex: none; }
+.th-find input { border: 0; background: transparent; box-shadow: none; padding: 0; min-height: 46px; font-size: var(--text-lg); }
+.th-find input:focus { box-shadow: none; outline: none; }
+.th-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+.th-stat { display: grid; gap: 2px; padding: 14px 16px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+a.th-stat:hover { text-decoration: none; border-color: var(--accent); }
+.th-v { font-family: var(--font-display); font-size: 30px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.th-k { font-size: var(--text-sm); color: var(--text-muted); }
+.th-stat.hot { background: var(--bad-soft); border-color: transparent; } .th-stat.hot .th-v { color: var(--bad); }
+.th-stat.good .th-v { color: var(--ok); }
+.th-quick { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 20px; }
+.th-q { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 76px; padding: 10px;
+  border-radius: var(--r-lg); background: var(--accent-soft); color: var(--accent); font-weight: 600; text-align: center; }
+.th-q:hover { text-decoration: none; filter: brightness(.97); }
+.th-q .i { width: 22px; height: 22px; }
+.th-badge { display: inline-block; min-width: 20px; padding: 0 6px; border-radius: 10px; background: var(--offline); color: #fff; font-size: 12px; }
+.th-cols { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 20px; align-items: start; }
+.th-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+.th-head h2 { margin: 0; font-size: var(--text-xl); }
+.th-label { margin: 12px 0 6px; font-size: var(--text-xs); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
+.job.job-big { padding: 18px 20px; box-shadow: var(--shadow-pop); }
+.job.job-big .job-title { font-size: var(--text-lg); }
+.job.job-big .job-acts .btn { min-height: 44px; padding-inline: 16px; }
+.th-free { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding: 12px 14px; border-radius: var(--r-lg);
+  border: 1px dashed var(--border-strong); color: var(--text); }
+.th-free span { margin-left: auto; color: var(--accent); font-weight: 600; }
+.th-free:hover { text-decoration: none; border-color: var(--accent); }
+.th-side { display: grid; gap: 16px; }
+.th-list { list-style: none; margin: 0; padding: 0; }
+.th-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; align-items: center; padding: 10px 16px; border-top: 1px solid var(--border); }
+.th-list li:first-child { border-top: 0; }
+.th-list li small { grid-column: 1; display: block; }
+.th-list li .btn { grid-column: 2; grid-row: 1 / span 2; }
+@media (max-width: 960px) { .th-cols { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 640px) {
+  .th-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .th-quick { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .th-find { max-width: none; }
+  .job-acts .btn { min-height: 44px; }
+}

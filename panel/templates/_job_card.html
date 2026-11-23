@@ -1,0 +1,66 @@
+{# One job (ticket) card with its actions, used on My jobs and on the technician's home page.
+   t: a row from mod_field job_rows(); nxt: where the buttons come back to; done_view: no actions (finished list) #}
+{% from "_macros.html" import icon %}
+{% macro job_card(t, priorities, categories, nxt, done_view=False, big=False) %}
+<article class="panel job pri-b-{{ t.priority }}{{ ' job-big' if big }}">
+  <div class="job-head">
+    <a class="job-title" href="{{ url_for('ticket_view', tid=t.id) }}"><span class="mono muted">#{{ t.id }}</span> {{ t.subject }}</a>
+    <span class="pri-{{ t.priority }}">{{ priorities.get(t.priority, t.priority) }}</span>
+  </div>
+  <div class="job-meta">
+    <span>{{ categories.get(t.category, t.category) }}</span>
+    <span class="badge {{ {'open': 'warn', 'pending': 'info', 'resolved': 'ok', 'closed': 'mute'}.get(t.status, 'mute') }}">{{ {'open': 'Not started', 'pending': 'In progress', 'resolved': 'Done', 'closed': 'Closed'}.get(t.status, t.status) }}</span>
+    <span class="muted">{{ (t.closed_at if done_view and t.closed_at else t.created_at)|ago }}</span>
+  </div>
+  {% if t.sid %}
+  <div class="job-who">
+    <a href="{{ url_for('subscriber_view', sid=t.sid) }}"><b>{{ t.sub_name or t.username }}</b></a> <span class="mono muted">{{ t.sid|subid }}</span>
+    {% if t.sub_address or t.sub_area %}<div class="muted">{{ icon('pin') }} {{ t.sub_address }}{% if t.sub_area %}{{ ', ' if t.sub_address }}{{ t.sub_area }}{% endif %}</div>{% endif %}
+  </div>
+  {% endif %}
+  {% if t.last_note %}<p class="job-note">{{ t.last_note|truncate(220) }}</p>{% endif %}
+  <div class="job-acts">
+    {% if t.sub_phone %}<a class="btn" href="tel:{{ t.sub_phone }}">{{ icon('phone') }}Call</a>{% endif %}
+    {% if t.lat is not none and t.lng is not none %}<a class="btn" href="https://www.google.com/maps/dir/?api=1&destination={{ t.lat }},{{ t.lng }}" target="_blank" rel="noopener">{{ icon('pin') }}Directions</a>
+    {% elif t.sub_address %}<a class="btn" href="https://www.google.com/maps/search/?api=1&query={{ (t.sub_address ~ ' ' ~ (t.sub_area or ''))|urlencode }}" target="_blank" rel="noopener">{{ icon('pin') }}Map</a>{% endif %}
+    {% if not done_view and can('tickets', 'edit') %}
+      {% if t.status == 'open' %}<form method="post" action="{{ url_for('job_start', tid=t.id) }}">{{ csrf_input() }}<input type="hidden" name="next" value="{{ nxt }}"><button class="btn" type="submit">{{ icon('bolt') }}{{ 'Take & start' if not t.assigned_to else 'Start' }}</button></form>
+      {% else %}<button class="btn" type="button" data-open="upd-{{ t.id }}">{{ icon('note') }}Update</button>{% endif %}
+      {% if t.assigned_to %}<button class="btn primary" type="button" data-open="done-{{ t.id }}">{{ icon('check') }}Done</button>{% endif %}
+    {% endif %}
+  </div>
+</article>
+{% if not done_view and can('tickets', 'edit') %}
+<dialog class="modal" id="done-{{ t.id }}" aria-labelledby="done-h-{{ t.id }}">
+  <form method="post" action="{{ url_for('job_done', tid=t.id) }}" enctype="multipart/form-data">
+    {{ csrf_input() }}<input type="hidden" name="next" value="{{ nxt }}">
+    <div class="modal-head"><h2 id="done-h-{{ t.id }}">Finish job #{{ t.id }}</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <div class="field"><label class="lbl" for="dn-{{ t.id }}">What was done <b class="req">*</b></label><textarea id="dn-{{ t.id }}" name="note" rows="3" minlength="3" maxlength="5000" required placeholder="e.g. Fiber re-spliced at the box, ONU signal -19 dBm, customer online."></textarea></div>
+      <div class="field"><label class="lbl" for="dp-{{ t.id }}">Photo of the work (optional)</label><input id="dp-{{ t.id }}" name="photo" type="file" accept="image/jpeg,image/png" capture="environment"><div class="help">JPG or PNG, up to 5 MB. On a phone this opens the camera.</div></div>
+    </div>
+    <div class="modal-foot"><span style="flex:1"></span><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Mark done</button></div>
+  </form>
+</dialog>
+{% if t.status != 'open' %}
+<dialog class="modal" id="upd-{{ t.id }}" aria-labelledby="upd-h-{{ t.id }}">
+  <form method="post" action="{{ url_for('job_update', tid=t.id) }}" enctype="multipart/form-data">
+    {{ csrf_input() }}<input type="hidden" name="next" value="{{ nxt }}">
+    <div class="modal-head"><h2 id="upd-h-{{ t.id }}">Update job #{{ t.id }}</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <div class="field"><span class="lbl">Where it stands</span>
+        <div class="chips" role="radiogroup">
+          {% for k, label in [('working', 'Still working'), ('parts', 'Waiting for parts'), ('customer', 'Customer not home'), ('later', 'Come back later')] %}
+          <label class="chip"><input type="radio" name="state" value="{{ k }}" {{ 'checked' if loop.first }}> {{ label }}</label>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="field"><label class="lbl" for="un-{{ t.id }}">Note <b class="req">*</b></label><textarea id="un-{{ t.id }}" name="note" rows="3" minlength="3" maxlength="5000" required placeholder="e.g. Need a new ONU, coming back tomorrow morning."></textarea></div>
+      <div class="field"><label class="lbl" for="up-{{ t.id }}">Photo (optional)</label><input id="up-{{ t.id }}" name="photo" type="file" accept="image/jpeg,image/png" capture="environment"></div>
+    </div>
+    <div class="modal-foot"><span style="flex:1"></span><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save update</button></div>
+  </form>
+</dialog>
+{% endif %}
+{% endif %}
+{% endmacro %}

@@ -1969,7 +1969,7 @@ def check_rules(flask_app, ids):
     _tech = {r["fkey"]: r["allowed"] for r in run_q("SELECT fkey, allowed FROM role_funcs WHERE role = 'technician'")}
     check(_rl.status_code == 200 and "Set Permission" not in _rl.get_data(as_text=True) and "disabled" in _rp and _rp_post == 403
           and 'href="/roles"' in _menu2 and _own == 403 and _ed == 302 and _tech.get("usr.role_module") == 1
-          and _tech.get("nas.module") == (_tech_nas0["allowed"] if _tech_nas0 else 1),
+          and _tech.get("nas.module") == (_tech_nas0["allowed"] if _tech_nas0 else 0),   # technicians never have Network
           "staff: User Role > Module shows roles read-only; Edit changes another role, never their own, and only the "
           "ticks they have themselves")
     _rc = client(ids["reseller"])
@@ -2212,8 +2212,40 @@ def check_rules(flask_app, ids):
           and all(c == 200 for c in _tok) and _tn.status_code == 302 and _tnr and _tnr["expiry_date"] < _dt.date.today()
           and abs(float(_tnr["lat"]) - 23.712345) < 1e-6 and abs(float(_tnr["lng"]) - 90.398765) < 1e-6
           and "geolocation=(self)" in _pp and all(p == (23.810331, 90.412521) for p in _parsed),
-          "technician: sees and fixes customers (address, map location, password, MAC), adds new ones that start expired; "
+          "technician: sees and fixes customers (address, map location, MAC), adds new ones that start expired; "
           "no money, dues, reports or delete; the panel lets its pages ask for the phone's location")
+    # technician: locked areas stay shut even when ticked on Users > Roles; no password change; own home page
+    run("INSERT INTO role_perms (role, module, level) VALUES ('technician', 'network', 'edit'), ('technician', 'plans', 'edit') "
+        "ON DUPLICATE KEY UPDATE level = 'edit'")
+    run("INSERT INTO role_funcs (role, fkey, allowed) VALUES ('technician', 'sub.password', 1) ON DUPLICATE KEY UPDATE allowed = 1")
+    _tlock = [_tc.get(u).status_code for u in ("/nas", "/plans", "/my-packages", "/inventory", "/org", "/payments", "/reports/btrc")]
+    _tpw = _tc.post("/subscribers/%d/password" % _rsub["id"], data={"_csrf": "ci", "password": "newpass99"}).status_code
+    _te2 = _tc.get("/subscribers/%d/edit" % _rsub["id"]).get_data(as_text=True)
+    _pw_off = re.search(r'<input id="password"[^>]*disabled', _te2) is not None
+    _tsv = _tc.get("/subscribers/%d" % _rsub["id"]).get_data(as_text=True)
+    run("DELETE FROM role_perms WHERE role = 'technician'")
+    run("DELETE FROM role_funcs WHERE role = 'technician' AND fkey = 'sub.password'")
+    _tech_uid = one("SELECT id FROM panel_admins WHERE username = 'ci_tech'")["id"]
+    run("INSERT INTO tickets (subscriber_id, username, subject, category, priority, status, assigned_to, created_by) "
+        "VALUES (%s, %s, 'ci-tech-onu', 'connection', 'high', 'open', %s, 'admin')", (_rsub["id"], _rsub["username"], _tech_uid))
+    _ttid = one("SELECT id FROM tickets WHERE subject = 'ci-tech-onu'")["id"]
+    _home = _tc.get("/").get_data(as_text=True)
+    _ts = _tc.post("/jobs/%d/start" % _ttid, data={"_csrf": "ci", "next": "/"})
+    _tu = _tc.post("/jobs/%d/update" % _ttid, data={"_csrf": "ci", "next": "/", "state": "parts", "note": "Need a new ONU"})
+    _tu_row = one("SELECT body FROM ticket_replies WHERE ticket_id = %s ORDER BY id DESC LIMIT 1", (_ttid,))["body"]
+    _td = _tc.post("/jobs/%d/done" % _ttid, data={"_csrf": "ci", "next": "/", "note": "ONU replaced, online"})
+    _td_st = one("SELECT status FROM tickets WHERE id = %s", (_ttid,))["status"]
+    _home2 = _tc.get("/").get_data(as_text=True)
+    _menu = _home
+    check(all(c == 403 for c in _tlock) and _tpw == 403 and _pw_off and 'id="tab-ledgers"' not in _tsv and 'data-tab="payments"' not in _tsv
+          and "Next up" in _home and "ci-tech-onu" in _home and 'data-kind=' not in _home
+          and 'href="/nas"' not in _menu and 'href="/plans"' not in _menu and 'href="/my-packages"' not in _menu
+          and 'href="/inventory"' not in _menu and 'href="/payments"' not in _menu
+          and _ts.status_code == 302 and _ts.headers["Location"].endswith("/") and _tu.status_code == 302
+          and _tu_row == "Waiting for parts: Need a new ONU" and _td.status_code == 302 and _td_st == "resolved"
+          and "ci-tech-onu" in _home2 and "Done today" in _home2,
+          "technician: never Network, Accounting, Packages, My Packages, Inventory, Zones or reports (even if ticked); no password "
+          "change; home shows their jobs (no graphs or ISP numbers) with Start, Update and Done")
     return bad
 
 

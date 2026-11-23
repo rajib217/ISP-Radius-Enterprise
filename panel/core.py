@@ -405,10 +405,13 @@ DEFAULT_PERMS = {
     "retailer": dict(subscribers="edit", online="none", plans="view", accounting="none", inventory="none",
                      network="none", area="none", tickets="edit", email="none", sms="none", logs="none",
                      notes="edit", reports="none", documents="none", zones="none"),
-    "technician": dict(subscribers="edit", online="edit", plans="view", accounting="none", inventory="edit",
-                       network="edit", area="view", tickets="edit", email="none", sms="none", logs="view",
-                       notes="edit", reports="none", documents="view", zones="view"),
+    "technician": dict(subscribers="edit", online="edit", plans="none", accounting="none", inventory="none",
+                       network="none", area="view", tickets="edit", email="none", sms="none", logs="view",
+                       notes="edit", reports="none", documents="view", zones="none"),
 }
+# Areas a built-in role never gets, whatever Users > Roles says (the role's job has nothing to do there).
+# Technician: no network devices, money, packages (or My Packages), stock, zones or ISP reports.
+ROLE_LOCKS = {"technician": ("network", "accounting", "plans", "inventory", "zones", "reports")}
 
 
 def load_perms(role):
@@ -429,6 +432,8 @@ def _load_perms(role):
     for r in q("SELECT module, level FROM role_perms WHERE role = %s", (role,)):
         if r["module"] in perms and r["level"] in RANK:
             perms[r["module"]] = r["level"]
+    for m in ROLE_LOCKS.get(role, ()):
+        perms[m] = "none"
     return perms
 
 
@@ -440,7 +445,7 @@ def load_funcs(role, perms):
     saved = {r["fkey"]: r["allowed"] for r in q("SELECT fkey, allowed FROM role_funcs WHERE role = %s", (role,))}
     seller = role in SELLER_ROLES
     ticked = {k for k in pc.KEYS if (bool(saved[k]) if k in saved else pc.default_on(k, perms, seller, role))}
-    return pc.effective(ticked, perms)
+    return pc.effective(ticked, perms) - pc.ROLE_NEVER.get(role, frozenset())
 
 
 _funcs_upgraded = False
