@@ -91,9 +91,16 @@ def _logo_path():
 
 
 def icon_key():
-    """Changes when the logo changes, so phones fetch the new icons."""
+    """Changes whenever the logo is uploaded, replaced or removed (even twice in one second): it is in every icon URL
+    of the manifests, the Apple icon, the splash and the service worker, so installed apps pick up the new logo."""
     p = _logo_path()
-    return ("logo-%d" % int(os.path.getmtime(p))) if p else "mark"
+    if not p:
+        return "mark"
+    try:
+        st = os.stat(p)
+    except OSError:
+        return "mark"
+    return "logo-" + hashlib.sha1(("%d:%d:%s" % (st.st_mtime_ns, st.st_size, os.path.basename(p))).encode()).hexdigest()[:10]
 
 
 def icon_bytes(size, maskable):

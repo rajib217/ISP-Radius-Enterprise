@@ -1042,6 +1042,41 @@ def check_rules(flask_app, ids):
           "app icons are real PNGs of the declared sizes (180, 512, maskable 512)")
     check(_png_size(_pwa._ring_icon(48, False)) == (48, 48) and _png_size(_pwa._ring_icon(48, True)) == (48, 48),
           "without a logo or Pillow the panel's mark is drawn as the icon")
+    # a logo uploaded in Settings becomes the app icon at once: new icon URLs in the manifests, Apple icon and service worker
+    try:
+        from PIL import Image as _Img
+        import io as _pio
+
+        def _logo_png(rgb):
+            _b = _pio.BytesIO()
+            _Img.new("RGB", (64, 64), rgb).save(_b, "PNG")
+            return _b.getvalue()
+
+        def _app_state():
+            _m = json.loads(_anon2.get("/manifest.webmanifest").get_data(as_text=True))
+            _pm = json.loads(_anon2.get("/portal/manifest.webmanifest").get_data(as_text=True))
+            _src = _m["icons"][0]["src"]
+            _ic = _anon2.get(_src)
+            _px = _Img.open(_pio.BytesIO(_ic.data)).convert("RGB").getpixel((96, 96))
+            _ic.close()
+            return (_src.split("v=")[1], _pm["icons"][0]["src"].split("v=")[1], _px,
+                    _anon2.get("/sw.js").get_data(as_text=True), adm.get("/").get_data(as_text=True))
+        _k0 = _app_state()
+        adm.post("/settings/brand/logo", data={"_csrf": "ci", "file": (_pio.BytesIO(_logo_png((220, 20, 20))), "l.png")},
+                 content_type="multipart/form-data")
+        _k1 = _app_state()
+        adm.post("/settings/brand/logo", data={"_csrf": "ci", "file": (_pio.BytesIO(_logo_png((20, 20, 220))), "l.png")},
+                 content_type="multipart/form-data")
+        _k2 = _app_state()
+        adm.post("/settings/brand/logo", data={"_csrf": "ci", "remove": "1"})
+        _k3 = _app_state()
+        check(_k0[0] == "mark" and _k1[0].startswith("logo-") and _k1[0] == _k1[1] and _k1[2][0] > 180 and _k1[2][2] < 60
+              and _k2[0] not in (_k1[0], "mark") and _k2[2][2] > 180 and _k3[0] == "mark"
+              and ("v=" + _k1[0]) in _k1[3] and ("icon-180.png?v=" + _k1[0]) in _k1[4] and ("v=" + _k2[0]) in _k2[3],
+              "app icon follows the logo: upload / replace / remove changes the icon URL in both manifests, the Apple icon "
+              "and the service worker, and the icon shows the new logo")
+    except ImportError:
+        print("  skip  app icon from the logo (Pillow is not installed here)")
     _sw = _anon2.get("/sw.js")
     _sw_js = _sw.get_data(as_text=True)
     check(_sw.status_code == 200 and "javascript" in _sw.mimetype and _sw.headers.get("Service-Worker-Allowed") == "/"
