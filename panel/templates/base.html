@@ -57,7 +57,7 @@
       </a>
     </header>
 
-    <main class="content">
+    <main class="content{{ ' full' if full_width }}">
       {% if switched_from %}<div class="switch-bar">{{ icon('swap') }}<span>You are signed in as <b>{{ me.username }}</b> (switched from an admin account).</span><form method="post" action="{{ url_for('switch_back') }}">{{ csrf_input() }}<button class="btn sm" type="submit">Switch back</button></form></div>{% endif %}
       {% block content %}{% endblock %}
       {% if show_credit or copyright_text %}<footer class="credit-line">{{ copyright_text }}{% if copyright_text and show_credit %} &middot; {% endif %}{% if show_credit %}Powered by ISP RADIUS Panel{% endif %}</footer>{% endif %}

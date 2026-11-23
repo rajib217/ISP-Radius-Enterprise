@@ -278,6 +278,7 @@ def inject():
     if _sees_live():          # the topbar "online" pill: ISP-wide count, so admin and staff with Online access only
         live_online = q("SELECT COUNT(*) AS c FROM radacct WHERE acctstoptime IS NULL", one=True)["c"]
     return {
+        "full_width": nav.full_width() if getattr(g, "me", None) else False,
         "me": getattr(g, "me", None),
         "switched_from": session.get("real_uid"),
         "isp_name": cfg()["isp_name"] if "uid" in session else "ISP Panel",

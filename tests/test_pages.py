@@ -1981,6 +1981,12 @@ def check_rules(flask_app, ids):
     _back = one("SELECT svalue FROM settings WHERE skey = 'sub_id_prefix'")
     check(">%d<" % _s["id"] in _plain and _back and _back["svalue"] == "RN",
           "an empty prefix shows the plain number; the prefix is saved in capitals")
+    # Subscribers menu pages fill the width with the sidebar open; other pages keep their limit
+    _full = [adm.get(u).get_data(as_text=True) for u in ("/subscribers", "/subscribers?status=expired", "/subscribers/charges",
+                                                        "/online", "/import", "/subscribers/%d" % _s["id"])]
+    _norm = [adm.get(u).get_data(as_text=True) for u in ("/", "/payments")]
+    check(all('class="content full"' in h for h in _full) and all('class="content"' in h for h in _norm),
+          "every Subscribers menu page uses the full width; other pages do not")
     run("DELETE FROM role_funcs WHERE role IN ('support', 'technician')")
     run("DELETE FROM role_perms WHERE role IN ('support', 'technician')")
     for r in _snap_f:

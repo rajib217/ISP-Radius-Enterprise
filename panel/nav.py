@@ -128,6 +128,17 @@ STRUCTURE = [
 ]
 
 
+# pages under the Subscribers menu outside its own items (a subscriber's profile and its sub-pages)
+WIDE_EXTRA = ("subscriber_edit", "subscriber_new", "subscriber_activation", "subscriber_view", "diagnose_page")
+
+
+def full_width():
+    """Subscribers menu pages (every item and the pages under them) use the whole width, with the sidebar open too."""
+    ep = request.endpoint or ""
+    grp = next(gr for gr in STRUCTURE if gr["key"] == "subs")
+    return ep in WIDE_EXTRA or any(ep in it["match"] for it in grp["items"])
+
+
 def _active(item, endpoint):
     if endpoint not in item["match"]:
         return False
