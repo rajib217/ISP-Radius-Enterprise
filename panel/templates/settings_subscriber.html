@@ -29,6 +29,14 @@
     {% for key, label in rules %}{{ sw(key, label) }}{% endfor %}
     <p class="help wide">Duplicate phone, duplicate NID/NIC and Identity Optional are checked whenever a subscriber is added or edited. They are lenient by default so existing customers can still be edited. Document upload off closes uploads on the Documents page.</p>
     <div class="serial-box wide">
+      <h3>{{ icon('user') }}Subscriber ID</h3>
+      <div class="serial-grid">
+        <div class="field"><label class="lbl" for="x-sid">Subscriber ID Prefix</label><input id="x-sid" name="sub_id_prefix" value="{{ s.sub_id_prefix }}" maxlength="6" spellcheck="false" placeholder="e.g. RN" autocapitalize="characters"><div class="help">Letters only. Shown before every subscriber's ID number in the list, the profile, the customer portal and the expired page, and sent to bKash as the reference. Customers may write it either way (RN05, rn5 or 5) in a bKash reference. Empty = the plain number.</div></div>
+        <div><div class="lbl">Examples</div>
+          <table class="ex"><tr><td><code>RN</code></td><td>RN01, RN02 ... RN125</td></tr><tr><td class="muted">empty</td><td>1, 2 ... 125</td></tr></table></div>
+      </div>
+    </div>
+    <div class="serial-box wide">
       <h3>{{ icon('file') }}Serial Number</h3>
       <div class="serial-grid">
         <div class="field"><label class="lbl" for="x-sp">Serial Number Start</label><input id="x-sp" name="serial_prefix" value="{{ s.serial_prefix }}" maxlength="20" spellcheck="false" placeholder="e.g. 2001000" inputmode="numeric"><div class="help">Enter a starting number; new subscribers get the next numbers in sequence. Leave it empty for random numbers.</div></div>

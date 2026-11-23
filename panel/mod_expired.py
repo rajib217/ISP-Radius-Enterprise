@@ -76,7 +76,7 @@ def _start_bkash(sub):
                  (row["id"], t["amount"], t["fee"], t["days"], token))
     commit()
     try:
-        data = bkash.create("portal", tid, t["amount"] + t["fee"], row["id"],
+        data = bkash.create("portal", tid, t["amount"] + t["fee"], core.sub_code(row["id"]),
                             mod_topup.callback_url("portal_bkash", tid=tid, key=token), "PRT%d" % tid)
     except bkash.BkashError as e:
         x("UPDATE portal_payments SET status = 'failed', message = %s WHERE id = %s", (str(e)[:255], tid))
@@ -113,7 +113,8 @@ def _pay_by_id(s):
         return step
     audit("notice_lookup", key, who="notice")
     commit()
-    row = mod_portal.sub_row(int(key)) if key.isdigit() and len(key) <= 9 else None
+    code = core.parse_sub_code(key)                      # RN05, 05, 5 ...
+    row = mod_portal.sub_row(code) if code else None
     if not row:
         found = q("SELECT id FROM subscribers WHERE username = %s", (key,), one=True)
         row = mod_portal.sub_row(found["id"]) if found else None

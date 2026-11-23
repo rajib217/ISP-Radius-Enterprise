@@ -432,7 +432,7 @@ def portal_pay():
                  (sub["id"], t["amount"], t["fee"], t["days"], token))
     commit()
     try:
-        data = bkash.create("portal", tid, t["amount"] + t["fee"], sub["id"],      # reference: the subscriber ID
+        data = bkash.create("portal", tid, t["amount"] + t["fee"], core.sub_code(sub["id"]),   # reference: the subscriber ID (RN05)
                             mod_topup.callback_url("portal_bkash", tid=tid, key=token), "PRT%d" % tid)
     except bkash.BkashError as e:
         x("UPDATE portal_payments SET status = 'failed', message = %s WHERE id = %s", (str(e)[:255], tid))

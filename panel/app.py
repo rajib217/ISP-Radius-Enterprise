@@ -150,6 +150,12 @@ def healthz():
 # ====================================================================
 #  template helpers
 # ====================================================================
+@app.template_filter("subid")
+def subid_filter(sid):
+    """{{ sub.id|subid }} -> RN01 (Settings > Subscriber > Subscriber ID Prefix)."""
+    return core.sub_code(sid)
+
+
 @app.template_filter("bytes")
 def f_bytes(value):
     value = float(value or 0)

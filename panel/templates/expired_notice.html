@@ -147,7 +147,7 @@
       </div>
       {% if info.amount %}<div class="due"><span>পরিশোধ করতে হবে</span><b><small>{{ currency }}</small>{{ '%.2f' % info.amount }}</b></div>{% endif %}
       <dl class="facts">
-        {% if info.id %}<div><dt>সাবস্ক্রাইবার আইডি</dt><dd class="mono">{{ info.id }}</dd></div>{% endif %}
+        {% if info.id %}<div><dt>সাবস্ক্রাইবার আইডি</dt><dd class="mono">{{ info.id|subid }}</dd></div>{% endif %}
         {% if info.plan %}<div><dt>প্যাকেজ</dt><dd>{{ info.plan }}</dd></div>{% endif %}
         {% if info.ended %}<div class="{{ 'wide' if not info.balance }}"><dt>মেয়াদ শেষ</dt><dd>{{ info.ended.strftime('%d-%m-%Y, %I:%M %p') }}</dd></div>{% endif %}
         {% if info.balance %}<div><dt>আপনার ব্যালেন্স</dt><dd>{{ currency }} {{ '%.2f' % info.balance }}</dd></div>{% endif %}
@@ -201,7 +201,7 @@
 
     {% if info and info.id and id_ref %}
     <p class="tip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-      <span>bKash "Send Money" করলে <b>Reference</b>-এ আপনার সাবস্ক্রাইবার আইডি <b class="mono">{{ info.id }}</b> লিখুন, সংযোগ নিজে থেকেই চালু হয়ে যাবে।</span></p>
+      <span>bKash "Send Money" করলে <b>Reference</b>-এ আপনার সাবস্ক্রাইবার আইডি <b class="mono">{{ info.id|subid }}</b> লিখুন, সংযোগ নিজে থেকেই চালু হয়ে যাবে।</span></p>
     {% endif %}
 
     <p class="steps-h">কীভাবে আবার চালু করবেন</p>

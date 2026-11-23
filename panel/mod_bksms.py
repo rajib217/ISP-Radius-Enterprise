@@ -8,11 +8,14 @@ SMS to the panel (any SMS-forwarder app that can POST to a web address), and the
                                                    thing that keeps others from faking payments
 
 A message is used only when it came from an allowed sender (bKash), reads like a received payment and has a TrxID
-not seen before (each TrxID is used once). The customer is found from:
-  1. the Reference: their subscriber ID (the ID column of the subscriber list, shown in the portal too; "125", "#125"
-     or "ID 125"), else their username or mobile number
-  2. the payer's mobile number, when it is complete and belongs to exactly one customer
-A masked number (0171XXXX583) is only a suggestion: thousands of numbers fit it, so it waits for one click.
+not seen before (each TrxID is used once). The customer is found only from the Reference, which must hold their
+subscriber ID with the prefix (Settings > Subscriber > Subscriber ID Prefix): RN01, rn01, RN 01, rn 01, Rn01 or Rn 01.
+  * such an ID of an existing customer: booked at once
+  * written that way but wrong (no customer has that ID, or two different IDs): waits under Needs a match
+  * anything else (only digits, a username, a phone number, other words, no Reference): ignored and not kept at all.
+    Those customers phone the office, which books the payment by hand (the owner's rule, Nov 2026).
+With no prefix set, the older rules apply: plain ID, username or mobile in the Reference, else the payer's mobile (a
+masked number is only a suggestion and waits for one click).
 
 Then, when the money plus the customer's balance covers the package price, the package is renewed (extra goes into
 their balance, a shortfall comes out of it, as in the Activation window); otherwise the money goes into their balance.
@@ -90,12 +93,20 @@ def _by_phone(phone):
 def find(p):
     """(subscriber, how, sure) for a parsed SMS; sure=False is only a suggestion. (None, why, False) when none."""
     ref = p["ref"]
-    sid = re.fullmatch(r"(?:#|ID\s*[:#.-]?\s*)?(\d{1,9})", ref.strip(), re.I) if ref else None
+    if (cfg().get("sub_id_prefix") or "").strip():           # the ID with the prefix, nothing else
+        codes = core.ref_sub_codes(ref)
+        if len(codes) > 1:
+            return None, "Reference has more than one subscriber ID (%s)" % ", ".join(core.sub_code(c) for c in codes), False
+        sub = q("SELECT * FROM subscribers WHERE id = %s", (codes[0],), one=True) if codes else None
+        if sub:
+            return sub, "Reference is the subscriber ID", True
+        return None, ("no customer has the ID %s" % core.sub_code(codes[0])) if codes else "no subscriber ID in the Reference", False
+    sid = core.parse_sub_code(ref) if ref else None           # RN05, rn5, #5, ID 5 or 5
     if sid:
-        sub = q("SELECT * FROM subscribers WHERE id = %s", (int(sid.group(1)),), one=True)
-        other = q("SELECT id FROM subscribers WHERE username = %s", (sid.group(1),), one=True)
+        sub = q("SELECT * FROM subscribers WHERE id = %s", (sid,), one=True)
+        other = q("SELECT id FROM subscribers WHERE username = %s", (ref.strip(),), one=True)
         if sub and other and other["id"] != sub["id"]:
-            return sub, "Reference %s is one customer's ID and another's username" % sid.group(1), False
+            return sub, "Reference %s is one customer's ID and another's username" % ref.strip(), False
         if sub:
             return sub, "Reference is the subscriber ID", True
     if ref:
@@ -245,6 +256,9 @@ def ingest(text, sender, source):
     p = parse(text)
     if not p:
         return {"ok": True, "status": "ignored", "why": "not a bKash received-payment SMS"}
+    if (s.get("sub_id_prefix") or "").strip() and not core.ref_sub_codes(p["ref"]):
+        # no RN01-style ID in the Reference: not ours to book, kept nowhere (the customer phones the office)
+        return {"ok": True, "status": "ignored", "why": "no subscriber ID in the Reference", "trx": p["trx"]}
     with get_db().cursor() as cur:
         cur.execute("INSERT IGNORE INTO sms_payments (trx_id, amount, payer, ref, sms_text, paid_at, status, source) "
                     "VALUES (%s, %s, %s, %s, %s, %s, 'working', %s)",

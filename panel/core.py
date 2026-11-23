@@ -278,8 +278,9 @@ def sub_filters(args):
     text = args.get("q", "").strip()
     if text:
         like = "%" + text + "%"
+        code = parse_sub_code(text)
         where.append("(s.username LIKE %s OR s.full_name LIKE %s OR s.phone LIKE %s "
-                     "OR s.address LIKE %s OR s.static_ip LIKE %s)")
+                     "OR s.address LIKE %s OR s.static_ip LIKE %s" + (" OR s.id = %d" % code if code else "") + ")")
         params += [like] * 5
     if args.get("plan", "").isdigit():
         where.append("s.plan_id = %s")
@@ -651,6 +652,34 @@ def attention():
             rows.append({"label": "Secret settings unreadable: check PANEL_SETTINGS_KEY in panel.env", "c": len(bad),
                          "endpoint": "settings", "args": {}})
     return rows
+
+
+# ===================================================================== subscriber ID as customers see it
+def sub_code(sid):
+    """The subscriber ID as the panel shows it and customers write it: Settings > Subscriber > Subscriber ID Prefix, then
+    the number with at least two digits (RN01, RN02 ... RN125). An empty prefix shows the plain number."""
+    if sid is None or sid == "":
+        return ""
+    prefix = (cfg().get("sub_id_prefix") or "").strip()
+    return "%s%02d" % (prefix, int(sid)) if prefix else str(sid)
+
+
+def parse_sub_code(text):
+    """The subscriber ID number in what someone typed: RN01, rn1, RN-01, RN 01, #12, ID: 12 or 12. None otherwise."""
+    prefix = (cfg().get("sub_id_prefix") or "").strip()
+    alt = (r"|" + re.escape(prefix) + r"\s*[-#.:]?\s*") if prefix else ""
+    m = re.fullmatch(r"(?:#|ID\s*[:#.-]?\s*" + alt + r")?(\d{1,9})", (text or "").strip(), re.I)
+    return int(m.group(1)) if m and int(m.group(1)) else None
+
+
+def ref_sub_codes(text):
+    """Subscriber IDs written with the prefix in a bKash reference: RN01, rn01, RN 01, rn 01, Rn01, Rn 01 (the prefix in
+    any case, at most one space, then the number; "RN05 bill" counts too). [] when there is none or no prefix is set."""
+    prefix = (cfg().get("sub_id_prefix") or "").strip()
+    if not prefix or not text:
+        return []
+    found = re.findall(r"(?<![A-Za-z0-9])" + re.escape(prefix) + r" ?(\d{1,9})(?!\d)", text, re.I)
+    return list(dict.fromkeys(int(n) for n in found))
 
 
 # ===================================================================== subscriber serial numbers

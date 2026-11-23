@@ -42,7 +42,7 @@
     </div>
     <div class="sv-id">
       <h2>{{ sub.full_name or sub.username }}{% if sub.full_name %} <small>({{ sub.username }})</small>{% endif %}</h2>
-      <div class="chips"><span class="chip blue">{{ icon('user') }}Subscriber</span>{% if sub.created_by %}<span class="chip violet">{{ icon('user') }}{{ sub.created_by }}</span>{% endif %}<span class="chip {{ 'green' if online else 'gray' }}">{{ 'Online' if online else 'Offline' }}</span>{{ state_badge(sub.state) }}</div>
+      <div class="chips"><span class="chip blue">{{ icon('user') }}Subscriber</span><span class="chip mono" title="Subscriber ID">ID {{ sub.id|subid }}</span>{% if sub.created_by %}<span class="chip violet">{{ icon('user') }}{{ sub.created_by }}</span>{% endif %}<span class="chip {{ 'green' if online else 'gray' }}">{{ 'Online' if online else 'Offline' }}</span>{{ state_badge(sub.state) }}</div>
     </div>
     <details class="dd sv-more"><summary class="btn sm primary">Actions &#9662;</summary>
       <div class="dd-menu">

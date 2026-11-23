@@ -510,6 +510,13 @@ def settings_subscriber():
             new["grace_days"] = _int(f, "grace_days", 1, 90)
         except ValueError:
             skipped.append("Grace period days (must be 1 to 90)")
+        sid_prefix = f.get("sub_id_prefix", "").strip().upper()
+        if "sub_id_prefix" not in f:
+            pass                                  # a form without the field keeps the prefix
+        elif re.fullmatch(r"[A-Z]{0,6}", sid_prefix):
+            new["sub_id_prefix"] = sid_prefix
+        else:
+            skipped.append("Subscriber ID Prefix (letters only, up to 6)")
         prefix = f.get("serial_prefix", "").strip()
         if re.match(r"^[0-9]*$", prefix) and len(prefix) <= 20:
             new["serial_prefix"] = prefix

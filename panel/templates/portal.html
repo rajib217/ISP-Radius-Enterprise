@@ -20,8 +20,8 @@
     <div class="ph-who">
       <h1>{{ sub.full_name or sub.username }}</h1>
       <p class="ph-ids"><span class="mono">{{ sub.username }}</span><span class="ph-sep" aria-hidden="true">·</span>
-        <span>ID <b class="mono" data-sub-id>{{ sub.id }}</b></span>
-        <button type="button" class="ph-copy" data-copy-text="{{ sub.id }}" aria-label="Copy subscriber ID {{ sub.id }}" title="Copy">{{ icon('copy') }}</button></p>
+        <span>ID <b class="mono" data-sub-id>{{ sub.id|subid }}</b></span>
+        <button type="button" class="ph-copy" data-copy-text="{{ sub.id|subid }}" aria-label="Copy subscriber ID {{ sub.id|subid }}" title="Copy">{{ icon('copy') }}</button></p>
       <div class="ph-chips">
         {% if sub.plan_label or sub.plan_name %}<span class="ph-chip">{{ icon('package') }}{{ sub.plan_label or sub.plan_name }}{% if sub.download_mbps %} · {{ sub.download_mbps }}/{{ sub.upload_mbps }} Mbps{% endif %}</span>{% endif %}
         <span class="ph-chip {{ 'on' if online else 'off' }}"><i class="ph-led" aria-hidden="true"></i>{{ 'Online' if online else 'Offline' }}</span>
@@ -46,7 +46,7 @@
       {% if help_phone %}<a class="btn ph-call" href="tel:{{ help_phone|replace(' ', '') }}">{{ icon('phone') }}Call support</a>{% endif %}
     </div>
   </div>
-  {% if info.id_ref %}<p class="ph-tip">{{ icon('info') }}<span>Paying by bKash "Send Money"? Write your subscriber ID <b class="mono">{{ sub.id }}</b> in <b>Reference</b> and your connection renews by itself.</span></p>{% endif %}
+  {% if info.id_ref %}<p class="ph-tip">{{ icon('info') }}<span>Paying by bKash "Send Money"? Write your subscriber ID <b class="mono">{{ sub.id|subid }}</b> in <b>Reference</b> and your connection renews by itself.</span></p>{% endif %}
 </section>
 
 {# ---------------------------------------------------------------- key numbers #}
@@ -110,7 +110,7 @@
     <section class="panel ph-card">
       <div class="panel-head"><h2><i class="ph-ic amber">{{ icon('user') }}</i>My account</h2><a class="aside" href="#account" data-tab-link="account">All details</a></div>
       <dl class="ph-rows">
-        <dt>Subscriber ID</dt><dd class="mono">{{ sub.id }}</dd>
+        <dt>Subscriber ID</dt><dd class="mono">{{ sub.id|subid }}</dd>
         <dt>Username</dt><dd class="mono">{{ sub.username }}</dd>
         <dt>Phone</dt><dd>{{ sub.phone or '—' }}</dd>
         <dt>Customer since</dt><dd>{{ sub.created_at|d if sub.created_at else '—' }}</dd>
@@ -236,7 +236,7 @@
       <div class="panel-head"><h2><i class="ph-ic amber">{{ icon('user') }}</i>My details</h2></div>
       <dl class="ph-rows">
         <dt>Name</dt><dd>{{ sub.full_name or '—' }}</dd>
-        <dt>Subscriber ID</dt><dd class="mono">{{ sub.id }} <button type="button" class="ph-copy" data-copy-text="{{ sub.id }}" aria-label="Copy subscriber ID" title="Copy">{{ icon('copy') }}</button></dd>
+        <dt>Subscriber ID</dt><dd class="mono">{{ sub.id|subid }} <button type="button" class="ph-copy" data-copy-text="{{ sub.id|subid }}" aria-label="Copy subscriber ID" title="Copy">{{ icon('copy') }}</button></dd>
         <dt>Username</dt><dd class="mono">{{ sub.username }}</dd>
         <dt>Phone</dt><dd>{{ sub.phone or '—' }}</dd>
         <dt>Email</dt><dd>{{ sub.email or '—' }}</dd>

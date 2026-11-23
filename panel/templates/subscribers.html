@@ -126,7 +126,7 @@
       <tbody>
       {% for s in rows %}
         <tr>
-          <td class="muted" data-card="hide">{{ s.id }}</td>
+          <td class="muted mono" data-card="hide">{{ s.id|subid }}</td>
           <td class="sel" data-card="select"><input class="row-check" type="checkbox" name="ids" value="{{ s.id }}" data-u="{{ s.username }}" form="bulkForm" aria-label="Select {{ s.username }}"></td>
           <td class="act nowrap" data-card="actions">
             {% if can('subscribers', 'edit') %}

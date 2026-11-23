@@ -10,7 +10,10 @@
       <span class="aside">{% if s.bksms_on == '1' %}<span class="badge ok">On</span>{% else %}<span class="badge mute">Off</span>{% endif %}</span></div>
     <div class="panel-body stack">
       <p class="muted" style="margin:0">The customer sends money to your bKash number and writes their <b>subscriber ID</b> (the ID column of the subscriber list,
-        also shown in their portal) in <b>Reference</b>; their username or mobile number works too. An SMS-forwarder app on the phone that gets bKash's SMS sends it here. The package is renewed when the money
+        also shown in their portal) in <b>Reference</b>{% if app_cfg.sub_id_prefix %}, like <b class="mono">{{ app_cfg.sub_id_prefix }}01</b>
+        ({{ app_cfg.sub_id_prefix|lower }}01, {{ app_cfg.sub_id_prefix }} 01 work too). A wrong ID waits under Needs a match; a payment with
+        anything else in Reference (only digits, a name, a phone number, nothing) is ignored and not kept{% else %}; their username or
+        mobile number works too{% endif %}. An SMS-forwarder app on the phone that gets bKash's SMS sends it here. The package is renewed when the money
         plus the customer's balance covers the price; otherwise the money goes into their balance. Each TrxID is used only once.</p>
       <label class="check"><input type="checkbox" name="bksms_on" value="1" {{ 'checked' if s.bksms_on == '1' }}> Renew customers from forwarded bKash SMS</label>
       <div class="field" style="max-width:420px"><label class="lbl" for="bs-senders">Accept SMS only from</label>
@@ -34,7 +37,7 @@
       <li>Install an SMS-forwarder app on the phone that holds the bKash number, and let it run in the background (turn off battery saving for it).</li>
       <li>Add a rule: sender <code>bKash</code>, forward to the address above, method POST.</li>
       <li>Body: JSON such as <code>{"from": "%from%", "text": "%text%"}</code> (use your app's own placeholders). A form, or the SMS alone as the body, also works.</li>
-      <li>Send yourself a small test payment with a subscriber ID in Reference and watch it appear below.</li>
+      <li>Send yourself a small test payment with a subscriber ID{% if app_cfg.sub_id_prefix %} (like {{ app_cfg.sub_id_prefix }}01){% endif %} in Reference and watch it appear below.</li>
     </ol>
     {% else %}
     <p class="muted" style="margin:0">Press <b>Save</b> once to make the address for the phone.</p>

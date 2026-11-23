@@ -32,7 +32,7 @@ DEFAULT_SETTINGS = {
     "sub_see_volume": "1", "sub_update_data": "1", "sub_reset_pw": "1", "sub_login_log": "1",
     "sub_session_log": "1", "sub_self_activation": "1", "sub_all_packages": "0", "sub_two_factor": "0",
     "grace_on": "0", "grace_days": "10", "dup_phone": "1", "dup_nid": "1", "identity_optional": "1",
-    "doc_upload": "1", "serial_prefix": "", "portal_on": "0",
+    "doc_upload": "1", "serial_prefix": "", "sub_id_prefix": "RN", "portal_on": "0",
     "tg_on": "0", "tg_token": "", "tg_chat": "", "al_nas": "1", "al_drop": "1", "al_drop_pct": "25", "al_server": "1",
     "al_cpu": "90", "al_ram": "90", "al_disk": "85", "al_radius": "1", "al_daily": "1", "al_daily_hour": "8",
     "user_doc_verify": "0", "user_phone_otp": "0", "user_email_verify": "0", "user_dup_phone": "1", "user_dup_nid": "1",

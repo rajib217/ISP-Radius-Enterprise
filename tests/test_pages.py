@@ -1145,13 +1145,13 @@ def check_rules(flask_app, ids):
           and 'name="sid"' in _ask and "go=1" in _who and "পরিশোধ করুন" in _who and _ex["username"] not in _who
           and _exname not in _who and _exname[:2] + "***" in _who and "go=1" in _byname
           and "কোনো গ্রাহক পাওয়া যায়নি" in _nobody and _go2.status_code == 302 and len(_made) == _made_by_ip + 1
-          and str(_made[-1]["payer"]) == str(_ex["id"]),
+          and str(_made[-1]["payer"]) == "RN%02d" % _ex["id"],
           "customer not found by IP: the bKash button asks for the subscriber ID, shows a masked name and the amount, then opens bKash")
     run("DELETE FROM audit_log WHERE action = 'notice_lookup'")
     _prow = one("SELECT * FROM portal_payments WHERE subscriber_id = %s AND payment_id LIKE 'CINOTICE%%' ORDER BY id LIMIT 1", (_ex["id"],))
     check('href="?pay=1"' in _np and _go.status_code == 302
           and _go.headers.get("Location") == "https://sandbox.payment.bkash.com/redirect/ci"
-          and _made_by_ip == 1 and str(_made[0]["payer"]) == str(_ex["id"])
+          and _made_by_ip == 1 and str(_made[0]["payer"]) == "RN%02d" % _ex["id"]
           and _made[0]["callback"].startswith("https://panel.ci.test/portal/bkash/")
           and _prow and _prow["payment_id"] == "CINOTICE%d" % _prow["id"] and _prow["status"] == "pending"
           and _stranger.status_code == 200,
@@ -1477,23 +1477,31 @@ def check_rules(flask_app, ids):
         return _anon.post(url, data=body) if form else _anon.post(url, json=body)
 
     _t1 = "You have received payment Tk 5,000.00 from 01999000111. Ref %s. Fee Tk 0.00. Balance Tk 9,000.00. TrxID CIBK000001 at 22/11/2026 11:07"
-    _r1 = _sms(_t1 % _a["id"])                        # Reference = the subscriber ID
+    _r1 = _sms(_t1 % ("RN%02d" % _a["id"]))           # Reference = the subscriber ID with the prefix
     _a2 = one("SELECT * FROM subscribers WHERE id = %s", (_a["id"],))
     _pay = one("SELECT * FROM payments WHERE subscriber_id = %s ORDER BY id DESC LIMIT 1", (_a["id"],))
-    _r1b = _sms(_t1 % ("ID %d" % _a["id"]))
+    _r1b = _sms(_t1 % ("rn %02d" % _a["id"]))
     _pays = one("SELECT COUNT(*) AS c FROM payments WHERE note LIKE '%%CIBK000001%%'")["c"]
     _bad = [_sms(_t1 % _a["username"], token="wrong-token").status_code, _anon.post("/sms-in", json={"text": "x"}).status_code]
     _other = _sms(_t1.replace("CIBK000001", "CIBK000002") % _a["username"], sender="Grameenphone").get_json()
-    # paid from a customer's registered mobile with no reference, sent as a form: too little to renew, so it goes to the balance
+    # too little to renew (sent as a form, "Rn 05" written): it goes to the balance
     _b = one("SELECT * FROM subscribers WHERE created_by = %s AND status = 'active' AND plan_id IS NOT NULL AND id <> %s "
              "ORDER BY id LIMIT 1", (_adm_name, _a["id"]))
     run("UPDATE subscribers SET balance = 0 WHERE id = %s", (_b["id"],))
-    _r3 = _sms("You have received Tk 10.00 from %s. Fee Tk 0.00. Balance Tk 10.00. TrxID CIBK000003 at 22/11/2026 12:00" % _b["phone"],
-               form=True).get_json()
+    _r3 = _sms("You have received Tk 10.00 from %s. Ref Rn %02d. Fee Tk 0.00. Balance Tk 10.00. TrxID CIBK000003 at 22/11/2026 12:00"
+               % (_b["phone"], _b["id"]), form=True).get_json()
+    # anything but an RN-style ID in the Reference is ignored and kept nowhere: only digits, a username, the payer's own
+    # registered mobile with no Reference, a masked number with other words
+    _ign = [_sms(("You have received payment Tk 30.00 from %s. Ref %s. Fee Tk 0.00. Balance Tk 1.00. TrxID CIIGN0000%d at "
+                  "22/11/2026 12:01") % (_b["phone"], ref, n)).get_json().get("status")
+            for n, ref in enumerate((str(_b["id"]), _b["username"], "Someone Else", "RN-%02d" % _b["id"]))]
+    _ign.append(_sms("You have received Tk 30.00 from %s. Fee Tk 0.00. Balance Tk 1.00. TrxID CIIGN00009 at 22/11/2026 12:02"
+                     % _b["phone"]).get_json().get("status"))
+    _ign_kept = one("SELECT COUNT(*) AS c FROM sms_payments WHERE trx_id LIKE 'CIIGN%%'")["c"]
     _b2 = one("SELECT balance, expiry_date FROM subscribers WHERE id = %s", (_b["id"],))
-    # a masked number only suggests the customer; the admin books it with one click
+    # an RN-style ID nobody has (a typing mistake) waits under Needs a match; the admin books it with one click
     _masked = _b["phone"][:4] + "XXXX" + _b["phone"][-3:]
-    _r4 = _sms("You have received payment Tk 20.00 from %s. Ref Someone Else. Fee Tk 0.00. Balance Tk 1.00. TrxID CIBK000004 "
+    _r4 = _sms("You have received payment Tk 20.00 from %s. Ref RN999999. Fee Tk 0.00. Balance Tk 1.00. TrxID CIBK000004 "
                "at 22/11/2026 12:05" % _masked).get_json()
     _row4 = one("SELECT * FROM sms_payments WHERE trx_id = 'CIBK000004'")
     _old_link = adm.get("/settings/bkash-sms?show=unmatched")
@@ -1506,7 +1514,7 @@ def check_rules(flask_app, ids):
                 "WHERE s.created_by = %s AND s.status = 'active' ORDER BY s.id LIMIT 1", (ids["reseller"], _res_name))
     _rbal0 = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
     _cost = float(one("SELECT price FROM user_plans WHERE user_id = %s AND plan_id = %s", (ids["reseller"], _rsub["plan_id"]))["price"])
-    _r5 = _sms(_t1.replace("CIBK000001", "CIBK000005") % _rsub["username"]).get_json()   # a username works too
+    _r5 = _sms(_t1.replace("CIBK000001", "CIBK000005") % ("Rn%02d bill" % _rsub["id"])).get_json()   # words around it are fine
     _rbal1 = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
     _res_page = client(ids["reseller"]).get("/settings/bkash-sms").status_code
     _pc = flask_app.test_client()
@@ -1519,20 +1527,22 @@ def check_rules(flask_app, ids):
           and _r1b.get_json().get("status") == "duplicate" and _pays == 1 and _bad == [403, 403]
           and _other.get("status") == "ignored" and not one("SELECT id FROM sms_payments WHERE trx_id = 'CIBK000002'")
           and _r3.get("status") == "balance" and abs(float(_b2["balance"]) - 10) < 0.01 and _b2["expiry_date"] == _b["expiry_date"]
-          and _r4.get("status") == "unmatched" and _row4["subscriber_id"] == _b["id"] and "Book for this customer" in _un_html
-          and ('value="%s"' % _b["username"]) in _un_html
+          and _ign == ["ignored"] * 5 and _ign_kept == 0
+          and _r4.get("status") == "unmatched" and _row4["subscriber_id"] is None and "Book for this customer" in _un_html
+          and "RN999999" in _row4["message"]
           and _ap.status_code == 302 and abs(float(_b3["balance"]) - 30) < 0.01
           and one("SELECT status FROM sms_payments WHERE id = %s", (_row4["id"],))["status"] == "balance"
           and _r5.get("status") == "renewed" and abs((_rbal1 - _rbal0) - (5000 - _cost)) < 0.01
           and _res_page == 403 and 'href="/settings/bkash-sms"' in _bs_html
           and one("SELECT username FROM sms_payments WHERE trx_id = 'CIBK000001'")["username"] == _a["username"]
-          and ('Subscriber ID</dt><dd class="mono">%d<' % ids["portal_sub"]) in _portal_html
-          and all(k in _portal_html for k in ('class="ph-hero', 'class="ph-ring', 'data-copy-text="%d"' % ids["portal_sub"],
+          and ('Subscriber ID</dt><dd class="mono">RN%02d<' % ids["portal_sub"]) in _portal_html
+          and all(k in _portal_html for k in ('class="ph-hero', 'class="ph-ring', 'data-copy-text="RN%02d"' % ids["portal_sub"],
                                                ">Connection<", ">My package<", ">Billing<", ">My account<", "Next bill",
                                                "Customer since", 'data-tab="account"', "data-lr-down", "data-pp-photo")),
-          "bKash SMS auto-renew: renews from the reference, each TrxID once, only with the token and from bKash; small "
-          "payments go to the balance; masked numbers wait for one click; a reseller's customer credits the reseller "
-          "(%s %s %s %s %s)" % (_r1.get_json(), _r3, _r4, _r5, (_rbal1 - _rbal0, 5000 - _cost)))
+          "bKash SMS auto-renew: renews only from an RN01-style ID in the reference (any case, one space), each TrxID once, "
+          "only with the token and from bKash; small payments go to the balance; a wrong RN ID waits for one click; "
+          "anything else is ignored and not kept; a reseller's customer credits the reseller "
+          "(%s %s %s %s %s %s)" % (_r1.get_json(), _r3, _ign, _r4, _r5, (_rbal1 - _rbal0, 5000 - _cost)))
     # ---- Accounting > bKash SMS Payments: the list moved out of Settings; resellers see only their own customers' payments
     _sp_adm = adm.get("/bkash-sms-payments?from=2026-01-01&to=2027-12-31").get_data(as_text=True)
     _sp_set = adm.get("/settings/bkash-sms").get_data(as_text=True)
@@ -1583,7 +1593,7 @@ def check_rules(flask_app, ids):
     _gb = one("SELECT * FROM subscribers WHERE created_by = %s AND status = 'active' AND plan_id IS NOT NULL ORDER BY id DESC LIMIT 1",
               (_adm_name,))
     run("UPDATE subscribers SET balance = 0 WHERE id = %s", (_gb["id"],))
-    _long = ("You have received payment Tk 5,000.00 from 01999000222. Ref %d. Fee Tk 0.00. Balance Tk 9,000.00. "
+    _long = ("You have received payment Tk 5,000.00 from 01999000222. Ref RN%02d. Fee Tk 0.00. Balance Tk 9,000.00. "
              "TrxID CIGSM00001 at 22/11/2026 11:07" % _gb["id"])
     _half = len(_long) // 2
     _pa = _pdu(_long[:_half], udh=bytes([5, 0, 3, 77, 2, 1]))
@@ -1951,6 +1961,26 @@ def check_rules(flask_app, ids):
     check(_pay and _rcpt == 200 and _rev0 == 403 and _rev1 == 302 and not one("SELECT id FROM payments WHERE note = 'ci receipt'")
           and "/delete" in _pays, "a reseller opens the receipt of their own payment; staff reverse a payment only with Reverse")
     run("DELETE FROM payments WHERE note = 'ci receipt'")
+    # ---- subscriber ID shown as RN01 (Settings > Subscriber > Subscriber ID Prefix), typed any way
+    import core as _core, mod_bksms as _bks
+    _s = one("SELECT id, username FROM subscribers ORDER BY id LIMIT 1")
+    with flask_app.test_request_context("/"):
+        _codes = [_core.parse_sub_code(v) for v in ("RN05", "rn5", "RN-05", "rn 5", "#5", "ID: 5", "5", "05")]
+        _bad = [_core.parse_sub_code(v) for v in ("RX05", "RN", "5a", "", "0")]
+        _shown = (_core.sub_code(5), _core.sub_code(125))
+        _match = _bks.find({"ref": "RN%02d" % _s["id"], "payer": ""})
+    _list = adm.get("/subscribers").get_data(as_text=True)
+    _search = adm.get("/subscribers?q=RN%02d" % _s["id"]).get_data(as_text=True)
+    _view = adm.get("/subscribers/%d" % _s["id"]).get_data(as_text=True)
+    check(_codes == [5] * 8 and _bad == [None] * 5 and _shown == ("RN05", "RN125") and _match[0] and _match[0]["id"] == _s["id"]
+          and _match[2] and ">RN%02d<" % _s["id"] in _search and _s["username"] in _search and "ID RN%02d" % _s["id"] in _view,
+          "subscriber IDs show as RN01; RN05 / rn5 / #5 / 5 all mean subscriber 5 (list, search, profile, bKash reference)")
+    adm.post("/settings/subscriber", data={"_csrf": "ci", "sub_id_prefix": ""})
+    _plain = adm.get("/subscribers").get_data(as_text=True)
+    adm.post("/settings/subscriber", data={"_csrf": "ci", "sub_id_prefix": "rn"})
+    _back = one("SELECT svalue FROM settings WHERE skey = 'sub_id_prefix'")
+    check(">%d<" % _s["id"] in _plain and _back and _back["svalue"] == "RN",
+          "an empty prefix shows the plain number; the prefix is saved in capitals")
     run("DELETE FROM role_funcs WHERE role IN ('support', 'technician')")
     run("DELETE FROM role_perms WHERE role IN ('support', 'technician')")
     for r in _snap_f:
