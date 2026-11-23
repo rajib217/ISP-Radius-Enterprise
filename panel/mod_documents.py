@@ -71,7 +71,10 @@ def documents():
     if request.args.get("sub", "").isdigit():
         where.append("d.subscriber_id = %s")
         params.append(int(request.args["sub"]))
-        only = q("SELECT id, username FROM subscribers WHERE id = %s", (int(request.args["sub"]),), one=True)
+        only = q("SELECT id, username, created_by FROM subscribers WHERE id = %s", (int(request.args["sub"]),), one=True)
+        names = core.my_downline()
+        if only and names is not None and only["created_by"] not in names:
+            only = None          # a seller never learns the username of someone else's customer from ?sub=<id>
     sc, sp = _scope()
     if sc:
         where.append(sc)

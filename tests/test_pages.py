@@ -1987,6 +1987,12 @@ def check_rules(flask_app, ids):
     _norm = [adm.get(u).get_data(as_text=True) for u in ("/", "/payments")]
     check(all('class="content full"' in h for h in _full) and all('class="content"' in h for h in _norm),
           "every Subscribers menu page uses the full width; other pages do not")
+    # Documents ?sub=<id>: a reseller never sees the username of a customer who is not theirs
+    _foreign = one("SELECT id, username FROM subscribers WHERE created_by = %s ORDER BY id LIMIT 1", (_adm_name,))
+    _rdoc = client(ids["reseller"]).get("/documents?sub=%d" % _foreign["id"])
+    _adoc = adm.get("/documents?sub=%d" % _foreign["id"]).get_data(as_text=True)
+    check(_rdoc.status_code in (200, 403) and _foreign["username"] not in _rdoc.get_data(as_text=True)
+          and _foreign["username"] in _adoc, "Documents: ?sub=<id> does not tell a reseller someone else's customer's username")
     # subscriber list: up to 2000 a page; name above, username under it
     _p2k = adm.get("/subscribers?per=2000").get_data(as_text=True)
     _p5k = adm.get("/subscribers?per=5000").get_data(as_text=True)
