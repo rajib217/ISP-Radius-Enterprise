@@ -832,3 +832,24 @@ INSERT IGNORE INTO cashflow_categories (kind, name) SELECT DISTINCT kind, catego
 -- Cashflow > fix a wrong recharge: a Correction line (method 'correction') points at the recharge it corrects
 ALTER TABLE user_ledger ADD COLUMN IF NOT EXISTS ref_id INT UNSIGNED NULL;
 ALTER TABLE user_ledger ADD INDEX IF NOT EXISTS idx_ref (ref_id);
+
+-- Call log: what was said to a customer, and when to call again (subscriber page > Call Log, Subscribers > Follow-ups)
+CREATE TABLE IF NOT EXISTS sub_calls (
+  id            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  subscriber_id INT UNSIGNED NOT NULL,
+  outcome       VARCHAR(16)  NOT NULL DEFAULT 'called',
+  note          VARCHAR(500) NOT NULL DEFAULT '',
+  follow_up     DATE NULL,
+  done          TINYINT(1)   NOT NULL DEFAULT 0,
+  created_by    VARCHAR(64)  NOT NULL DEFAULT '',
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_sub (subscriber_id, id),
+  KEY idx_follow (done, follow_up)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Customer map: where the connection is (set on the subscriber page, shown on Subscribers > Map)
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS lat DECIMAL(9,6) NULL;
+ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS lng DECIMAL(9,6) NULL;
+
+-- Technician jobs: a photo of the finished work on the ticket reply that closed it
+ALTER TABLE ticket_replies ADD COLUMN IF NOT EXISTS photo VARCHAR(64) NOT NULL DEFAULT '';

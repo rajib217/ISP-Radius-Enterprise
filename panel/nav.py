@@ -4,11 +4,11 @@ from flask import g, request, url_for
 import core
 
 
-def _i(label, endpoint, match=None, args=None, none_of=None, module=None, admin=False, tier=None, fn=None, own=None, allow=None):
+def _i(label, endpoint, match=None, args=None, none_of=None, module=None, admin=False, tier=None, fn=None, own=None, allow=None, office=False):
     # allow: the page decides who may open it (mod_coa.allowed), so the menu asks the same function
     # own: a function key that opens this one page on its own, even without the group's module (Ledger Reports and
     # bKash Payments: sellers get them only through that tick, staff through it or the Accounting module)
-    return {"allow": allow, "own": own, "fn": fn, "tier": tier, "admin": admin, "label": label, "endpoint": endpoint, "match": match or [endpoint], "args": args or {},
+    return {"office": office, "allow": allow, "own": own, "fn": fn, "tier": tier, "admin": admin, "label": label, "endpoint": endpoint, "match": match or [endpoint], "args": args or {},
             "none_of": none_of or [], "module": module}
 
 
@@ -23,6 +23,7 @@ STRUCTURE = [
     _g("profile", "My Profile", "user", endpoint="profile", match=["profile", "account"], fn="prof.module"),
     _g("mypkg", "My Packages", "package", endpoint="my_packages"),
     _g("myusers", "My Users", "users", endpoint="my_users", match=["my_users", "user_transfer", "my_user_save", "my_user_packages", "my_user_delete"], sellers=True, fn="usr.module"),
+    _g("mystmt", "Monthly Statement", "file", endpoint="statements", match=["statements"], sellers=True, fn="prof.module"),
     _g("myprofit", "My Profit", "chart", endpoint="my_profit", match=["my_profit", "my_profit_csv"], sellers=True, fn="rep.myprofit"),
     _g("users", "Users", "users", office=True, items=[
         _i("Roles", "roles", ["roles", "role_permissions"], fn="usr.role_module"),
@@ -31,6 +32,7 @@ STRUCTURE = [
         _i("Resellers", "admins", args={"group": "reseller"}, tier="reseller", fn="usr.module"),
         _i("Sub-resellers", "admins", args={"group": "subreseller"}, tier="subreseller", fn="usr.module"),
         _i("Retailers", "admins", args={"group": "retailer"}, tier="retailer", fn="usr.module"),
+        _i("Monthly statement", "statements", ["statements"], fn="usr.view"),
     ]),
     _g("package", "Package", "layers", module="plans", items=[
         _i("Policy", "policy", ["policy", "policy_save", "policy_delete"]),
@@ -59,6 +61,8 @@ STRUCTURE = [
         _i("Recent Auto Renew", "subscribers", args={"status": "renewed"}),
         _i("Extra Service Fees", "charges", ["charges", "charge_save", "charge_paid", "charge_delete"], fn="sub.fee_module"),
         _i("Suspended", "subscribers", args={"status": "suspended"}),
+        _i("Follow-ups", "follow_ups", ["follow_ups"]),
+        _i("Map", "customer_map", ["customer_map"]),
         _i("Online sessions", "online", module="online"),
         _i("Import / Export", "import_csv", ["import_csv"]),
     ]),
@@ -67,6 +71,7 @@ STRUCTURE = [
         _i("Receive payment", "receive"),
         _i("Cashflow", "cashflow", ["cashflow", "cashflow_categories", "expenses"], fn="cf.module"),
         _i("Income & expense", "acct_summary"),
+        _i("Daily report", "daily_report", ["daily_report"], office=True),
         _i("Dues", "dues"),
         _i("Ledger Reports", "ledger", ["ledger", "ledger_csv", "ledger_xlsx"], own="led.module"),
         _i("bKash Payments", "bkash_payments", ["bkash_payments", "bkash_payments_csv", "bkash_payments_xlsx"], own="bkp.module"),
@@ -96,6 +101,7 @@ STRUCTURE = [
     _g("tickets", "Tickets", "ticket", module="tickets", items=[
         _i("All tickets", "tickets", ["tickets", "ticket_view"], none_of=["status", "mine"]),
         _i("Open", "tickets", args={"status": "open"}),
+        _i("My jobs", "jobs", ["jobs"]),
         _i("My tickets", "tickets", args={"mine": "1"}),
         _i("New ticket", "ticket_new"),
     ]),
@@ -182,6 +188,8 @@ def build():
             off = core.tiers_off()
             for it in grp["items"]:
                 if it.get("tier") in off:
+                    continue
+                if it.get("office") and seller:
                     continue
                 if it.get("allow"):
                     if not _allowed(it["allow"]):

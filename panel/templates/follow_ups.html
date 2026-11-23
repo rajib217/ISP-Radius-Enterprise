@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, pager %}
+{% block title %}Follow-ups{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Follow-ups</h1><p class="sub">Customers to call again, from the call notes on their page (Call Log tab).</p></div>
+</div>
+<div class="chips">
+  <a class="chip {{ 'on' if when == 'due' }}" href="{{ url_for('follow_ups', mine=request.args.get('mine')) }}">Due today &amp; late <b>{{ counts.due }}</b></a>
+  <a class="chip {{ 'on' if when == 'upcoming' }}" href="{{ url_for('follow_ups', when='upcoming', mine=request.args.get('mine')) }}">Coming up <b>{{ counts.upcoming }}</b></a>
+  <a class="chip {{ 'on' if request.args.get('mine') == '1' }}" href="{{ url_for('follow_ups', when=when, mine=(None if request.args.get('mine') == '1' else 1)) }}">Only mine</a>
+</div>
+<section class="panel">
+  {% if rows %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Customer</th><th>Call again</th><th>Last note</th><th class="hide-sm">Package</th><th></th></tr></thead>
+    <tbody>{% for r in rows %}<tr>
+      <td class="who-cell" data-card="title"><a href="{{ url_for('subscriber_view', sid=r.subscriber_id) }}#calls"><b>{{ r.full_name or r.username }}</b></a>
+        <small><span class="mono">{{ r.code }}</span> · {{ r.username }}{% if r.area %} · {{ r.area }}{% endif %}</small>
+        {% if r.phone %}<a class="btn sm" style="margin-top:4px" href="tel:{{ r.phone }}">{{ icon('phone') }}{{ r.phone }}</a>{% endif %}</td>
+      <td class="nowrap" data-card="key">{{ r.follow_up|d }}{% if r.late > 0 %}<small class="r" style="display:block">{{ r.late }} day{{ '' if r.late == 1 else 's' }} late</small>{% elif r.late == 0 %}<small class="g" style="display:block">today</small>{% endif %}</td>
+      <td data-card="key"><span class="badge plain mute">{{ outcomes.get(r.outcome, r.outcome) }}</span> {{ r.note or '' }}<small class="muted" style="display:block">{{ r.created_by }} · {{ r.created_at|ago }}</small></td>
+      <td class="hide-sm">{{ r.plan_label or '—' }}{% if r.expiry_date %}<small class="muted" style="display:block">expiry {{ r.expiry_date|d }}</small>{% endif %}</td>
+      <td class="act nowrap">
+        <a class="btn sm" href="{{ url_for('subscriber_view', sid=r.subscriber_id) }}#calls">{{ icon('note') }}Add note</a>
+        {% if can('subscribers', 'edit') %}<form method="post" action="{{ url_for('call_done', cid=r.id) }}" style="display:inline">{{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path }}"><button class="btn sm primary" type="submit">{{ icon('check') }}Done</button></form>{% endif %}
+      </td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {{ pager(pg, keep, 'follow_ups') }}
+  {% else %}<div class="empty"><h3>{{ 'Nothing due' if when == 'due' else 'Nothing coming up' }}</h3><p>On a customer's page, open <b>Call Log</b>, write what was said and pick a <b>Call again</b> date: it shows here on that day.</p></div>{% endif %}
+</section>
+{% endblock %}

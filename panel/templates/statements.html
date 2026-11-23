@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Monthly statement{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Monthly statement</h1><p class="sub">Balance, renewals and customers of each reseller, sub-reseller and retailer for {{ first.strftime('%B %Y') }}.</p></div>
+  <form class="actions" method="get">
+    <select name="month" aria-label="Month" onchange="this.form.submit()" style="width:auto">{% for m in months %}<option value="{{ m.strftime('%Y-%m') }}" {{ 'selected' if m == first }}>{{ m.strftime('%B %Y') }}</option>{% endfor %}</select>
+    {% if rows %}<a class="btn" href="{{ url_for('statements', month=first.strftime('%Y-%m'), csv=1) }}">{{ icon('download') }}CSV</a>{% endif %}
+  </form>
+</div>
+<section class="panel">
+  {% if rows %}
+  <div class="tbl-wrap"><table class="tbl stmt">
+    <thead><tr><th>Name</th><th class="num">Opening</th><th class="num">Added</th><th class="num">Used</th><th class="num">Closing</th><th class="num">Renewals</th><th class="num">Collected</th><th class="num">New</th><th class="num">Active</th></tr></thead>
+    <tbody>{% for r in rows %}<tr>
+      <td class="who-cell">{% if me.role not in ('reseller', 'subreseller', 'retailer') and can_fn('usr.view') %}<a href="{{ url_for('admin_view', aid=r.id) }}"><b>{{ r.name or r.username }}</b></a>{% else %}<b>{{ r.name or r.username }}</b>{% endif %}<small>{{ r.username }} · {{ r.role }}{% if r.parent %} · under {{ r.parent }}{% endif %}</small></td>
+      <td class="num">{{ r.opening|money }}</td>
+      <td class="num g">{{ '+' if r.added }}{{ r.added|money }}</td>
+      <td class="num r">{{ '−' if r.used }}{{ r.used|money }}</td>
+      <td class="num"><b>{{ r.closing|money }}</b></td>
+      <td class="num">{{ r.renewals }}</td>
+      <td class="num">{{ r.collected|money }}</td>
+      <td class="num">{{ r.new_c }}</td>
+      <td class="num">{{ r.active }}<small class="muted" style="display:block">of {{ r.subs }}</small></td>
+    </tr>{% endfor %}</tbody>
+    {% if rows|length > 1 %}<tfoot><tr><th>Total ({{ rows|length }})</th><th class="num">{{ tot.opening|money }}</th><th class="num">{{ tot.added|money }}</th><th class="num">{{ tot.used|money }}</th><th class="num">{{ tot.closing|money }}</th><th class="num">{{ tot.renewals }}</th><th class="num">{{ tot.collected|money }}</th><th class="num">{{ tot.new_c }}</th><th class="num">{{ tot.active }}</th></tr></tfoot>{% endif %}
+  </table></div>
+  <div class="panel-body muted">Added = balance given to them this month (top-ups). Used = balance spent on renewals and charges. Closing = balance at the end of the month (now, for the current month). Collected = payments they took from their customers.</div>
+  {% else %}<div class="empty"><h3>No resellers</h3><p>There are no resellers, sub-resellers or retailers to show.</p></div>{% endif %}
+</section>
+{% endblock %}

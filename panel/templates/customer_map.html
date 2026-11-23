@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Customer map{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Customer map</h1><p class="sub">{{ '{:,}'.format(placed) }} of {{ '{:,}'.format(total) }} customers have a location. Set it on a customer's page (Address Information &gt; Location).</p></div>
+</div>
+<section class="panel cmap-panel">
+  <div class="filters panel-body cmap-bar">
+    <div class="search">{{ icon('search') }}<input type="search" data-cmap-q placeholder="Name, username, ID or phone" aria-label="Find a customer"></div>
+    <select data-cmap-area aria-label="Area"><option value="">All areas</option>{% for a in areas %}<option>{{ a }}</option>{% endfor %}</select>
+    <div class="cmap-legend" role="group" aria-label="Show">
+      <label class="check"><input type="checkbox" data-cmap-s="online" checked><i class="dot s-online"></i>Online <b data-cmap-n="online">0</b></label>
+      <label class="check"><input type="checkbox" data-cmap-s="offline" checked><i class="dot s-offline"></i>Offline <b data-cmap-n="offline">0</b></label>
+      <label class="check"><input type="checkbox" data-cmap-s="expired" checked><i class="dot s-expired"></i>Expired <b data-cmap-n="expired">0</b></label>
+      <label class="check"><input type="checkbox" data-cmap-s="suspended" checked><i class="dot s-suspended"></i>Suspended <b data-cmap-n="suspended">0</b></label>
+    </div>
+  </div>
+  <div class="cmap" id="cmap" data-src="{{ url_for('customer_map_data') }}" data-centre="{{ centre|tojson }}" tabindex="0" aria-label="Map of customers">
+    <div class="cmap-zoom"><button type="button" class="btn icon" data-cmap-zoom="1" aria-label="Zoom in" title="Zoom in">+</button><button type="button" class="btn icon" data-cmap-zoom="-1" aria-label="Zoom out" title="Zoom out">−</button><button type="button" class="btn icon" data-cmap-fit aria-label="Show all" title="Show all">{{ icon('grid') }}</button></div>
+    <div class="cmap-attr">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</div>
+  </div>
+  {% if not placed %}<div class="panel-body muted">No customer has a location yet. Open a customer, then under <b>Address Information</b> press <b>Use my location</b> (standing at the connection) or paste a Google Maps link.</div>{% endif %}
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ asset('js/map.js') }}"></script>{% endblock %}

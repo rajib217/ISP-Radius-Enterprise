@@ -613,22 +613,9 @@ def acct_summary():
 # ===================================================================== dues
 @route("/dues", module="accounting")
 def dues():
-    where = ["s.status = 'active'", "s.expiry_date < CURDATE()"]
-    params = []
-    text = request.args.get("q", "").strip()
-    if text:
-        where.append("(s.username LIKE %s OR s.full_name LIKE %s OR s.phone LIKE %s)")
-        params += ["%" + text + "%"] * 3
-    if request.args.get("area"):
-        where.append("s.area = %s")
-        params.append(request.args["area"])
-    if request.args.get("plan", "").isdigit():
-        where.append("s.plan_id = %s")
-        params.append(int(request.args["plan"]))
-    names = core.my_downline()
-    if names is not None:
-        where.append("s.created_by IN " + _in(names))
-        params += list(names)
+    import mod_field
+    import mod_ops
+    where, params = mod_ops.dues_filter(request.args)      # the same filters choose who gets the reminder SMS
     cond = " WHERE " + " AND ".join(where)
     tot = q("SELECT COUNT(*) AS c, COALESCE(SUM(p.price), 0) AS amount FROM subscribers s "
             "LEFT JOIN plans p ON p.id = s.plan_id" + cond, params, one=True)
@@ -639,4 +626,10 @@ def dues():
              params + [pg["per"], pg["offset"]])
     plans = core.filter_plans(q("SELECT id, label FROM plans ORDER BY download_mbps, label"))
     keep = {k: v for k, v in request.args.items() if k != "page"}
-    return render_template("dues.html", rows=rows, tot=tot, pg=pg, plans=plans, areas=core.area_names(), keep=keep)
+    last = mod_field.last_calls([r["id"] for r in rows])
+    for r in rows:
+        r["code"] = core.sub_code(r["id"])
+        r["last_call"] = last.get(r["id"])
+    return render_template("dues.html", rows=rows, tot=tot, pg=pg, plans=plans, areas=core.area_names(), keep=keep,
+                           outcomes=dict(mod_field.OUTCOMES), can_remind=core.can("sms", "edit"),
+                           pay_ready=bool(mod_ops.pay_link(core.cfg(), 1)))

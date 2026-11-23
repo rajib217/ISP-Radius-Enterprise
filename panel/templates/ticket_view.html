@@ -14,7 +14,7 @@
     <section class="panel">
       <div class="panel-head"><h2>Conversation</h2></div>
       <div class="panel-body thread">
-        {% for r in replies %}<div class="msg {{ 'internal' if r.internal }}"><div class="meta"><b>{{ r.author }}</b><span>{{ r.created_at|dt }}</span>{% if r.internal %}<span class="badge warn">Internal note</span>{% endif %}</div><p>{{ r.body }}</p></div>
+        {% for r in replies %}<div class="msg {{ 'internal' if r.internal }}"><div class="meta"><b>{{ r.author }}</b><span>{{ r.created_at|dt }}</span>{% if r.internal %}<span class="badge warn">Internal note</span>{% endif %}</div><p>{{ r.body }}</p>{% if r.photo %}<a class="job-photo" href="{{ url_for('ticket_photo', name=r.photo) }}" target="_blank" rel="noopener"><img src="{{ url_for('ticket_photo', name=r.photo) }}" alt="Photo of the work" loading="lazy"></a>{% endif %}</div>
         {% else %}<div class="empty"><p>No messages yet.</p></div>{% endfor %}
       </div>
     </section>

@@ -62,7 +62,7 @@
     <div class="kpi"><div><small>Tickets</small><b>{{ x.open_tickets }}</b></div><i class="ki blue">{{ icon('ticket') }}</i></div>
   </div>
   <nav class="sv-tabs" aria-label="Sections">
-    {% for key, label, ic in [('profile','Profile','user'),('reports','Reports','chart'),('ledgers','Ledgers','file'),('invoices','Invoices','file'),('payments','Payments','card'),('online','Online Payments','wallet'),('messages','SMS Deliveries','phone'),('notifications','App Notifications','bell'),('services','Services','sliders'),('fees','Extra Service Fee','dollar'),('attributes','Attributes','grid'),('mac','MAC Address','server'),('documents','Documents','folder'),('logins','Login Log','shield'),('sessions','Session Log','activity'),('coa','CoA Logs','power'),('activity','Activities','chart'),('tickets','Tickets','ticket')] %}
+    {% for key, label, ic in [('profile','Profile','user'),('reports','Reports','chart'),('ledgers','Ledgers','file'),('invoices','Invoices','file'),('payments','Payments','card'),('online','Online Payments','wallet'),('messages','SMS Deliveries','phone'),('notifications','App Notifications','bell'),('services','Services','sliders'),('fees','Extra Service Fee','dollar'),('attributes','Attributes','grid'),('mac','MAC Address','server'),('documents','Documents','folder'),('logins','Login Log','shield'),('sessions','Session Log','activity'),('coa','CoA Logs','power'),('calls','Call Log','phone'),('activity','Activities','chart'),('tickets','Tickets','ticket')] %}
     {% if (key != 'documents' or (can('documents') and can_fn('sub.document'))) and (key != 'fees' or can_fn('sub.fee_view')) and (key != 'attributes' or can_fn('sub.attr_view')) %}{% if key != 'tickets' or can('tickets') %}<a href="#{{ key }}" data-tab="{{ key }}">{{ icon(ic) }}{{ label }}</a>{% endif %}{% endif %}
     {% endfor %}
   </nav>
@@ -149,7 +149,17 @@
     <div class="kvc-body">{% if sub.notes %}<p style="white-space:pre-wrap;margin:0">{{ sub.notes }}</p>{% else %}<p class="muted">Nothing added.</p>{% endif %}</div></section>
   <section class="panel kvc"><div class="panel-head"><h2>{{ icon('pin') }}Address Information</h2></div>
     <div class="kvc-body"><dl><dt>Address</dt><dd>{{ sub.address or '—' }}</dd><dt>Area</dt><dd>{{ sub.area or '—' }}</dd></dl>
-      {% if sub.address %}{% set mapq = (sub.address ~ ' ' ~ (sub.area or ''))|urlencode %}{% if app_cfg.gmap_on == '1' and app_cfg.gmap_key %}<iframe class="gmap" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Map" src="https://www.google.com/maps/embed/v1/place?key={{ app_cfg.gmap_key|urlencode }}&q={{ mapq }}"></iframe>{% endif %}<p style="margin:10px 0 0"><a href="https://www.google.com/maps/search/?api=1&query={{ mapq }}" target="_blank" rel="noopener">Open in Google Maps &rarr;</a></p>{% endif %}</div></section>
+      {% if sub.address %}{% set mapq = (sub.address ~ ' ' ~ (sub.area or ''))|urlencode %}{% if app_cfg.gmap_on == '1' and app_cfg.gmap_key %}<iframe class="gmap" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Map" src="https://www.google.com/maps/embed/v1/place?key={{ app_cfg.gmap_key|urlencode }}&q={{ mapq }}"></iframe>{% endif %}<p style="margin:10px 0 0"><a href="https://www.google.com/maps/search/?api=1&query={{ mapq }}" target="_blank" rel="noopener">Open in Google Maps &rarr;</a></p>{% endif %}
+      <div class="loc-box">
+        <dl><dt>Location</dt><dd>{% if sub.lat is not none and sub.lng is not none %}<span class="mono">{{ '%.6f' % sub.lat|float }}, {{ '%.6f' % sub.lng|float }}</span> · <a href="https://www.google.com/maps/dir/?api=1&destination={{ sub.lat }},{{ sub.lng }}" target="_blank" rel="noopener">Directions</a> · <a href="{{ url_for('customer_map') }}">Map</a>{% else %}<span class="muted">Not set</span>{% endif %}</dd></dl>
+        {% if can('subscribers', 'edit') %}<form class="loc-form" method="post" action="{{ url_for('location_save', sid=sub.id) }}">
+          {{ csrf_input() }}
+          <input name="where" data-loc-input placeholder="Paste a Google Maps link or 23.8103, 90.4125" aria-label="Location" value="">
+          <button type="button" class="btn sm" data-loc-here title="Use this phone's GPS, standing at the connection">{{ icon('pin') }}Use my location</button>
+          <button class="btn sm primary" type="submit">Save</button>
+          {% if sub.lat is not none %}<button class="btn sm" type="submit" name="remove" value="1" formnovalidate>Remove</button>{% endif %}
+        </form>{% endif %}
+      </div></div></section>
 </div>
 {% if online %}
 <section class="panel" style="margin-top:16px"><div class="panel-head"><h2>Live sessions</h2><span class="aside">{{ sessions|length }}</span></div>
@@ -272,6 +282,23 @@
 
 <div class="sv-pane" id="tab-coa" hidden><section class="panel"><div class="panel-head"><h2>Disconnect (CoA) requests</h2></div>
   {% if t.coa %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Router</th><th>Result</th><th>By</th><th>Message</th></tr></thead><tbody>{% for c in t.coa %}<tr><td class="nowrap">{{ c.created_at|dt }}</td><td class="mono">{{ c.nas_ip }}</td><td><span class="pill {{ 'ok' if c.ok else 'bad' }}">{{ 'Accepted' if c.ok else 'Failed' }}</span></td><td class="muted">{{ c.created_by }}</td><td class="muted">{{ c.message }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><p>No disconnect requests logged{% if app_cfg.coa_log != '1' %} (CoA Request Log is off in Settings &rsaquo; Software){% endif %}.</p></div>{% endif %}</section></div>
+
+<div class="sv-pane" id="tab-calls" hidden><section class="panel"><div class="panel-head"><h2>Call log</h2><a class="aside" href="{{ url_for('follow_ups') }}">Follow-ups</a></div>
+  {% if can('subscribers', 'edit') %}<form class="panel-body call-form" method="post" action="{{ url_for('call_add', sid=sub.id) }}">
+    {{ csrf_input() }}
+    <div class="field"><label class="lbl" for="cl-out">Outcome</label><select id="cl-out" name="outcome">{% for k, n in call_outcomes %}<option value="{{ k }}">{{ n }}</option>{% endfor %}</select></div>
+    <div class="field grow"><label class="lbl" for="cl-note">What was said</label><input id="cl-note" name="note" maxlength="500" placeholder="e.g. Will pay on the 10th, bKash"></div>
+    <div class="field"><label class="lbl" for="cl-fu">Call again on</label><input id="cl-fu" name="follow_up" type="date" min="{{ today.isoformat() }}"></div>
+    <div class="field"><label class="lbl">&nbsp;</label><button class="btn primary" type="submit">{{ icon('plus') }}Save</button></div>
+    {% if sub.phone %}<div class="field"><label class="lbl">&nbsp;</label><a class="btn" href="tel:{{ sub.phone }}">{{ icon('phone') }}Call {{ sub.phone }}</a></div>{% endif %}
+  </form>{% endif %}
+  {% if calls %}<ul class="list calls">{% for c in calls %}<li style="display:block">
+    <span class="badge plain mute">{{ dict(call_outcomes).get(c.outcome, c.outcome) }}</span> {{ c.note or '' }}
+    {% if c.follow_up %}<span class="badge {{ 'mute' if c.done else ('warn' if c.follow_up <= today else 'info') }}">Call again {{ c.follow_up|d }}{{ ' · done' if c.done }}</span>{% endif %}
+    <div class="muted">{{ c.created_by }} · {{ c.created_at|dt }}</div>
+    {% if c.follow_up and not c.done and can('subscribers', 'edit') %}<form method="post" action="{{ url_for('call_done', cid=c.id) }}" style="display:inline">{{ csrf_input() }}<input type="hidden" name="next" value="{{ url_for('subscriber_view', sid=sub.id) }}#calls"><button class="btn sm" type="submit">{{ icon('check') }}Done</button></form>{% endif %}
+  </li>{% endfor %}</ul>{% else %}<div class="empty"><p>No calls noted yet. Write what the customer said and when to call again: it shows under Subscribers &gt; Follow-ups on that day.</p></div>{% endif %}
+</section></div>
 
 <div class="sv-pane" id="tab-activity" hidden><section class="panel"><div class="panel-head"><h2>Activities</h2></div>
   {% if t.activity %}<ul class="list">{% for a in t.activity %}<li style="display:block"><b>{{ a.action|replace('_', ' ')|capitalize }}</b> <span class="muted">· {{ a.admin }}, {{ a.created_at|dt }}</span>{% if a.detail %}<div class="muted">{{ a.detail }}</div>{% endif %}</li>{% endfor %}</ul>{% else %}<div class="empty"><p>No activity recorded.</p></div>{% endif %}</section></div>

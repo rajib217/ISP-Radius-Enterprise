@@ -4,8 +4,8 @@ Everything that touches the database takes an open cursor, so callers decide whe
 """
 import re
 
-SYSTEM_TEMPLATE_NAMES = ("welcome", "payment", "expiry")
-VARIABLES = ("name", "username", "phone", "plan", "price", "expiry", "amount", "password", "isp")
+SYSTEM_TEMPLATE_NAMES = ("welcome", "payment", "expiry", "due")
+VARIABLES = ("name", "username", "phone", "plan", "price", "expiry", "amount", "password", "isp", "id", "paylink")
 
 DEFAULT_TEMPLATES = {
     ("sms", "welcome"): {"subject": "", "body":
@@ -14,6 +14,11 @@ DEFAULT_TEMPLATES = {
         "Dear {name}, we received BDT {amount}. Your {plan} package is valid until {expiry}. Thank you - {isp}"},
     ("sms", "expiry"): {"subject": "", "body":
         "Dear {name}, your internet expires on {expiry}. Please pay BDT {price} to stay connected. - {isp}"},
+    ("sms", "due"): {"subject": "", "body":
+        "Dear {name} ({id}), your internet ended on {expiry}. Please pay BDT {amount} to reconnect. {paylink} - {isp}"},
+    ("email", "due"): {"subject": "Your internet bill is due - {isp}", "body":
+        "Dear {name},\n\nYour {plan} package ended on {expiry}. Please pay BDT {amount} to reconnect.\n{paylink}\n\n"
+        "Thank you,\n{isp}"},
     ("email", "welcome"): {"subject": "Welcome to {isp}", "body":
         "Dear {name},\n\nYour internet connection is ready.\n\nUsername: {username}\nPassword: {password}\n"
         "Package: {plan}\nValid until: {expiry}\n\nThank you,\n{isp}"},

@@ -2078,6 +2078,110 @@ def check_rules(flask_app, ids):
     _atop = adm.get("/subscribers").get_data(as_text=True)
     check('class="bal-box' in _rtop and ("{:,.2f}".format(_bal)) in _rtop and 'class="bal-box' not in _atop,
           "top bar: a reseller's balance in its own box on every page; not for office users")
+    # ---- field work and owner tools (mod_field.py, mod_ops.py, dailyreport.py)
+    import datetime as _dt
+    import io as _fio
+    _rc2 = client(ids["reseller"])
+    _rsub = one("SELECT id, username FROM subscribers WHERE created_by = %s ORDER BY id LIMIT 1", (_rname,))
+    _asub = one("SELECT id, username FROM subscribers WHERE created_by = %s ORDER BY id LIMIT 1", (_adm_name,))
+    _today = _dt.date.today()
+    # call log + follow-ups
+    _c1 = _rc2.post("/subscribers/%d/calls" % _rsub["id"], data={"_csrf": "ci", "outcome": "promised", "note": "ci-will-pay-10th",
+                                                                 "follow_up": _today.isoformat()}).status_code
+    _cpast = _rc2.post("/subscribers/%d/calls" % _rsub["id"], data={"_csrf": "ci", "outcome": "called", "note": "x",
+                                                                    "follow_up": (_today - _dt.timedelta(days=2)).isoformat()})
+    _cn = one("SELECT COUNT(*) AS c FROM sub_calls WHERE subscriber_id = %s", (_rsub["id"],))["c"]
+    _cforeign = _rc2.post("/subscribers/%d/calls" % _asub["id"], data={"_csrf": "ci", "outcome": "called", "note": "ci-foreign"}).status_code
+    adm.post("/subscribers/%d/calls" % _asub["id"], data={"_csrf": "ci", "outcome": "no_answer", "note": "ci-admin-call",
+                                                          "follow_up": _today.isoformat()})
+    _fu_r = _rc2.get("/follow-ups").get_data(as_text=True)
+    _fu_a = adm.get("/follow-ups").get_data(as_text=True)
+    _sv = adm.get("/subscribers/%d" % _rsub["id"]).get_data(as_text=True)
+    _cid = one("SELECT id FROM sub_calls WHERE subscriber_id = %s AND done = 0", (_rsub["id"],))["id"]
+    _cid_a = one("SELECT id FROM sub_calls WHERE subscriber_id = %s AND done = 0", (_asub["id"],))["id"]
+    _cdone_foreign = _rc2.post("/calls/%d/done" % _cid_a, data={"_csrf": "ci"}).status_code
+    _rc2.post("/calls/%d/done" % _cid, data={"_csrf": "ci"})
+    _cdone = one("SELECT done FROM sub_calls WHERE id = %s", (_cid,))["done"]
+    check(_c1 == 302 and _cn == 1 and _cforeign == 403 and "ci-will-pay-10th" in _fu_r and "ci-admin-call" not in _fu_r
+          and "ci-will-pay-10th" in _fu_a and "ci-admin-call" in _fu_a and 'id="tab-calls"' in _sv and "ci-will-pay-10th" in _sv
+          and _cdone_foreign == 403 and _cdone == 1,
+          "call log: notes with a call-again date show under Follow-ups (sellers: their own customers only), past dates refused, Done clears it")
+    # location + customer map
+    _l1 = adm.post("/subscribers/%d/location" % _rsub["id"], data={"_csrf": "ci", "where": "https://www.google.com/maps/@23.810331,90.412521,17z"}).status_code
+    _lrow = one("SELECT lat, lng FROM subscribers WHERE id = %s", (_rsub["id"],))
+    adm.post("/subscribers/%d/location" % _asub["id"], data={"_csrf": "ci", "where": "23.7, 90.35"})
+    _lbad = adm.post("/subscribers/%d/location" % _asub["id"], data={"_csrf": "ci", "where": "near the mosque"})
+    _arow = one("SELECT lat FROM subscribers WHERE id = %s", (_asub["id"],))
+    _md_a = json.loads(adm.get("/map/data").get_data(as_text=True))
+    _md_r = json.loads(_rc2.get("/map/data").get_data(as_text=True))
+    _mp = adm.get("/map").get_data(as_text=True)
+    adm.post("/subscribers/%d/location" % _asub["id"], data={"_csrf": "ci", "remove": "1"})
+    _gone = one("SELECT lat FROM subscribers WHERE id = %s", (_asub["id"],))["lat"]
+    check(_l1 == 302 and abs(float(_lrow["lat"]) - 23.810331) < 1e-6 and abs(float(_lrow["lng"]) - 90.412521) < 1e-6
+          and abs(float(_arow["lat"]) - 23.7) < 1e-6 and {p["id"] for p in _md_a} >= {_rsub["id"], _asub["id"]}
+          and _asub["id"] not in {p["id"] for p in _md_r} and _rsub["id"] in {p["id"] for p in _md_r}
+          and all(p["s"] in ("online", "offline", "expired", "suspended") for p in _md_a)
+          and 'id="cmap"' in _mp and "js/map.js" in _mp and _gone is None,
+          "customer location: a Google Maps link or 'lat, lng' sets it, other text is refused; the map shows only the seller's own customers")
+    # daily report (page + the Telegram text use the same numbers)
+    run("INSERT INTO payments (username, amount, method, note, received_by, paid_at, days_added) VALUES ('ci-x', 321, 'bkash', 'ci-daily', %s, NOW(), 30)", (_adm_name,))
+    _dr = adm.get("/reports/daily").get_data(as_text=True)
+    _dr_y = adm.get("/reports/daily?day=%s" % (_today - _dt.timedelta(days=1)).isoformat()).status_code
+    _dr_r = _rc2.get("/reports/daily").status_code
+    import dailyreport as _drm
+    _conn = db.connect()
+    with _conn.cursor() as _cur:
+        _d = _drm.build(_cur, _today)
+        _txt = _drm.text(_d, "CI ISP", "BDT")
+    _conn.close()
+    check("Daily report" in _dr and "Bkash" in _dr and _dr_y == 200 and _dr_r == 403 and _d["pay"]["total"] >= 321
+          and _d["pay"]["renewals"] >= 1 and "CI ISP daily report" in _txt and "Collected" in _txt,
+          "daily report: today's money by method and person, dues, tickets and follow-ups; office only; the Telegram text matches")
+    # monthly statement of sellers
+    _st = adm.get("/statements").get_data(as_text=True)
+    _st_csv = adm.get("/statements?csv=1")
+    _st_r = _rc2.get("/statements").get_data(as_text=True)
+    _st_old = adm.get("/statements?month=2020-01").status_code
+    check(_rname in _st and "Monthly statement" in _st and _st_csv.status_code == 200 and _st_csv.mimetype == "text/csv"
+          and _rname in _st_csv.get_data(as_text=True) and _rname in _st_r and _st_old == 200,
+          "monthly statement: each reseller's balance added / used / closing, renewals and customers; CSV; sellers see their own")
+    # technician jobs
+
+    run("INSERT INTO tickets (subscriber_id, username, subject, category, priority, status, assigned_to, created_by) "
+        "VALUES (%s, %s, 'ci-job-fiber', 'connection', 'urgent', 'open', %s, 'admin')", (_rsub["id"], _rsub["username"], ids["admin"]))
+    _tid = one("SELECT id FROM tickets WHERE subject = 'ci-job-fiber'")["id"]
+    _jb = adm.get("/jobs").get_data(as_text=True)
+    _js = adm.post("/jobs/%d/start" % _tid, data={"_csrf": "ci"}).status_code
+    _jst = one("SELECT status FROM tickets WHERE id = %s", (_tid,))["status"]
+    _jr = _rc2.post("/jobs/%d/done" % _tid, data={"_csrf": "ci", "note": "not mine"}).status_code
+    _jshort = adm.post("/jobs/%d/done" % _tid, data={"_csrf": "ci", "note": ""})
+    _png = b"\x89PNG\r\n\x1a\n" + b"\0" * 64
+    _jd = adm.post("/jobs/%d/done" % _tid, data={"_csrf": "ci", "note": "Fiber re-spliced, online",
+                                                 "photo": (_fio.BytesIO(_png), "w.png")}, content_type="multipart/form-data").status_code
+    _jrow = one("SELECT status, closed_at FROM tickets WHERE id = %s", (_tid,))
+    _jph = one("SELECT photo FROM ticket_replies WHERE ticket_id = %s AND photo <> ''", (_tid,))
+    _jimg = adm.get("/tickets/photo/%s" % _jph["photo"]) if _jph else None
+    _jimg_ok = bool(_jimg) and _jimg.status_code == 200 and _jimg.data == _png
+    if _jimg:
+        _jimg.close()
+    _tv = adm.get("/tickets/%d" % _tid).get_data(as_text=True)
+    check("ci-job-fiber" in _jb and "tel:" in _jb and "Directions" in _jb and _js == 302 and _jst == "pending" and _jr == 403
+          and _jrow["status"] == "resolved" and _jrow["closed_at"] and _jimg_ok and "/tickets/photo/" in _tv
+          and adm.get("/tickets/photo/../../etc").status_code == 404,
+          "technician jobs: my tickets with call / directions; Start, then Done with a note and a photo (shown on the ticket); not someone else's")
+    # dues: reminder SMS to the ticked customers, once a day each
+    run("UPDATE subscribers SET expiry_date = CURDATE() - INTERVAL 5 DAY, status = 'active', phone = '01711999888', sms_on = 1 WHERE id = %s", (_rsub["id"],))
+    _du = adm.get("/dues?over=4-7").get_data(as_text=True)
+    _o0 = one("SELECT COUNT(*) AS c FROM outbox WHERE subscriber_id = %s", (_rsub["id"],))["c"]
+    _dr1 = adm.post("/dues/remind", data={"_csrf": "ci", "ids": [str(_rsub["id"])]}).status_code
+    _o1 = one("SELECT COUNT(*) AS c FROM outbox WHERE subscriber_id = %s", (_rsub["id"],))["c"]
+    adm.post("/dues/remind", data={"_csrf": "ci", "ids": [str(_rsub["id"])]})
+    _o2 = one("SELECT COUNT(*) AS c FROM outbox WHERE subscriber_id = %s", (_rsub["id"],))["c"]
+    _ob = one("SELECT body FROM outbox WHERE subscriber_id = %s ORDER BY id DESC LIMIT 1", (_rsub["id"],))["body"]
+    _dr_res = _rc2.post("/dues/remind", data={"_csrf": "ci", "ids": [str(_rsub["id"])]}).status_code
+    check("data-dues-id" in _du and ('value="%d"' % _rsub["id"]) in _du and "Last call" in _du and _dr1 == 302
+          and _o1 == _o0 + 1 and _o2 == _o1 and ("%02d)" % _rsub["id"]) in _ob and "  " not in _ob and _dr_res == 403,
+          "dues: tick customers (or everyone shown) and send the due reminder SMS with their ID; at most one a day each")
     run("DELETE FROM role_funcs WHERE role IN ('support', 'technician')")
     run("DELETE FROM role_perms WHERE role IN ('support', 'technician')")
     for r in _snap_f:

@@ -986,7 +986,8 @@ def subscriber_view(sid):
                            doc_categories=mod_documents.CATEGORIES, doc_upload_on=cfg().get("doc_upload") == "1",
                            open_renew=bool(request.args.get("renew")),
                            renew_amount=mod_policy.fee_total(mod_policy.seller_price(sub) or sub["price"], sub["plan_id"]),
-                           charge=mod_subs.charge_info(sub))
+                           charge=mod_subs.charge_info(sub), calls=mod_field.calls_for(sid),
+                           call_outcomes=mod_field.OUTCOMES, today=date.today())
 
 
 @app.route("/subscribers/<int:sid>/renew", methods=["POST"])
@@ -1707,6 +1708,8 @@ import mod_btrc  # noqa: E402,F401
 import mod_noc  # noqa: E402,F401
 import mod_expired  # noqa: E402,F401
 import mod_pwa  # noqa: E402,F401
+import mod_field  # noqa: E402,F401
+import mod_ops  # noqa: E402,F401
 
 core.attach(app)
 

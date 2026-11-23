@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Daily report{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Daily report</h1><p class="sub">{{ d.day.strftime('%A, %d %B %Y') }}{{ ' · today so far' if is_today }}. The Telegram morning message (Settings &gt; Alerts) sends yesterday's report.</p></div>
+  <form class="actions" method="get">
+    <a class="btn icon" href="{{ url_for('daily_report', day=prev.isoformat()) }}" aria-label="Day before" title="Day before">‹</a>
+    <input type="date" name="day" value="{{ d.day.isoformat() }}" aria-label="Day" style="width:auto" onchange="this.form.submit()">
+    {% if next %}<a class="btn icon" href="{{ url_for('daily_report', day=next.isoformat()) }}" aria-label="Next day" title="Next day">›</a>{% endif %}
+    {% if not is_today %}<a class="btn" href="{{ url_for('daily_report') }}">Today</a>{% endif %}
+  </form>
+</div>
+
+<section class="kpis" style="margin-top:0">
+  <div class="kpi"><span class="k">Collected</span><span class="v">{{ d.pay.total|money }}</span><span class="s">{{ currency }} · {{ d.pay.n }} payment{{ '' if d.pay.n == 1 else 's' }} · {{ d.pay.renewals }} renewal{{ '' if d.pay.renewals == 1 else 's' }}</span></div>
+  <div class="kpi"><span class="k">Expenses</span><span class="v">{{ d.spent|money }}</span><span class="s">other income {{ d.other_in|money }}</span></div>
+  <div class="kpi"><span class="k">Net for the day</span><span class="v {{ 'g' if d.net >= 0 else 'r' }}">{{ d.net|money }}</span><span class="s">{{ currency }}</span></div>
+  <div class="kpi"><span class="k">New customers</span><span class="v">{{ d.subs.new_c }}</span><span class="s">{{ '{:,}'.format(d.subs.total) }} in all · {{ '{:,}'.format(d.online) }} online now</span></div>
+</section>
+
+<div class="split-even" style="margin-top:16px">
+  <section class="panel"><div class="panel-head"><h2>{{ icon('wallet') }}Collected by method</h2></div>
+    {% if d.by_method %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Method</th><th class="num">Payments</th><th class="num">Amount</th></tr></thead><tbody>
+      {% for r in d.by_method %}<tr><td>{{ r.method|capitalize }}</td><td class="num">{{ r.n }}</td><td class="num">{{ r.total|money }}</td></tr>{% endfor %}
+    </tbody></table></div>{% else %}<div class="empty"><p>No payments this day.</p></div>{% endif %}</section>
+  <section class="panel"><div class="panel-head"><h2>{{ icon('users') }}Collected by person</h2></div>
+    {% if d.by_person %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Received by</th><th class="num">Payments</th><th class="num">Amount</th></tr></thead><tbody>
+      {% for r in d.by_person %}<tr><td>{{ r.who }}</td><td class="num">{{ r.n }}</td><td class="num">{{ r.total|money }}</td></tr>{% endfor %}
+    </tbody></table></div>{% else %}<div class="empty"><p>No payments this day.</p></div>{% endif %}</section>
+</div>
+
+<div class="split-even" style="margin-top:16px">
+  <section class="panel kvc"><div class="panel-head"><h2>{{ icon('alert') }}Money to collect (now)</h2><a class="aside" href="{{ url_for('dues') }}">Dues</a></div>
+    <div class="kvc-body"><dl>
+      <dt>Unpaid (expired)</dt><dd><b class="r">{{ '{:,}'.format(d.subs.dues_n) }}</b> customers · {{ currency }} {{ d.subs.dues_amount|money }}</dd>
+      <dt>Expiring today</dt><dd>{{ d.subs.exp_today }}</dd>
+      <dt>Expiring tomorrow</dt><dd>{{ d.subs.exp_tomorrow }}</dd>
+      <dt>In 2-3 days</dt><dd>{{ d.subs.exp_3 }}</dd>
+    </dl></div></section>
+  <section class="panel kvc"><div class="panel-head"><h2>{{ icon('ticket') }}Work</h2></div>
+    <div class="kvc-body"><dl>
+      <dt>Tickets opened</dt><dd>{{ d.tickets.opened }}</dd>
+      <dt>Tickets closed</dt><dd>{{ d.tickets.closed }}</dd>
+      <dt>Still open (now)</dt><dd>{% if can('tickets') %}<a href="{{ url_for('tickets', status='open') }}">{{ d.tickets.open_now }}</a>{% else %}{{ d.tickets.open_now }}{% endif %}</dd>
+      <dt>Calls noted</dt><dd>{{ d.calls.logged }}</dd>
+      <dt>Follow-ups due (now)</dt><dd><a href="{{ url_for('follow_ups') }}">{{ d.calls.due }}</a></dd>
+    </dl></div></section>
+</div>
+{% endblock %}

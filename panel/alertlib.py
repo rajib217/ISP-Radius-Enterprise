@@ -167,6 +167,13 @@ def run(conn, cur, s):
     # ---- morning summary, once a day
     today = date.today().isoformat()
     if s.get("al_daily") == "1" and datetime.now().hour >= int(_num(s, "al_daily_hour", 8)) and state.get("daily") != today:
+        try:                          # the full owner's report for yesterday (Accounting > Daily report shows the same)
+            import dailyreport
+            msgs.append("☀️ " + dailyreport.text(dailyreport.build(cur, dailyreport.yesterday()), name, s.get("currency", "")))
+            state["daily"] = today
+        except Exception as exc:      # fall back to the short summary below
+            print("daily report failed: %s" % exc)
+    if s.get("al_daily") == "1" and datetime.now().hour >= int(_num(s, "al_daily_hour", 8)) and state.get("daily") != today:
         cur.execute("SELECT SUM(expiry_date = CURDATE()) AS t0, SUM(expiry_date = CURDATE() + INTERVAL 1 DAY) AS t1, "
                     "SUM(expiry_date BETWEEN CURDATE() + INTERVAL 2 DAY AND CURDATE() + INTERVAL 3 DAY) AS t3, "
                     "SUM(DATE(created_at) = CURDATE() - INTERVAL 1 DAY) AS newc, COUNT(*) AS total FROM subscribers")

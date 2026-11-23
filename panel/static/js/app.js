@@ -760,3 +760,24 @@
     });
   }, { passive: true });
 })();
+
+/* subscriber page > Address Information > Location: "Use my location" fills the box from this phone's GPS
+   (the technician standing at the connection); the person still presses Save */
+(function () {
+  document.querySelectorAll("[data-loc-here]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var box = b.form && b.form.querySelector("[data-loc-input]");
+      if (!box) return;
+      if (!navigator.geolocation) { (window.panelAlert || alert)("This browser cannot read the location."); return; }
+      var label = b.innerHTML; b.disabled = true; b.textContent = "Finding…";
+      navigator.geolocation.getCurrentPosition(function (p) {
+        box.value = p.coords.latitude.toFixed(6) + ", " + p.coords.longitude.toFixed(6);
+        b.disabled = false; b.innerHTML = label; box.focus();
+      }, function (err) {
+        b.disabled = false; b.innerHTML = label;
+        (window.panelAlert || alert)(err && err.code === 1 ? "Location permission was refused. Allow location for this site in the browser, or paste a Google Maps link."
+          : "Could not read the location (" + (err && err.message || "no GPS signal") + "). Try again outside, or paste a Google Maps link.");
+      }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+    });
+  });
+})();

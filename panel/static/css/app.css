@@ -2221,3 +2221,60 @@ img.av.img, img.lav.img { object-fit: cover; padding: 0; background: var(--surfa
 .bal-box.low b { color: var(--offline-text); }
 @media (max-width: 767px) { .bal-box { height: 36px; padding-right: 10px; gap: 7px; } .bal-box small { display: none; } .bal-box b { font-size: 15px; } .bal-box .bal-ic { width: 26px; height: 26px; } }
 @media print { .bal-box { display: none !important; } }
+
+/* ===================================================================== field work: call log, location, map, jobs */
+.call-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; border-bottom: 1px solid var(--border); }
+.call-form .field { margin: 0; }
+.call-form .field.grow { flex: 1 1 260px; }
+.call-form select, .call-form input[type="date"] { width: auto; }
+.list.calls li { padding: 10px 16px; }
+.list.calls .badge { margin-right: 4px; }
+.list.calls form { margin-top: 6px; }
+.loc-box { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border); }
+.loc-form { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.loc-form input { flex: 1 1 240px; min-width: 0; }
+
+/* customer map */
+.cmap-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.cmap-legend { display: flex; flex-wrap: wrap; gap: 12px; }
+.cmap-legend .check { display: inline-flex; align-items: center; gap: 6px; margin: 0; white-space: nowrap; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+.cmap { position: relative; height: min(72vh, 720px); min-height: 380px; overflow: hidden; touch-action: none; cursor: grab;
+  background: repeating-linear-gradient(0deg, transparent 0 63px, var(--border) 63px 64px), repeating-linear-gradient(90deg, transparent 0 63px, var(--border) 63px 64px), var(--surface-2);
+  border-top: 1px solid var(--border); outline: none; user-select: none; }
+.cmap:active { cursor: grabbing; }
+.cmap-tiles, .cmap-dots { position: absolute; inset: 0; }
+.cmap-tiles img { position: absolute; left: 0; top: 0; width: 256px; height: 256px; max-width: none; }
+:root[data-theme="dark"] .cmap-tiles img { filter: brightness(.78) contrast(1.05) saturate(.85); }
+.cmap-dot { position: absolute; left: -7px; top: -7px; width: 14px; height: 14px; padding: 0; border-radius: 50%; border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / .45); cursor: pointer; }
+.cmap-dot:hover, .cmap-dot:focus-visible { z-index: 2; outline: 3px solid color-mix(in srgb, var(--accent) 50%, transparent); }
+.s-online { background: #10B981; } .s-offline { background: #94A3B8; } .s-expired { background: #EF4444; } .s-suspended { background: #F59E0B; }
+.cmap-zoom { position: absolute; z-index: 5; right: 12px; top: 12px; display: grid; gap: 6px; }
+.cmap-zoom .btn { width: 36px; height: 36px; font-size: 20px; font-weight: 700; background: var(--surface); box-shadow: var(--shadow-pop); }
+.cmap-attr { position: absolute; z-index: 5; right: 0; bottom: 0; padding: 2px 8px; font-size: 11px; background: color-mix(in srgb, var(--surface) 85%, transparent); color: var(--text-muted); }
+.cmap-card { position: absolute; z-index: 6; left: 0; top: 0; width: 240px; margin: -12px 0 0 -120px; translate: 0 -100%; display: grid; gap: 4px;
+  padding: 12px 14px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-pop); cursor: auto; }
+.cmap-card small { color: var(--text-muted); }
+.cmap-card .cmap-x { position: absolute; right: 6px; top: 4px; border: 0; background: none; font-size: 20px; line-height: 1; color: var(--text-muted); cursor: pointer; }
+.cmap-st { justify-self: start; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 99px; color: #fff; }
+.cmap-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+
+/* technician jobs */
+.jobs { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+.job { padding: 14px 16px; display: grid; gap: 8px; border-left: 4px solid var(--border); }
+.job.pri-b-urgent { border-left-color: #EF4444; } .job.pri-b-high { border-left-color: #F59E0B; } .job.pri-b-normal { border-left-color: var(--accent); }
+.job-head { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; }
+.job-title { font-weight: 700; color: var(--text); }
+.job-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: var(--text-sm); }
+.job-who .i { width: 14px; height: 14px; vertical-align: -2px; }
+.job-note { margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); font-size: var(--text-sm); white-space: pre-wrap; }
+.job-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.job-acts form { margin: 0; }
+.job-photo img { display: block; max-width: min(320px, 100%); margin-top: 8px; border-radius: 8px; border: 1px solid var(--border); }
+@media (max-width: 767px) { .jobs { grid-template-columns: 1fr; } .job-acts .btn { flex: 1 1 auto; justify-content: center; } }
+
+/* dues reminder, monthly statement */
+.dues-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding-top: 10px; padding-bottom: 10px; }
+.tbl th.chk, .tbl td.chk { width: 36px; padding-right: 0; }
+.tbl.stmt tfoot th { border-top: 2px solid var(--border); }
