@@ -478,7 +478,9 @@
     var cb = $("#compactBtn");
     var setCompact = function (on) { tbl.classList.toggle("compact", on); cb.setAttribute("aria-pressed", on ? "true" : "false"); store("subs.compact", on ? "1" : "0"); };
     if (cb) { cb.addEventListener("click", function () { setCompact(!tbl.classList.contains("compact")); }); var sc = store("subs.compact"); if (sc === "1") setCompact(true); else if (sc === "0") setCompact(false); else if (tbl.classList.contains("compact")) cb.setAttribute("aria-pressed", "true"); }
-    var hidden = ["area", "phone", "mac"]; try { var sv = store("subs.hidden"); if (sv) hidden = JSON.parse(sv); } catch (e) {}
+    var hidden = ["area", "phone"]; try { var sv = store("subs.hidden"); if (sv) hidden = JSON.parse(sv); } catch (e) {}
+    /* IP / MAC is shown by default now: once, take it off a list saved while it was hidden by default */
+    if (store("subs.ipmac") !== "1") { hidden = hidden.filter(function (k) { return k !== "mac"; }); store("subs.hidden", JSON.stringify(hidden)); store("subs.ipmac", "1"); }
     var applyCols = function () {
       $$("[data-c]", tbl).forEach(function (c) { c.classList.toggle("col-off", hidden.indexOf(c.dataset.c) >= 0); });
       $$("[data-col]").forEach(function (i) { i.checked = hidden.indexOf(i.dataset.col) < 0; });

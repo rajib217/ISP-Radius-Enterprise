@@ -497,7 +497,10 @@ form.inline { display: inline; }
 @media print { .toolbtns, .bulkbar, .seg, .pager, .sidebar, .topbar { display: none !important; } }
 
 .listbar .pager .info { display: none; }
-.subs td, .subs th { padding-left: 9px; padding-right: 9px; }
+/* the subscriber list is wide: tighter cells (".tbl td" further down would win over a plain ".subs td") */
+.tbl.subs td, .tbl.subs th { padding-left: 8px; padding-right: 8px; }
+.tbl.subs:not(.compact) td { padding-top: 8px; padding-bottom: 8px; }
+.subs .ipmac span, .subs .ipmac small { line-height: 1.2; }        /* IP, then the MAC under it */
 .subs .who-cell { min-width: 150px; }
 
 /* Package form */
