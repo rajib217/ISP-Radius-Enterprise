@@ -257,9 +257,13 @@
   var MENU_WAIT = 5000;
   var hoverMenu = window.matchMedia && matchMedia("(hover: hover) and (pointer: fine) and (min-width: 768px)");
   var railWidth = window.matchMedia && matchMedia("(max-width: 1023px)");
-  function desktop() {          /* hover mode: a mouse, and the menu shows icons only */
-    return !!(hoverMenu && hoverMenu.matches) &&
+  var wideScreen = window.matchMedia && matchMedia("(min-width: 768px)");
+  function rail() {             /* the menu shows icons only and groups open as flyouts (mouse or touch) */
+    return !!(wideScreen && wideScreen.matches) &&
       (document.documentElement.classList.contains("side-off") || !!(railWidth && railWidth.matches));
+  }
+  function desktop() {          /* hover mode: a mouse, and the menu shows icons only */
+    return !!(hoverMenu && hoverMenu.matches) && rail();
   }
   var groups = $$(".nav-group");
   groups.forEach(function (d) { d.dataset.wasOpen = d.open ? "1" : ""; });   /* the server's choice (current group) */
@@ -272,15 +276,22 @@
     var r = sub.getBoundingClientRect(), over = r.bottom - (window.innerHeight - 8);
     if (over > 0) sub.style.top = -Math.min(over, Math.max(r.top - 8, 0)) + "px";
   }
-  function applyMode() {        /* entering hover mode: all closed; leaving it: the current group open again */
-    var hover = desktop();
-    document.documentElement.classList.toggle("hover-menu", hover);
-    groups.forEach(function (d) { d.open = hover ? false : d.dataset.wasOpen === "1"; });
+  function applyMode() {        /* icons-only menu: all closed (a flyout would cover the page); full menu: current group open */
+    document.documentElement.classList.toggle("hover-menu", desktop());
+    var closed = rail();
+    groups.forEach(function (d) { d.open = closed ? false : d.dataset.wasOpen === "1"; });
   }
   applyMode();
   document.documentElement.classList.add("menu-ready");
   $$("[data-side-toggle]").forEach(function (b) { b.addEventListener("click", function () { setTimeout(applyMode, 0); }); });
   if (railWidth && railWidth.addEventListener) railWidth.addEventListener("change", applyMode);
+  if (wideScreen && wideScreen.addEventListener) wideScreen.addEventListener("change", applyMode);
+  /* icons-only menu on a touch screen (a phone in desktop view): a tap anywhere outside the open flyout closes it */
+  document.addEventListener("pointerdown", function (e) {
+    if (!rail() || desktop()) return;
+    var inGroup = e.target.closest && e.target.closest(".nav-group");
+    groups.forEach(function (o) { if (o.open && o !== inGroup) o.open = false; });
+  });
   groups.forEach(function (d) {
     var timer = null, intent = null;
     function stop() { if (timer) { clearTimeout(timer); timer = null; } }
@@ -299,7 +310,7 @@
     d.addEventListener("toggle", function () {
       if (!d.open) { stop(); return; }
       placeSub(d);
-      if (desktop()) closeOthers(d);
+      if (rail()) closeOthers(d);          /* icons only: one flyout at a time, mouse or touch */
       else groups.forEach(function (o) { if (o !== d && o.open && !$(".on", o)) o.open = false; });
     });
   });

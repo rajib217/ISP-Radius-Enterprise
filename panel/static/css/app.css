@@ -1472,7 +1472,9 @@ html.side-off .nav-link, html.side-off .nav-group > summary, html.side-off .nav-
 html.side-off .nav-link > span, html.side-off .nav-group > summary > span, html.side-off .nav-group > summary > .i:last-child, html.side-off .nav-logout button > span { display: none; }
 html.side-off .nav-group { position: relative; }
 html.side-off .nav-sub { display: none; position: absolute; left: calc(100% + 8px); top: 0; z-index: 80; min-width: 220px; max-height: min(70vh, 560px); overflow-y: auto; margin: 0; padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-pop); }
-html.side-off .nav-group:hover .nav-sub, html.side-off .nav-group:focus-within .nav-sub, html.side-off .nav-group[open] .nav-sub { display: grid; }
+html.side-off .nav-group[open] .nav-sub { display: grid; }
+/* hover / focus opens a flyout only with a mouse: on a touch screen (a phone in desktop view) both stick after a tap */
+@media (hover: hover) { html.side-off .nav-group:hover .nav-sub, html.side-off .nav-group:focus-within .nav-sub { display: grid; } }
 html.side-off .nav-sub a { color: var(--text); padding: 8px 10px; }
 html.side-off .nav-sub a:hover, html.side-off .nav-sub a.on { background: var(--accent-soft); color: var(--text); }
 html.side-off .side-foot .links button > span, html.side-off .side-foot .who > span:last-child { display: none; }
@@ -1487,7 +1489,8 @@ html.side-off .side-foot .who { justify-content: center; }
   .nav-link > span, .nav-group > summary > span, .nav-group > summary > .i:last-child, .nav-logout button > span { display: none; }
   .nav-group { position: relative; }
   .nav-sub { display: none; position: absolute; left: calc(100% + 8px); top: 0; z-index: 80; min-width: 220px; max-height: min(70vh, 560px); overflow-y: auto; margin: 0; padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-pop); }
-  .nav-group:hover .nav-sub, .nav-group:focus-within .nav-sub, .nav-group[open] .nav-sub { display: grid; }
+  .nav-group[open] .nav-sub { display: grid; }
+  @media (hover: hover) { .nav-group:hover .nav-sub, .nav-group:focus-within .nav-sub { display: grid; } }
   .nav-sub a { color: var(--text); padding: 8px 10px; }
   .nav-sub a:hover, .nav-sub a.on { background: var(--accent-soft); color: var(--text); }
   .side-foot .links button > span, .side-foot .who > span:last-child { display: none; }
