@@ -111,8 +111,29 @@ def tech_text(admin_id):
     return {"tech": a["full_name"] or a["username"], "techphone": ("(%s)" % a["phone"]) if a["phone"] else ""}
 
 
+def job_alert(tid, admin_id):
+    """Phone notification (staff app) to the person a ticket was just given to; not when they took it themselves."""
+    me = getattr(g, "me", None)
+    if not admin_id or (me and me["id"] == admin_id):
+        return 0
+    r = q("SELECT t.id, t.subject, t.priority, t.category, s.full_name, s.username, s.area, s.address, a.role FROM tickets t "
+          "LEFT JOIN subscribers s ON s.id = t.subscriber_id JOIN panel_admins a ON a.id = %s WHERE t.id = %s",
+          (admin_id, tid), one=True)
+    if not r:
+        return 0
+    import staffpush
+    where = ", ".join(v for v in ((r["address"] or "")[:60], r["area"]) if v)
+    body = " · ".join(v for v in ((r["full_name"] or r["username"] or ""), where, ALL_CATEGORIES.get(r["category"], "")) if v)
+    urgent = r["priority"] in ("urgent", "high")
+    title = "%sNew job #%d: %s" % ("URGENT · " if r["priority"] == "urgent" else "", tid, r["subject"][:70])
+    with get_db().cursor() as cur:
+        return staffpush.queue(cur, admin_id, title, body, "/jobs" if r["role"] == "technician" else "/tickets/%d" % tid,
+                               key="job:%d:%d" % (tid, admin_id), urgent=urgent)
+
+
 def assigned(t, admin_id):
-    """After a ticket got a (new) person: tell the customer who is coming."""
+    """After a ticket got a (new) person: ring their phone, tell the customer who is coming."""
+    job_alert(t["id"], admin_id)
     if not admin_id or not t.get("subscriber_id"):
         return
     with get_db().cursor() as cur:
@@ -157,6 +178,8 @@ def create(sub, subject, category, priority, body, by, source="office", kind="cu
                (tid, by, "Solved on the phone."))
         x("UPDATE tickets SET first_reply_at = NOW() WHERE id = %s", (tid,))
     t = {"id": tid, "subscriber_id": sub["id"] if sub else None}
+    if assign and not solved:
+        job_alert(tid, assign)
     if sub and not solved:
         with get_db().cursor() as cur:
             ticketlib.notify(cur, s, t, "ticket_open", by=by)

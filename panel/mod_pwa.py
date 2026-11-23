@@ -194,19 +194,25 @@ self.addEventListener("push", (e) => {
   try { d = e.data ? e.data.json() : {}; } catch (x) { d = { body: e.data ? e.data.text() : "" }; }
   const title = d.title || "নোটিফিকেশন";
   e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
-    list.filter(isPortal).forEach((c) => c.postMessage({ type: "push", title: title, body: d.body || "", unread: d.unread }));
-    if (typeof d.unread === "number" && self.navigator.setAppBadge) { self.navigator.setAppBadge(d.unread).catch(() => {}); }
+    if (d.staff) {                /* staff app: a job given to me (open panel windows show a toast) */
+      list.filter((c) => !isPortal(c)).forEach((c) => c.postMessage({ type: "staff-push", title: title, body: d.body || "", url: d.url }));
+    } else {
+      list.filter(isPortal).forEach((c) => c.postMessage({ type: "push", title: title, body: d.body || "", unread: d.unread }));
+      if (typeof d.unread === "number" && self.navigator.setAppBadge) { self.navigator.setAppBadge(d.unread).catch(() => {}); }
+    }
     return self.registration.showNotification(title, {
-      body: d.body || "", icon: "__ICON__", tag: d.tag, renotify: true, silent: false,
-      vibrate: [180, 80, 180], data: { url: d.url || "/portal/notifications" } });
+      body: d.body || "", icon: "__ICON__", badge: "__ICON__", tag: d.tag, renotify: true, silent: false,
+      requireInteraction: !!d.urgent, vibrate: d.urgent ? [300, 120, 300, 120, 300] : [180, 80, 180],
+      data: { url: d.url || (d.staff ? "/" : "/portal/notifications"), staff: !!d.staff } });
   }));
 });
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
-  const url = (e.notification.data && e.notification.data.url) || "/portal/notifications";
+  const staff = !!(e.notification.data && e.notification.data.staff);
+  const url = (e.notification.data && e.notification.data.url) || (staff ? "/" : "/portal/notifications");
   e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
     for (const c of list) {
-      if (isPortal(c) && "focus" in c) { if (c.navigate) c.navigate(url); return c.focus(); }
+      if ((staff ? !isPortal(c) : isPortal(c)) && "focus" in c) { if (c.navigate) c.navigate(url); return c.focus(); }
     }
     return self.clients.openWindow(url);
   }));

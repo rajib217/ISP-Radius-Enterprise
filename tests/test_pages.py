@@ -1101,7 +1101,7 @@ def check_rules(flask_app, ids):
           and '<meta name="pwa-kind" content="portal">' in _portal_html
           and 'apple-mobile-web-app-title" content="%s"' % _pmf["name"] in _portal_html
           and 'apple-mobile-web-app-title" content="%s"' % _mfj["name"] in _home
-          and "list.filter(isPortal)" in _sw_js and "if (isPortal(c)" in _sw_js,
+          and "list.filter(isPortal)" in _sw_js and "(staff ? !isPortal(c) : isPortal(c))" in _sw_js,
           "panel and customer apps install separately: own id, name and 'Later' memory; a notification never takes over a panel window")
 
     # ---- expired notice: expired customers stay online in the notice group and see the unpaid-bill page
@@ -2403,6 +2403,58 @@ def check_rules(flask_app, ids):
           and "Arrived" in _tview,
           "technician visit: I'm here with GPS (distance to the saved location), materials taken out of stock, Done needs the "
           "customer's SMS code (wrong code counted), the customer gets the solved SMS with the rating link")
+    # staff app: a technician's phone gets a notification when a job is given to them
+    import sender as _snd2
+    import webpush as _wp2
+    _pk = json.loads(_tc.get("/me/push/key").get_data(as_text=True))
+    _pk_ok = (len(_pk.get("key") or "") > 80) if _wp2.available() else _pk.get("key") is None
+    _keep_av2, _keep_keys2 = _wp2.available, _wp2.keys
+    _wp2.available = lambda: True
+    _wp2.keys = lambda cur: ("priv", "pub")
+    _fake = {"endpoint": "https://fcm.googleapis.com/fcm/send/ci-tech-phone", "keys": {"p256dh": "B" * 87, "auth": "A" * 22}, "first": True}
+    _psub = _tc.post("/me/push/subscribe", json=_fake, headers={"X-CSRF-Token": "ci"}).status_code
+    _pbad = _tc.post("/me/push/subscribe", json=dict(_fake, endpoint="https://10.0.0.5/x"), headers={"X-CSRF-Token": "ci"}).status_code
+    run("UPDATE staff_notifications SET pushed_at = NOW() WHERE pushed_at IS NULL")
+    adm.post("/tickets/new", data={"_csrf": "ci", "customer": _asub["username"], "subject": "ci-push-job", "category": "connection",
+                                   "priority": "urgent", "assigned_to": str(_tech_uid)})
+    _pj = one("SELECT id FROM tickets WHERE subject = 'ci-push-job'")["id"]
+    _sn = one("SELECT * FROM staff_notifications WHERE admin_id = %s AND title LIKE %s", (_tech_uid, "%%#%d%%" % _pj))
+    adm.post("/tickets/new", data={"_csrf": "ci", "subject": "ci-push-self", "category": "other", "priority": "normal",
+                                   "assigned_to": str(ids["admin"])})
+    _self = one("SELECT COUNT(*) AS c FROM staff_notifications WHERE title LIKE %s", ("%ci-push-self%",))["c"]
+    adm.post("/tickets/new", data={"_csrf": "ci", "subject": "ci-push-bulk", "category": "other", "priority": "normal"})
+    _pb = one("SELECT id FROM tickets WHERE subject = 'ci-push-bulk'")["id"]
+    adm.post("/tickets/bulk", data={"_csrf": "ci", "ids": [str(_pb)], "action": "assign", "assign_to": str(_tech_uid)})
+    _bulk_n = one("SELECT COUNT(*) AS c FROM staff_notifications WHERE admin_id = %s AND title LIKE %s", (_tech_uid, "%ci-push-bulk%"))["c"]
+    _ptest = json.loads(_tc.post("/me/push/test", headers={"X-CSRF-Token": "ci"}).get_data(as_text=True))
+    _pushed = []
+    _c4 = db.connect()
+    with _c4.cursor() as _cur:
+        _np = _snd2.staff_push_round(_c4, _cur, {"support_email": "noc@example.net"},
+                                     send=lambda sub, data, *a, **k: (_pushed.append(data) or (201, "")))
+        _cur.execute("SELECT COUNT(*) AS c FROM staff_notifications WHERE pushed_at IS NULL")
+        _left = _cur.fetchone()["c"]
+        _snd2.staff_push_round(_c4, _cur, {}, send=lambda *a, **k: (201, ""))
+        _c4.commit()
+    _c4.close()
+    run("INSERT INTO staff_notifications (admin_id, title) VALUES (%s, 'ci gone')", (_tech_uid,))
+    _c5 = db.connect()
+    with _c5.cursor() as _cur:
+        _snd2.staff_push_round(_c5, _cur, {}, send=lambda *a, **k: (410, "gone"))
+    _c5.close()
+    _wp2.available, _wp2.keys = _keep_av2, _keep_keys2
+    _gone = one("SELECT COUNT(*) AS c FROM staff_push_subs WHERE admin_id = %s", (_tech_uid,))["c"]
+    _th = _tc.get("/").get_data(as_text=True)
+    _rhome = _rc2.get("/").get_data(as_text=True)
+    _sw = _tc.get("/sw.js").get_data(as_text=True)
+    _job_push = next((d for d in _pushed if "ci-push-job" in d["title"]), None)
+    check(_pk_ok and _psub == 200 and _pbad == 400 and _sn and _sn["urgent"] == 1 and _sn["link"] == "/jobs"
+          and "URGENT" in _sn["title"] and _self == 0 and _bulk_n == 1 and _ptest.get("ok") and _np >= 3 and _left == 0
+          and _job_push and _job_push["staff"] == 1 and _job_push["url"] == "/jobs" and _job_push["urgent"] == 1 and _gone == 0
+          and "data-staff-push" in _th and "js/staff-push.js" in _th and "js/staff-push.js" not in _rhome
+          and "staff-push" in _sw and "requireInteraction" in _sw,
+          "staff app: a technician turns on job alerts; every job given to them (new, bulk, board...) rings their phone "
+          "(urgent stays on screen), not when they take it themselves; a gone phone is forgotten")
     return bad
 
 

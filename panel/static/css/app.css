@@ -2419,3 +2419,16 @@ a.th-stat:hover { text-decoration: none; border-color: var(--accent); }
 .ps-stars input:checked ~ label, .ps-stars label:hover, .ps-stars label:hover ~ label { color: #F59E0B; }
 .ps-stars input:focus-visible + label { outline: 2px solid var(--accent); border-radius: 4px; }
 .msg.mine { border-left: 3px solid var(--accent); }
+
+/* staff job alerts (staff-push.js) */
+.sp-card { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: 0 0 14px; padding: 12px 16px; border-radius: var(--r-lg);
+  background: var(--accent-soft); border: 1px solid transparent; }
+.sp-card.on { background: var(--surface); border-color: var(--border); }
+.sp-txt { display: grid; gap: 2px; flex: 1 1 260px; }
+.sp-txt span { font-size: var(--text-sm); color: var(--text-muted); }
+.sp-toast { position: fixed; z-index: 90; left: 50%; bottom: 84px; transform: translate(-50%, 20px); opacity: 0; display: grid; gap: 2px;
+  width: min(420px, calc(100vw - 32px)); padding: 12px 16px; border-radius: var(--r-lg); background: var(--text); color: var(--surface);
+  box-shadow: var(--shadow-pop); transition: opacity var(--dur), transform var(--dur); }
+.sp-toast:hover { text-decoration: none; }
+.sp-toast.on { opacity: 1; transform: translate(-50%, 0); }
+.sp-toast span { font-size: var(--text-sm); opacity: .85; }

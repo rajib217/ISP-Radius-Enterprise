@@ -1728,6 +1728,7 @@ import mod_pwa  # noqa: E402,F401
 import mod_field  # noqa: E402,F401
 import mod_ops  # noqa: E402,F401
 import mod_support  # noqa: E402,F401
+import mod_staffpush  # noqa: E402,F401
 
 core.attach(app)
 

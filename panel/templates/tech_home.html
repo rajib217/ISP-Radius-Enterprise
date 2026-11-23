@@ -15,6 +15,7 @@
   </form>
 </div>
 
+<div class="sp-card" data-staff-push hidden></div>
 {% for n in notices or [] %}
 <div class="notice {{ n.kind }}" role="status">{{ icon('alert') }}<div><strong>{{ n.title }}</strong>{% if n.body %}<p>{{ n.body }}</p>{% endif %}</div></div>
 {% endfor %}

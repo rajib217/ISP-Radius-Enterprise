@@ -917,3 +917,34 @@ UPDATE tickets t JOIN subscribers s ON s.id = t.subscriber_id JOIN panel_admins 
    AND a.role IN ('reseller', 'subreseller', 'retailer') SET t.seller = s.created_by WHERE t.seller = '';
 UPDATE tickets t JOIN panel_admins a ON a.username = t.created_by AND a.role IN ('reseller', 'subreseller', 'retailer')
    SET t.seller = t.created_by WHERE t.seller = '' AND t.subscriber_id IS NULL;
+
+-- Staff app notifications (Web Push): a technician's phone rings when a job is given to them
+CREATE TABLE IF NOT EXISTS staff_push_subs (
+  id            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  admin_id      INT UNSIGNED NOT NULL,
+  endpoint_hash CHAR(40)      NOT NULL,
+  endpoint      VARCHAR(1000) NOT NULL,
+  p256dh        VARCHAR(255)  NOT NULL,
+  auth          VARCHAR(64)   NOT NULL,
+  user_agent    VARCHAR(255)  NOT NULL DEFAULT '',
+  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_ok       DATETIME NULL,
+  fails         INT UNSIGNED NOT NULL DEFAULT 0,
+  UNIQUE KEY uq_endpoint (endpoint_hash),
+  KEY idx_admin (admin_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS staff_notifications (
+  id         INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  admin_id   INT UNSIGNED NOT NULL,
+  title      VARCHAR(120) NOT NULL,
+  body       VARCHAR(600) NOT NULL DEFAULT '',
+  link       VARCHAR(255) NOT NULL DEFAULT '',
+  dedupe     VARCHAR(120) NULL,
+  urgent     TINYINT NOT NULL DEFAULT 0,
+  pushed_at  DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_dedupe (dedupe),
+  KEY idx_push (pushed_at, created_at),
+  KEY idx_admin (admin_id, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

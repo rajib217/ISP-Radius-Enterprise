@@ -6,6 +6,7 @@
 <div class="page-head">
   <div><h1>My jobs</h1><p class="sub">Tickets given to you. Call the customer, open the map, start the work and finish it with a note and a photo.</p></div>
 </div>
+<div class="sp-card" data-staff-push hidden></div>
 <div class="chips">
   <a class="chip {{ 'on' if show == 'mine' }}" href="{{ url_for('jobs') }}">My open jobs <b>{{ counts.mine }}</b></a>
   <a class="chip {{ 'on' if show == 'free' }}" href="{{ url_for('jobs', show='free') }}">Not given to anyone <b>{{ counts.free }}</b></a>

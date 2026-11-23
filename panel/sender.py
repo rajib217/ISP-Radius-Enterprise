@@ -114,6 +114,44 @@ def push_round(conn, cur, s, send=None):
     return sent
 
 
+def staff_push_round(conn, cur, s, send=None):
+    """Push the queued staff notifications (staffpush.queue, e.g. a job given to a technician) to every phone that
+    person switched on. Works without the customer portal. Gone subscriptions are deleted as for customers."""
+    import webpush
+    if not webpush.available():
+        return 0
+    send = send or webpush.send
+    cur.execute("SELECT id, admin_id, title, body, link, urgent FROM staff_notifications WHERE pushed_at IS NULL "
+                "AND created_at > NOW() - INTERVAL 1 DAY ORDER BY id LIMIT %s", (PUSH_BATCH,))
+    rows = cur.fetchall()
+    if not rows:
+        return 0
+    priv, pub = webpush.keys(cur)
+    conn.commit()
+    subject = webpush.subject_of(s)
+    sent = 0
+    for n in rows:
+        cur.execute("UPDATE staff_notifications SET pushed_at = NOW() WHERE id = %s AND pushed_at IS NULL", (n["id"],))
+        conn.commit()
+        cur.execute("SELECT id, endpoint, p256dh, auth FROM staff_push_subs WHERE admin_id = %s", (n["admin_id"],))
+        data = {"title": n["title"], "body": n["body"], "url": n["link"] or "/", "tag": "s%d" % n["id"], "staff": 1,
+                "urgent": 1 if n["urgent"] else 0}
+        for sub in cur.fetchall():
+            if not RUNNING:
+                break
+            status, _detail = send(sub, data, priv, pub, subject, ttl=6 * 3600)
+            if status in (200, 201, 202):
+                cur.execute("UPDATE staff_push_subs SET last_ok = NOW(), fails = 0 WHERE id = %s", (sub["id"],))
+                sent += 1
+            elif status in (404, 410):
+                cur.execute("DELETE FROM staff_push_subs WHERE id = %s", (sub["id"],))
+            else:
+                cur.execute("UPDATE staff_push_subs SET fails = fails + 1 WHERE id = %s", (sub["id"],))
+                cur.execute("DELETE FROM staff_push_subs WHERE id = %s AND fails >= 20", (sub["id"],))
+            conn.commit()
+    return sent
+
+
 def main():
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
@@ -129,6 +167,11 @@ def main():
             try:
                 push_round(conn, cur, s)
             except Exception:      # the push tables appear after update.sh; never stop SMS / email for it
+                conn.rollback()
+                traceback.print_exc()
+            try:
+                staff_push_round(conn, cur, s)
+            except Exception:      # same: staff pushes never stop the rest
                 conn.rollback()
                 traceback.print_exc()
         except Exception:  # database restarted, bad settings ... keep the service alive
