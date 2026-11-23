@@ -76,13 +76,21 @@
 </div>
 
 <div class="sv-pane" id="tab-ledgers" hidden>
+  <section class="panel"><form class="filters panel-body ldg-dates" method="get" action="{{ url_for('admin_view', aid=u.id) }}#ledgers" style="margin:0">
+    <label class="lbl" for="ldg-from" style="margin:0">From</label><input id="ldg-from" type="date" name="from" value="{{ dfrom.isoformat() if dfrom else '' }}">
+    <label class="lbl" for="ldg-to" style="margin:0">To</label><input id="ldg-to" type="date" name="to" value="{{ dto.isoformat() if dto else '' }}">
+    <button class="btn primary" type="submit">Show</button>
+    {% if dfrom or dto %}<a class="btn" href="{{ url_for('admin_view', aid=u.id) }}#ledgers">Clear</a>{% endif %}
+  </form></section>
   <section class="panel"><div class="panel-head"><h2>Balance ledger</h2></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Method</th><th class="num">Amount</th><th class="num">Balance after</th><th>Note</th><th>By</th></tr></thead><tbody>
     {% for w in wallet %}<tr><td>{{ w.created_at|dt }}</td><td>{{ w.method|capitalize if w.method else '—' }}</td><td class="num {{ 'g' if w.amount > 0 else 'r' }}">{{ '{:+,.2f}'.format(w.amount|float) }}</td><td class="num">{{ '{:,.2f}'.format(w.balance_after|float) }}</td><td>{{ w.note or '' }}</td><td>{{ w.created_by }}</td></tr>
-    {% else %}<tr><td colspan="6" class="muted">No balance changes yet.</td></tr>{% endfor %}</tbody></table></div></section>
+    {% else %}<tr><td colspan="6" class="muted">{{ 'No balance changes in these dates.' if sums else 'No balance changes yet.' }}</td></tr>{% endfor %}</tbody></table></div>
+    {% if sums %}<div class="panel-body muted">{{ sums.wallet.n }} change{{ '' if sums.wallet.n == 1 else 's' }} · added {{ '{:,.2f}'.format(sums.wallet.added|float) }} · taken {{ '{:,.2f}'.format(sums.wallet.taken|float) }}{% if sums.wallet.n > ledger_limit %} · showing the latest {{ ledger_limit }}{% endif %}</div>{% endif %}</section>
   <section class="panel"><div class="panel-head"><h2>Payments received</h2></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Subscriber</th><th>Method</th><th class="num">Days</th><th class="num">Amount</th><th>Note</th></tr></thead><tbody>
     {% for l in ledger %}<tr><td>{{ l.paid_at|dt }}</td><td>{{ l.username }}</td><td>{{ l.method }}</td><td class="num">{{ l.days_added }}</td><td class="num">{{ currency }} {{ l.amount|money }}</td><td>{{ l.note or '' }}</td></tr>
-    {% else %}<tr><td colspan="6" class="muted">No payments received yet.</td></tr>{% endfor %}</tbody></table></div>
-    <div class="panel-body muted">Latest 50 payments received by {{ u.username }}.</div></section>
+    {% else %}<tr><td colspan="6" class="muted">{{ 'No payments received in these dates.' if sums else 'No payments received yet.' }}</td></tr>{% endfor %}</tbody></table></div>
+    {% if sums %}<div class="panel-body muted">{{ sums.pay.n }} payment{{ '' if sums.pay.n == 1 else 's' }} received by {{ u.username }} · total {{ currency }} {{ sums.pay.total|money }}{% if sums.pay.n > ledger_limit %} · showing the latest {{ ledger_limit }}{% endif %}</div>
+    {% else %}<div class="panel-body muted">Latest 50 payments received by {{ u.username }}. Pick dates above to see more.</div>{% endif %}</section>
 </div>
 
 <div class="sv-pane" id="tab-subscribers" hidden>

@@ -527,15 +527,41 @@ def admin_view(aid):
             "COALESCE(SUM(CASE WHEN paid_at >= %s THEN amount ELSE 0 END), 0) AS month_total, "
             "COALESCE(SUM(amount), 0) AS all_total, COUNT(*) AS payments FROM payments WHERE received_by = %s",
             (first, u["username"]), one=True)
-    ledger = q("SELECT username, amount, days_added, method, note, paid_at FROM payments WHERE received_by = %s "
-               "ORDER BY id DESC LIMIT 50", (u["username"],))
-    wallet = q("SELECT amount, balance_after, method, note, created_by, created_at FROM user_ledger WHERE user_id = %s "
-               "ORDER BY id DESC LIMIT 50", (aid,))
+    # Ledgers tab: optional ?from= / ?to= dates for both tables; without them, the latest 50 of each
+    try:
+        dfrom, dto = core.parse_date(request.args.get("from")), core.parse_date(request.args.get("to"))
+    except ValueError:
+        dfrom = dto = None
+    if dfrom and dto and dfrom > dto:
+        dfrom, dto = dto, dfrom
+
+    def _span(col):
+        cond, args = "", []
+        if dfrom:
+            cond, args = cond + " AND %s >= %%s" % col, args + [dfrom]
+        if dto:
+            cond, args = cond + " AND %s < %%s" % col, args + [dto + timedelta(days=1)]
+        return cond, args
+    limit = 2000 if (dfrom or dto) else 50
+    pc, pa = _span("paid_at")
+    ledger = q("SELECT username, amount, days_added, method, note, paid_at FROM payments WHERE received_by = %s" + pc +
+               " ORDER BY id DESC LIMIT %s", [u["username"]] + pa + [limit])
+    wc, wa = _span("created_at")
+    wallet = q("SELECT amount, balance_after, method, note, created_by, created_at FROM user_ledger WHERE user_id = %s" + wc +
+               " ORDER BY id DESC LIMIT %s", [aid] + wa + [limit])
+    sums = None
+    if dfrom or dto:
+        sums = {"pay": q("SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0) AS total FROM payments WHERE received_by = %s" + pc,
+                         [u["username"]] + pa, one=True),
+                "wallet": q("SELECT COUNT(*) AS n, COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0) AS added, "
+                            "COALESCE(SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END), 0) AS taken FROM user_ledger "
+                            "WHERE user_id = %s" + wc, [aid] + wa, one=True)}
     u["ptype"] = _ptype(u["role"])
     off = core.tiers_off()
     depts, zones, plans = _lookups()
     sellers = q("SELECT id, username, role FROM panel_admins WHERE role IN ('reseller', 'subreseller') ORDER BY username")
     return render_template("admin_view.html", methods=BALANCE_METHODS, wallet=wallet, open_balance=bool(request.args.get("balance")), u=u, kids=kids, subs_n=subs_n, subs=subs, rep=rep, ledger=ledger,
+                           dfrom=dfrom, dto=dto, sums=sums, ledger_limit=limit,
                            shown=shown, restricted=bool(allowed) and u["role"] != "admin", all_count=len(all_plans),
                            allowed=allowed, roles=core.role_list(), role_opts=[r for r in core.role_list() if r[0] not in off and _within_mine(r[0])],
                            depts=depts, zones=zones, plans=plans, sellers=sellers, group="", default_role="support",

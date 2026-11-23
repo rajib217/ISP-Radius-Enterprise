@@ -2003,6 +2003,19 @@ def check_rules(flask_app, ids):
           and '<option value="50" selected' in _p5k and '<option value="2000"' not in _pay2k
           and ('<b>%s</b></a><br><a class="uname"' % _named["full_name"]) in _one,
           "subscriber list: 500 / 1000 / 1500 / 2000 a page (only there); the name with the username under it")
+    # user profile > Ledgers: a date range narrows both tables
+    _rname = one("SELECT username FROM panel_admins WHERE id = %s", (ids["reseller"],))["username"]
+    run("INSERT INTO user_ledger (user_id, amount, balance_after, method, note, created_by, created_at) VALUES "
+        "(%s, 7, 7, 'cash', 'ci-ldg-old', 'admin', '2020-01-05 10:00:00')", (ids["reseller"],))
+    run("INSERT INTO payments (username, amount, method, note, received_by, paid_at) VALUES "
+        "('ci-x', 9, 'cash', 'ci-pay-old', %s, '2020-01-05 10:00:00'), ('ci-x', 9, 'cash', 'ci-pay-new', %s, NOW())", (_rname, _rname))
+    _l_all = adm.get("/admins/%d" % ids["reseller"]).get_data(as_text=True)
+    _l_old = adm.get("/admins/%d?from=2020-01-01&to=2020-01-31" % ids["reseller"]).get_data(as_text=True)
+    _l_bad = adm.get("/admins/%d?from=junk" % ids["reseller"]).status_code
+    check("ci-pay-new" in _l_all and 'name="from"' in _l_all
+          and "ci-ldg-old" in _l_old and "ci-pay-old" in _l_old and "ci-pay-new" not in _l_old
+          and "1 payment received" in _l_old and _l_bad == 200,
+          "user profile Ledgers: From / To dates narrow the balance ledger and payments received, with totals")
     run("DELETE FROM role_funcs WHERE role IN ('support', 'technician')")
     run("DELETE FROM role_perms WHERE role IN ('support', 'technician')")
     for r in _snap_f:
