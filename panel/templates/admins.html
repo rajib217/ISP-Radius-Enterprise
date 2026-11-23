@@ -50,7 +50,7 @@
             {% if can_fn('usr.delete') %}<form method="post" action="{{ url_for('admin_delete', aid=a.id) }}" data-confirm="Delete {{ a.username }}?">{{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}"><button type="submit" class="danger-text">Delete</button></form>{% endif %}
             {% endif %}
           </div></details></td>
-        <td>{% if can_fn('usr.view') %}<a class="lwho" href="{{ url_for('admin_view', aid=a.id) }}">{% else %}<span class="lwho">{% endif %}<span class="lav">{{ icon('user') }}</span><span><b>{{ a.full_name or a.username }}</b><small>{{ a.username }}</small></span>{{ '</a>'|safe if can_fn('usr.view') else '</span>'|safe }}</td>
+        <td>{% if can_fn('usr.view') %}<a class="lwho" href="{{ url_for('admin_view', aid=a.id) }}">{% else %}<span class="lwho">{% endif %}{% if a.photo and can_fn('usr.view') %}<img class="lav img" src="{{ url_for('admin_photo', aid=a.id, v=a.photo) }}" alt="" loading="lazy">{% else %}<span class="lav">{{ icon('user') }}</span>{% endif %}<span><b>{{ a.full_name or a.username }}</b><small>{{ a.username }}</small></span>{{ '</a>'|safe if can_fn('usr.view') else '</span>'|safe }}</td>
         <td><span class="pill pt-{{ a.ptype|lower }}">{{ a.ptype }}</span></td>
         <td data-uc="balance"><span class="pill ok">{{ '{:,.2f}'.format(a.balance|float) }}</span></td>
         <td data-uc="packages">{{ a.plan_ids|length if a.plan_ids and a.role != 'admin' else total_plans }}</td>

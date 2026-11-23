@@ -328,7 +328,7 @@ def gate():
     if not uid:
         nxt = request.full_path.rstrip("?") if request.method == "GET" else None
         return redirect(url_for("login", next=nxt))
-    me = q("SELECT id, username, full_name, role, is_active, balance FROM panel_admins WHERE id = %s",
+    me = q("SELECT id, username, full_name, role, is_active, balance, photo FROM panel_admins WHERE id = %s",
            (uid,), one=True)
     if not me or not me["is_active"] or core.user_blocked(me["id"]):
         session.clear()

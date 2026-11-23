@@ -2016,6 +2016,27 @@ def check_rules(flask_app, ids):
           and "ci-ldg-old" in _l_old and "ci-pay-old" in _l_old and "ci-pay-new" not in _l_old
           and "1 payment received" in _l_old and _l_bad == 200,
           "user profile Ledgers: From / To dates narrow the balance ledger and payments received, with totals")
+    # every user (sellers too) sets their own profile picture on My Profile; it shows in the sidebar / top bar
+    import io as _io
+    _png = b"\x89PNG\r\n\x1a\n" + b"\0" * 64
+    _rc = client(ids["reseller"])
+    _rp0 = _rc.get("/profile").get_data(as_text=True)
+    _rs = _rc.post("/profile/photo/save", data={"_csrf": "ci", "file": (_io.BytesIO(_png), "me.png")},
+                   content_type="multipart/form-data").status_code
+    _rrow = one("SELECT photo FROM panel_admins WHERE id = %s", (ids["reseller"],))["photo"]
+    _rhome = _rc.get("/").get_data(as_text=True)
+    _rimg = _rc.get("/profile/photo")
+    _rimg_ok, _rimg_data = _rimg.status_code, _rimg.data
+    _rimg.close()                      # send_file keeps the file open until closed (Windows will not delete it)
+    _rbad = _rc.post("/profile/photo/save", data={"_csrf": "ci", "file": (_io.BytesIO(b"GIF89a" + b"\0" * 20), "x.gif")},
+                     content_type="multipart/form-data")
+    _rkeep = one("SELECT photo FROM panel_admins WHERE id = %s", (ids["reseller"],))["photo"]
+    _rrm = _rc.post("/profile/photo/save", data={"_csrf": "ci", "remove": "1"}).status_code
+    _rgone = one("SELECT photo FROM panel_admins WHERE id = %s", (ids["reseller"],))["photo"]
+    _rno = _rc.get("/profile/photo").status_code
+    check("Profile picture" in _rp0 and _rs == 302 and _rrow == "png" and "/profile/photo?v=png" in _rhome
+          and _rimg_ok == 200 and _rimg_data == _png and _rkeep == "png" and _rrm == 302 and _rgone == "" and _rno == 404,
+          "My Profile: a reseller saves, sees and removes their own picture (PNG/JPG only)")
     run("DELETE FROM role_funcs WHERE role IN ('support', 'technician')")
     run("DELETE FROM role_perms WHERE role IN ('support', 'technician')")
     for r in _snap_f:

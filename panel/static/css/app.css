@@ -2196,3 +2196,10 @@ a.led-acct:hover { text-decoration: underline; background: var(--accent-soft); }
 .acct-kpis > div { display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; border-radius: 10px; background: var(--surface-2); }
 .acct-kpis b { font-size: 18px; }
 .acct-kpis span { font-size: 12.5px; }
+
+/* profile pictures: sidebar / top bar avatar, Users list, My Profile */
+img.av.img, img.lav.img { object-fit: cover; padding: 0; background: var(--surface-2); }
+.me-photo { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.me-photo .pavatar { width: 96px; height: 96px; border-radius: 50%; }
+.me-photo .pavatar.ph .i { width: 48px; height: 48px; }
+.actions-row { display: flex; gap: 8px; flex-wrap: wrap; }

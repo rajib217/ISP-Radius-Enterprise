@@ -891,25 +891,23 @@ def admin_photo(aid):
     return resp
 
 
-@route("/admins/<int:aid>/photo/save", methods=["POST"])
-@_users_gate("usr.photo")
-def admin_photo_save(aid):
-    row = q("SELECT id, username, role FROM panel_admins WHERE id = %s", (aid,), one=True) or abort(404)
-    _reach_or_403(row)
+def _save_photo(aid, username):
+    """Save or remove (form field "remove") a user's profile picture from the posted form; flashes the outcome."""
     old = _admin_photo(aid)
     if request.form.get("remove"):
         if old:
             os.remove(old)
         x("UPDATE panel_admins SET photo = '' WHERE id = %s", (aid,))
+        audit("admin_photo_removed", username)
         commit()
         flash("Photo removed.", "success")
-        return redirect(url_for("admin_view", aid=aid))
+        return
     up = request.files.get("file")
     data = up.read(2 * 1024 * 1024 + 1) if up else b""
     ext = next((v for k, v in PHOTO_TYPES.items() if data.startswith(k)), None)
     if not data or len(data) > 2 * 1024 * 1024 or not ext:
         flash("Choose a PNG or JPG photo up to 2 MB.", "error")
-        return redirect(url_for("admin_view", aid=aid))
+        return
     d = os.path.join(core.DATA_DIR, "photos")
     os.makedirs(d, exist_ok=True)
     if old:
@@ -917,10 +915,38 @@ def admin_photo_save(aid):
     with open(os.path.join(d, "admin-%d.%s" % (aid, ext)), "wb") as fh:
         fh.write(data)
     x("UPDATE panel_admins SET photo = %s WHERE id = %s", (ext, aid))
-    audit("admin_photo_saved", row["username"])
+    audit("admin_photo_saved", username)
     commit()
     flash("Photo saved.", "success")
+
+
+@route("/admins/<int:aid>/photo/save", methods=["POST"])
+@_users_gate("usr.photo")
+def admin_photo_save(aid):
+    row = q("SELECT id, username, role FROM panel_admins WHERE id = %s", (aid,), one=True) or abort(404)
+    _reach_or_403(row)
+    _save_photo(aid, row["username"])
     return redirect(url_for("admin_view", aid=aid))
+
+
+@route("/profile/photo")
+def profile_photo():
+    """The signed-in person's own picture (any role, sellers too): sidebar, top bar and My Profile."""
+    f = _admin_photo(g.me["id"])
+    if not f:
+        abort(404)
+    resp = send_file(f, mimetype="image/png" if f.endswith(".png") else "image/jpeg", max_age=3600)
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp
+
+
+@route("/profile/photo/save", methods=["POST"])
+def profile_photo_save():
+    """Everyone (admin, staff, reseller, sub-reseller, retailer) sets their own picture on My Profile."""
+    if not core.can_fn("prof.edit"):
+        abort(403)
+    _save_photo(g.me["id"], g.me["username"])
+    return redirect(url_for("profile"))
 
 
 @route("/admins/<int:aid>/invoice-settings", methods=["POST"])
