@@ -405,7 +405,7 @@ DEFAULT_PERMS = {
     "retailer": dict(subscribers="edit", online="none", plans="view", accounting="none", inventory="none",
                      network="none", area="none", tickets="edit", email="none", sms="none", logs="none",
                      notes="edit", reports="none", documents="none", zones="none"),
-    "technician": dict(subscribers="view", online="edit", plans="view", accounting="none", inventory="edit",
+    "technician": dict(subscribers="edit", online="edit", plans="view", accounting="none", inventory="edit",
                        network="edit", area="view", tickets="edit", email="none", sms="none", logs="view",
                        notes="edit", reports="none", documents="view", zones="view"),
 }
@@ -439,7 +439,7 @@ def load_funcs(role, perms):
         return set(pc.KEYS)
     saved = {r["fkey"]: r["allowed"] for r in q("SELECT fkey, allowed FROM role_funcs WHERE role = %s", (role,))}
     seller = role in SELLER_ROLES
-    ticked = {k for k in pc.KEYS if (bool(saved[k]) if k in saved else pc.default_on(k, perms, seller))}
+    ticked = {k for k in pc.KEYS if (bool(saved[k]) if k in saved else pc.default_on(k, perms, seller, role))}
     return pc.effective(ticked, perms)
 
 
@@ -463,8 +463,11 @@ def upgrade_role_funcs():
                 if role == "admin":
                     continue
                 perms = _load_perms(role)
+                special = pc.ROLE_KEYS.get(role)
                 for k in pc.NOW_ENFORCED:
                     mod, flags = pc.KEY_INFO[k]
+                    if special and k.startswith(special[0]) and k not in special[1]:
+                        continue
                     if mod is None or RANK.get(perms.get(mod, "none"), 0) >= RANK["view" if "v" in flags else "edit"]:
                         rows.append((role, k))
             if rows:

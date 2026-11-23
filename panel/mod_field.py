@@ -124,9 +124,38 @@ def follow_ups():
 
 
 # ===================================================================== customer location and map
-_PAIR = re.compile(r"(-?\d{1,3}\.\d+)\s*[, ]\s*(-?\d{1,3}\.\d+)")
+_PAIR = re.compile(r"(-?\d{1,3}\.\d+)\s*(?:,|\s)\s*\+?(-?\d{1,3}\.\d+)")
 _AT = re.compile(r"@(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)")
-_Q = re.compile(r"[?&](?:q|query|ll|destination)=(-?\d{1,3}\.\d+)(?:,|%2C)(-?\d{1,3}\.\d+)", re.I)
+_PIN = re.compile(r"!3d(-?\d{1,3}\.\d+)!4d(-?\d{1,3}\.\d+)")          # the exact pin inside a Google Maps place link
+_Q = re.compile(r"[?&](?:q|query|ll|destination)=(-?\d{1,3}\.\d+),\+?(-?\d{1,3}\.\d+)", re.I)
+# the "Share" button of the Google Maps app gives a short link with no position in it: the panel asks Google where it
+# leads (only for these hosts) and reads the position from the address it points to
+_SHORT = re.compile(r"https?://(?:maps\.app\.goo\.gl|goo\.gl/maps)/[A-Za-z0-9_\-/?=&.]+", re.I)
+
+
+def _expand_short(url):
+    """Follow a Google Maps short link (up to 3 redirects, without downloading the page) and return where it leads."""
+    import urllib.error
+    import urllib.request
+
+    class _NoFollow(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *a, **k):
+            return None
+
+    opener = urllib.request.build_opener(_NoFollow)
+    for _hop in range(3):
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (ISP panel; location)"})
+        try:
+            opener.open(req, timeout=6).close()
+            return url
+        except urllib.error.HTTPError as e:
+            nxt = e.headers.get("Location")
+            if e.code not in (301, 302, 303, 307, 308) or not nxt:
+                return url
+            url = nxt
+            if not _SHORT.match(url):
+                return url
+    return url
 
 
 def parse_location(text):
@@ -135,7 +164,16 @@ def parse_location(text):
     text = (text or "").strip()
     if not text:
         return None
-    m = _AT.search(text) or _Q.search(text) or _PAIR.search(text)
+    short = _SHORT.search(text)
+    if short:
+        try:
+            text = _expand_short(short.group(0))
+        except Exception:
+            raise ValueError("Could not open that Google Maps short link. In Google Maps, touch and hold the spot "
+                             "to drop a pin, then copy the numbers it shows (like 23.8103, 90.4125) and paste them.")
+    from urllib.parse import unquote
+    text = unquote(text)
+    m = _PIN.search(text) or _AT.search(text) or _Q.search(text) or _PAIR.search(text)
     if not m:
         raise ValueError("Paste a Google Maps link or type the position as 23.8103, 90.4125.")
     lat, lng = float(m.group(1)), float(m.group(2))

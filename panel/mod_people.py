@@ -1079,7 +1079,7 @@ def role_add():
     if src and src in core.staff_roles():                 # start from a copy of an existing office-staff role
         levels = core._load_perms(src)
         saved = {r["fkey"]: r["allowed"] for r in q("SELECT fkey, allowed FROM role_funcs WHERE role = %s", (src,))}
-        ticked = {k for k in permcatalog.KEYS if (bool(saved[k]) if k in saved else permcatalog.default_on(k, levels, False))}
+        ticked = {k for k in permcatalog.KEYS if (bool(saved[k]) if k in saved else permcatalog.default_on(k, levels, False, src))}
         if _staff():                                      # staff copy only what they have themselves
             ticked &= set(g.funcs or ())
             levels = permcatalog.module_levels(ticked)
@@ -1151,7 +1151,7 @@ def role_permissions(role):
             perms0 = core.load_perms(role)
             saved0 = {r["fkey"]: r["allowed"] for r in q("SELECT fkey, allowed FROM role_funcs WHERE role = %s", (role,))}
             before = {k for k in permcatalog.KEYS if (bool(saved0[k]) if k in saved0 else
-                                                       permcatalog.default_on(k, perms0, role in core.SELLER_ROLES))}
+                                                       permcatalog.default_on(k, perms0, role in core.SELLER_ROLES, role))}
             ticked = (ticked & mine) | (before - mine)
         levels = permcatalog.module_levels(ticked)
         with get_db().cursor() as cur:
@@ -1169,7 +1169,7 @@ def role_permissions(role):
     perms = core.load_perms(role)
     saved = {r["fkey"]: r["allowed"] for r in q("SELECT fkey, allowed FROM role_funcs WHERE role = %s", (role,))}
     seller = role in core.SELLER_ROLES
-    ticked = {k for k in permcatalog.KEYS if (bool(saved[k]) if k in saved else permcatalog.default_on(k, perms, seller))}
+    ticked = {k for k in permcatalog.KEYS if (bool(saved[k]) if k in saved else permcatalog.default_on(k, perms, seller, role))}
     tabs = []
     for t in permcatalog.TABS:
         groups = [dict(g, title=("My Profile (%s)" % ptype) if g["title"].startswith("My Profile (") else g["title"])

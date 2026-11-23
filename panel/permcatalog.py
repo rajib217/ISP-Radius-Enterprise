@@ -253,9 +253,23 @@ NOW_ENFORCED = ("home.subs", "home.acc", "home.users", "home.pred", "home.usage"
 NOW_CLEARED = ("rep.btrc",)
 
 
-def default_on(key, perms, role_is_seller):
+# Built-in roles whose subscriber ticks do not simply follow the module level: on these key prefixes only the listed
+# keys start ticked (Users > Roles can still change them). Technician: look up, add and fix customers in the field
+# (address, location, connection password, MAC, disconnect), but no money, expiry, package or delete.
+ROLE_KEYS = {
+    "technician": (("sub.", "svc.", "onl."), frozenset((
+        "sub.module", "sub.view", "sub.add", "sub.edit", "sub.photo", "sub.password", "sub.toggle_pw", "sub.note",
+        "sub.document", "sub.disconnect", "sub.reset_mac", "sub.attr_view", "svc.conn_pw",
+        "onl.module", "onl.disconnect"))),
+}
+
+
+def default_on(key, perms, role_is_seller, role=None):
     """Whether a key is ticked for a role that has nothing saved yet, from the older per-module levels."""
     mod, flags = KEY_INFO[key]
+    special = ROLE_KEYS.get(role)
+    if special and key.startswith(special[0]) and key not in special[1]:
+        return False
     if "d" in flags or "o" in flags:
         return False
     if "a" in flags:

@@ -2188,6 +2188,32 @@ def check_rules(flask_app, ids):
         run("INSERT INTO role_funcs (role, fkey, allowed) VALUES (%s, %s, %s)", (r["role"], r["fkey"], r["allowed"]))
     for r in _snap_p:
         run("INSERT INTO role_perms (role, module, level) VALUES (%s, %s, %s)", (r["role"], r["module"], r["level"]))
+    # technician (built-in defaults): fix customers in the field, no money / expiry / delete
+    import mod_field as _mf
+    if not run_q("SELECT id FROM panel_admins WHERE username = 'ci_tech'"):
+        run("INSERT INTO panel_admins (username, full_name, password_hash, role) VALUES ('ci_tech', 'CI Tech', 'x', 'technician')")
+    _tc = client(one("SELECT id FROM panel_admins WHERE username = 'ci_tech'")["id"])
+    _tv = _tc.get("/subscribers/%d" % _rsub["id"]).status_code
+    _te = _tc.get("/subscribers/%d/edit" % _rsub["id"]).get_data(as_text=True)
+    _tl = _tc.post("/subscribers/%d/location" % _rsub["id"], data={"_csrf": "ci", "where": "23.811111, 90.422222"}).status_code
+    _tdeny = [_tc.get(u).status_code for u in ("/reports/daily", "/dues", "/payments")] + [
+        _tc.post("/subscribers/%d/delete" % _rsub["id"], data={"_csrf": "ci"}).status_code,
+        _tc.post("/subscribers/%d/balance" % _rsub["id"], data={"_csrf": "ci", "amount": "100"}).status_code,
+        _tc.post("/subscribers/%d/renew" % _rsub["id"], data={"_csrf": "ci"}).status_code]
+    _tok = [_tc.get(u).status_code for u in ("/online", "/map", "/jobs", "/follow-ups", "/subscribers/new")]
+    _tn = _tc.post("/subscribers/new", data={"_csrf": "ci", "username": "ci.tech.new", "password": "pass1234", "full_name": "Tech New",
+                                             "phone": "01711000777", "identity": "19901234567", "plan_id": "1", "status": "active",
+                                             "expiry_date": "2099-01-01", "where": "https://www.google.com/maps/place/Home/@23.7,90.3,17z/data=!3d23.712345!4d90.398765"})
+    _tnr = one("SELECT expiry_date, lat, lng FROM subscribers WHERE username = 'ci.tech.new'")
+    _pp = _tc.get("/").headers.get("Permissions-Policy", "")
+    _parsed = [_mf.parse_location(t) for t in ("23.810331,+90.412521", "https://www.google.com/maps/search/23.810331,+90.412521?entry=tts",
+                                               "https://maps.google.com/?q=23.810331%2C90.412521", "23.810331 90.412521")]
+    check(_tv == 200 and 'name="where"' in _te and "data-loc-here" in _te and _tl == 302 and all(c == 403 for c in _tdeny)
+          and all(c == 200 for c in _tok) and _tn.status_code == 302 and _tnr and _tnr["expiry_date"] < _dt.date.today()
+          and abs(float(_tnr["lat"]) - 23.712345) < 1e-6 and abs(float(_tnr["lng"]) - 90.398765) < 1e-6
+          and "geolocation=(self)" in _pp and all(p == (23.810331, 90.412521) for p in _parsed),
+          "technician: sees and fixes customers (address, map location, password, MAC), adds new ones that start expired; "
+          "no money, dues, reports or delete; the panel lets its pages ask for the phone's location")
     return bad
 
 

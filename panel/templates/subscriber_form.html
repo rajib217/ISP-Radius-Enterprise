@@ -74,6 +74,15 @@
         <input id="f-address" name="address" value="{{ form.address or '' }}">
         {% if errors.address %}<div class="err">{{ errors.address }}</div>{% endif %}
       </div>
+      <div class="field span-2 {{ 'bad' if errors.where }}">
+        <label class="lbl" for="f-where">Map location</label>
+        <div class="loc-row">
+          <input id="f-where" name="where" data-loc-input value="{{ form.where or '' }}" placeholder="Paste a Google Maps link or 23.8103, 90.4125" spellcheck="false" autocomplete="off">
+          <button type="button" class="btn" data-loc-here title="Use this phone's GPS, standing at the connection">{{ icon('pin') }}Use my location</button>
+        </div>
+        {% if errors.where %}<div class="err">{{ errors.where }}</div>{% endif %}
+        <div class="help">Standing at the customer's connection, press <b>Use my location</b>. Or, in Google Maps, touch and hold the house to drop a pin, then <b>Share</b> &gt; Copy link (or copy the numbers shown) and paste it here. Optional; it puts the customer on Subscribers &gt; Map.</div>
+      </div>
       <div class="field span-2">
         <label class="lbl" for="f-notes">Notes</label>
         <textarea id="f-notes" name="notes" rows="3">{{ form.notes or '' }}</textarea>

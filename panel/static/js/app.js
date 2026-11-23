@@ -764,20 +764,56 @@
 /* subscriber page > Address Information > Location: "Use my location" fills the box from this phone's GPS
    (the technician standing at the connection); the person still presses Save */
 (function () {
+  var say = function (m) { (window.panelAlert || alert)(m); };
+  function howToAllow() {
+    var host = location.host, app = window.matchMedia && matchMedia("(display-mode: standalone)").matches;
+    var ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    if (ios) return "Location is blocked for this panel. On the iPhone open Settings > Privacy & Security > Location Services, " +
+      "turn it on, then Safari Websites > While Using the App. Reopen the panel and press Use my location again.";
+    return "Location is blocked for this panel, so the phone will not ask again by itself. To allow it:\n" +
+      (app ? "• Installed app: touch and hold the app icon > App info > Permissions > Location > Allow.\n" : "") +
+      "• Chrome: ⋮ > Settings > Site settings > Location > " + host + " > Allow (or tap the icon left of the address).\n" +
+      "• Also check the phone's own Location (GPS) switch is on.\nThen press Use my location again, or paste a Google Maps link.";
+  }
+  function find(b, box) {
+    var label = b.innerHTML, best = null, watch = null, done = false, hint = b.parentNode.querySelector("[data-loc-acc]");
+    if (!hint) { hint = document.createElement("small"); hint.className = "muted loc-acc"; hint.setAttribute("data-loc-acc", ""); b.parentNode.appendChild(hint); }
+    b.disabled = true; b.textContent = "Finding…"; hint.textContent = "Asking the phone for its position…";
+    function finish(err) {
+      if (done) return; done = true;
+      if (watch !== null) navigator.geolocation.clearWatch(watch);
+      b.disabled = false; b.innerHTML = label;
+      if (best) {
+        box.value = best.latitude.toFixed(6) + ", " + best.longitude.toFixed(6);
+        hint.textContent = "Accuracy about ±" + Math.round(best.accuracy) + " m" + (best.accuracy > 50 ? " (weak: step outside and try again for a better fix)" : "") + ". Press Save to keep it.";
+        box.dispatchEvent(new Event("input", { bubbles: true })); box.focus();
+      } else {
+        hint.textContent = "";
+        say(err && err.code === 1 ? howToAllow()
+          : "Could not read the location (" + (err && err.message || "no GPS signal") + "). Turn on the phone's Location (GPS), step outside and try again, or paste a Google Maps link.");
+      }
+    }
+    // keep listening for a few seconds: the first fix is often from Wi-Fi / mobile towers, the GPS one comes after
+    watch = navigator.geolocation.watchPosition(function (p) {
+      if (!best || p.coords.accuracy < best.accuracy) best = p.coords;
+      hint.textContent = "Found, ±" + Math.round(best.accuracy) + " m. Improving…";
+      if (best.accuracy <= 20) finish();
+    }, function (err) { if (err.code === 1 || !best) finish(err); }, { enableHighAccuracy: true, timeout: 25000, maximumAge: 0 });
+    setTimeout(function () { finish(best ? null : { message: "timed out" }); }, 15000);
+  }
   document.querySelectorAll("[data-loc-here]").forEach(function (b) {
     b.addEventListener("click", function () {
-      var box = b.form && b.form.querySelector("[data-loc-input]");
+      var box = (b.form || document).querySelector("[data-loc-input]");
       if (!box) return;
-      if (!navigator.geolocation) { (window.panelAlert || alert)("This browser cannot read the location."); return; }
-      var label = b.innerHTML; b.disabled = true; b.textContent = "Finding…";
-      navigator.geolocation.getCurrentPosition(function (p) {
-        box.value = p.coords.latitude.toFixed(6) + ", " + p.coords.longitude.toFixed(6);
-        b.disabled = false; b.innerHTML = label; box.focus();
-      }, function (err) {
-        b.disabled = false; b.innerHTML = label;
-        (window.panelAlert || alert)(err && err.code === 1 ? "Location permission was refused. Allow location for this site in the browser, or paste a Google Maps link."
-          : "Could not read the location (" + (err && err.message || "no GPS signal") + "). Try again outside, or paste a Google Maps link.");
-      }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+      if (!window.isSecureContext) { say("The phone gives its location only to a panel opened over https://. Open the panel with its https address."); return; }
+      if (!navigator.geolocation) { say("This browser cannot read the location. Paste a Google Maps link instead."); return; }
+      // the browser shows its "Allow location?" question on the first press; once blocked it never asks again,
+      // so say how to unblock it instead of failing silently
+      if (navigator.permissions && navigator.permissions.query) {
+        navigator.permissions.query({ name: "geolocation" }).then(function (st) {
+          if (st.state === "denied") say(howToAllow()); else find(b, box);
+        }, function () { find(b, box); });
+      } else find(b, box);
     });
   });
 })();

@@ -831,6 +831,14 @@ def read_sub_form(form, creating, sub_id=0):
             errors["static_ip"] = "Enter an IPv4 address like 10.20.0.15."
     if len(data["notes"]) > 2000:
         errors["notes"] = "Too long (2000 max)."
+    # Map location (optional): a Google Maps link, "lat, lng", or filled by the "Use my location" button
+    import mod_field
+    data["where"] = form.get("where", "").strip()[:500]
+    try:
+        data["pos"] = mod_field.parse_location(data["where"])
+    except ValueError as exc:
+        data["pos"] = None
+        errors["where"] = str(exc)
     return data, errors
 
 
@@ -870,6 +878,8 @@ def subscriber_new():
             with get_db().cursor() as cur:
                 radius.sync_subscriber(cur, form["username"], plan, form["status"], form["expiry"],
                                        form["static_ip"] or None, password=form["password"])
+            if form["pos"]:
+                x("UPDATE subscribers SET lat = %s, lng = %s WHERE id = %s", (form["pos"][0], form["pos"][1], sid))
             core.remember_area(form["area"])
             core.notify("welcome", sid)
             audit("subscriber_created", form["username"])
@@ -891,6 +901,7 @@ def subscriber_edit(sid):
     form["plan_id"] = str(sub["plan_id"] or "")
     form["static_ip"] = sub["static_ip"] or ""
     form["password"] = ""
+    form["where"] = "%.6f, %.6f" % (sub["lat"], sub["lng"]) if sub.get("lat") is not None and sub.get("lng") is not None else ""
     if request.method == "POST":
         form, errors = read_sub_form(request.form, creating=False, sub_id=sid)
         form["username"] = sub["username"]
@@ -901,6 +912,8 @@ def subscriber_edit(sid):
               (form["full_name"], form["phone"], form["email"], form["address"], form["area"],
                plan["id"] if plan else None, form["status"], form["expiry"],
                form["static_ip"] or None, form["notes"], form["identity"], sid))
+            x("UPDATE subscribers SET lat = %s, lng = %s WHERE id = %s",
+              (form["pos"][0] if form["pos"] else None, form["pos"][1] if form["pos"] else None, sid))
             with get_db().cursor() as cur:
                 radius.sync_subscriber(cur, sub["username"], plan, form["status"], form["expiry"],
                                        form["static_ip"] or None, password=form["password"] or None)
@@ -1712,6 +1725,14 @@ import mod_field  # noqa: E402,F401
 import mod_ops  # noqa: E402,F401
 
 core.attach(app)
+
+
+@app.after_request
+def _permissions_policy(resp):
+    """Say plainly which phone features the panel's own pages may ask for: location (Use my location, the map) and
+    the camera (job photos, profile pictures). Nothing else, and never for frames from other sites."""
+    resp.headers.setdefault("Permissions-Policy", "geolocation=(self), camera=(self), microphone=(), payment=()")
+    return resp
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=8000, debug=False)
