@@ -692,7 +692,7 @@ def decorate(rows):
 def subscribers():
     where, params = sub_filters(request.args)
     total = q("SELECT COUNT(*) AS c" + BASE_FROM + where, params, one=True)["c"]
-    pg = pager(total)
+    pg = pager(total, choices=core.SUB_PER_PAGE)
     sort = request.args.get("sort", "created")
     sort = sort if sort in SORTS else "created"
     direction = "ASC" if request.args.get("dir") == "asc" else "DESC"

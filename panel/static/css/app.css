@@ -484,7 +484,7 @@ h3.mini { font-size: 14px; margin: 18px 0 8px; }
 .subs.compact .avatar { display: none; }
 .subs td, .subs th { vertical-align: middle; }
 .subs .who-cell { display: flex; gap: 10px; align-items: center; }
-.subs .who-cell > span:last-child { display: flex; flex-direction: column; line-height: 1.25; }
+.subs .who-cell > span:last-child { display: block; line-height: 1.2; }   /* name, then the username under it: no gap */
 .subs .uname { font-size: 12px; color: var(--info); }
 .avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--rule-strong); color: var(--surface); display: inline-flex; align-items: center; justify-content: center; font-weight: 600; flex: none; }
 .ic { display: inline-flex; width: 26px; height: 26px; align-items: center; justify-content: center; background: none; border: 0; cursor: pointer; padding: 0; border-radius: 6px; }

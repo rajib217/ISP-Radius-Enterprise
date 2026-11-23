@@ -1987,6 +1987,16 @@ def check_rules(flask_app, ids):
     _norm = [adm.get(u).get_data(as_text=True) for u in ("/", "/payments")]
     check(all('class="content full"' in h for h in _full) and all('class="content"' in h for h in _norm),
           "every Subscribers menu page uses the full width; other pages do not")
+    # subscriber list: up to 2000 a page; name above, username under it
+    _p2k = adm.get("/subscribers?per=2000").get_data(as_text=True)
+    _p5k = adm.get("/subscribers?per=5000").get_data(as_text=True)
+    _pay2k = adm.get("/payments?per=2000").get_data(as_text=True)
+    _named = one("SELECT id, username, full_name FROM subscribers WHERE full_name <> '' ORDER BY id DESC LIMIT 1")
+    _one = adm.get("/subscribers?q=%s" % _named["username"]).get_data(as_text=True)
+    check(all(('<option value="%d"' % n) in _p2k for n in (500, 1000, 1500, 2000)) and '<option value="2000" selected' in _p2k
+          and '<option value="50" selected' in _p5k and '<option value="2000"' not in _pay2k
+          and ('<b>%s</b></a><br><a class="uname"' % _named["full_name"]) in _one,
+          "subscriber list: 500 / 1000 / 1500 / 2000 a page (only there); the name with the username under it")
     run("DELETE FROM role_funcs WHERE role IN ('support', 'technician')")
     run("DELETE FROM role_perms WHERE role IN ('support', 'technician')")
     for r in _snap_f:

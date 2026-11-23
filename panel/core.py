@@ -49,6 +49,7 @@ RATE_RE = re.compile(r"^[0-9A-Za-z/ .]{0,255}$")
 NAS_NAME_RE = re.compile(r"^[A-Za-z0-9._:/\-]{1,128}$")
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 PER_PAGE_CHOICES = (25, 50, 100, 200)
+SUB_PER_PAGE = (25, 50, 100, 200, 500, 1000, 1500, 2000)     # the subscriber list goes up to 2000 a page
 BASE_FROM = " FROM subscribers s LEFT JOIN plans p ON p.id = s.plan_id"
 
 DATA_DIR = os.environ.get("PANEL_DATA_DIR", "/var/lib/isp-panel")
@@ -159,12 +160,12 @@ def parse_date(text):
     raise ValueError("Use the format YYYY-MM-DD.")
 
 
-def pager(total, default_per=50):
+def pager(total, default_per=50, choices=PER_PAGE_CHOICES):
     try:
         per = int(request.args.get("per", default_per))
     except ValueError:
         per = default_per
-    per = per if per in PER_PAGE_CHOICES else default_per
+    per = per if per in choices else default_per
     pages = max((total + per - 1) // per, 1)
     try:
         page = int(request.args.get("page", 1))
