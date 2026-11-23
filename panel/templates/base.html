@@ -50,6 +50,11 @@
         {{ icon('search') }}<input type="search" name="q" data-global-search placeholder="Search username, phone, IP…" aria-label="Search subscribers" autocomplete="off">
       </form>{% endif %}
       <span class="grow"></span>
+      {% if me.role in ('reseller', 'subreseller', 'retailer') %}{% set bal = me.balance|float %}
+      <a class="bal-box{{ ' low' if bal <= 0 }}" href="{{ url_for('add_balance') }}" title="Your balance · Add Balance">
+        <span class="bal-ic">{{ icon('wallet') }}</span>
+        <span class="bal-txt"><small>Balance</small><b>{{ currency }} {{ '{:,.2f}'.format(bal) }}</b></span>
+      </a>{% endif %}
       {% if live_online is not none %}<span class="live-pill" title="Customers online now"><span class="live-dot" aria-hidden="true"></span><b data-live="online">{{ '{:,}'.format(live_online) }}</b><span class="live-word">online</span></span>{% endif %}
       <button type="button" class="btn icon topbar-theme" data-theme-toggle aria-label="Switch light or dark theme" title="Theme">{{ icon('sun') }}</button>
       <a class="who-chip" href="{{ url_for('profile') }}" title="{{ me.full_name or me.username }}">

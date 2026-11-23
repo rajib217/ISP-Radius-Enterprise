@@ -17,7 +17,7 @@
   {% if can('subscribers') %}<a class="btn primary" href="{{ url_for('subscribers_export') }}">{{ icon('download') }}Export</a>{% endif %}
   {% if can('accounting', 'edit') %}<a class="btn primary" href="{{ url_for('payments') }}">{{ icon('file') }}New Invoice</a>{% endif %}
   {% if can('tickets', 'edit') %}<a class="btn primary" href="{{ url_for('ticket_new') }}">{{ icon('ticket') }}Add Ticket</a>{% endif %}
-{% if me.role in ('reseller', 'subreseller', 'retailer') %}<a class="btn primary" href="{{ url_for('add_balance') }}">{{ icon('wallet') }}Add Balance</a><span class="balchip" title="Your balance">{{ icon('wallet') }}{{ currency }} {{ '{:,.2f}'.format(me.balance|float) }}</span>{% endif %}
+{% if me.role in ('reseller', 'subreseller', 'retailer') %}<a class="btn primary" href="{{ url_for('add_balance') }}">{{ icon('wallet') }}Add Balance</a>{% endif %}
 </div>
 
 {% set todo = attention|selectattr('c')|list %}

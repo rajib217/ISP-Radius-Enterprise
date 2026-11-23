@@ -2037,6 +2037,12 @@ def check_rules(flask_app, ids):
     check("Profile picture" in _rp0 and _rs == 302 and _rrow == "png" and "/profile/photo?v=png" in _rhome
           and _rimg_ok == 200 and _rimg_data == _png and _rkeep == "png" and _rrm == 302 and _rgone == "" and _rno == 404,
           "My Profile: a reseller saves, sees and removes their own picture (PNG/JPG only)")
+    # sellers see their balance in its own box on the right of the top bar; office users do not
+    _bal = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
+    _rtop = client(ids["reseller"]).get("/subscribers").get_data(as_text=True)
+    _atop = adm.get("/subscribers").get_data(as_text=True)
+    check('class="bal-box' in _rtop and ("{:,.2f}".format(_bal)) in _rtop and 'class="bal-box' not in _atop,
+          "top bar: a reseller's balance in its own box on every page; not for office users")
     run("DELETE FROM role_funcs WHERE role IN ('support', 'technician')")
     run("DELETE FROM role_perms WHERE role IN ('support', 'technician')")
     for r in _snap_f:
