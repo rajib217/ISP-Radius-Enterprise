@@ -2204,19 +2204,20 @@ img.av.img, img.lav.img { object-fit: cover; padding: 0; background: var(--surfa
 .me-photo .pavatar.ph .i { width: 48px; height: 48px; }
 .actions-row { display: flex; gap: 8px; flex-wrap: wrap; }
 
-/* seller balance (reseller / sub-reseller / retailer): its own box on the right of the top bar, on every page */
+/* seller balance (reseller / sub-reseller / retailer): its own box on the right of the top bar, on every page.
+   Green = money available (both themes via the --online tokens), red = nothing left to sell with. */
 .bal-box { display: inline-flex; align-items: center; gap: 10px; height: 42px; padding: 0 14px 0 6px; border-radius: 12px;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, var(--surface)), color-mix(in srgb, var(--accent) 6%, var(--surface)));
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border)); color: var(--text); white-space: nowrap;
-  box-shadow: 0 1px 2px rgb(15 23 42 / .06), 0 6px 16px -10px color-mix(in srgb, var(--accent) 60%, transparent); }
-.bal-box:hover { text-decoration: none; border-color: var(--accent); }
-.bal-box .bal-ic { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: var(--accent); color: var(--on-accent, #fff); flex: none; }
+  background: var(--online-soft); border: 1px solid color-mix(in srgb, var(--online-text) 32%, transparent); color: var(--text); white-space: nowrap;
+  box-shadow: 0 1px 2px rgb(15 23 42 / .06); transition: border-color var(--dur), box-shadow var(--dur); }
+.bal-box:hover { text-decoration: none; border-color: var(--online-text); box-shadow: 0 0 0 3px color-mix(in srgb, var(--online-text) 14%, transparent); }
+.bal-box .bal-ic { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: var(--online-text); color: var(--surface); flex: none; }
 .bal-box .bal-ic .i { width: 17px; height: 17px; }
 .bal-box .bal-txt { display: grid; line-height: 1.1; }
 .bal-box small { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); }
-.bal-box b { font-size: 18px; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
-.bal-box.low { background: color-mix(in srgb, var(--offline) 10%, var(--surface)); border-color: color-mix(in srgb, var(--offline) 40%, var(--border)); }
-.bal-box.low .bal-ic { background: var(--offline); }
-.bal-box.low b { color: var(--offline); }
+.bal-box b { font-size: 18px; font-weight: 800; color: var(--online-text); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.bal-box.low { background: var(--offline-soft); border-color: color-mix(in srgb, var(--offline-text) 35%, transparent); }
+.bal-box.low:hover { border-color: var(--offline-text); box-shadow: 0 0 0 3px color-mix(in srgb, var(--offline-text) 14%, transparent); }
+.bal-box.low .bal-ic { background: var(--offline-text); }
+.bal-box.low b { color: var(--offline-text); }
 @media (max-width: 767px) { .bal-box { height: 36px; padding-right: 10px; gap: 7px; } .bal-box small { display: none; } .bal-box b { font-size: 15px; } .bal-box .bal-ic { width: 26px; height: 26px; } }
 @media print { .bal-box { display: none !important; } }
