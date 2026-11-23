@@ -3,6 +3,7 @@
 {% block top %}{% include "_portal_top.html" %}{% endblock %}
 {% block content %}
 <div class="push-card" data-push-card="home" hidden></div>
+{% include "_portal_outage.html" %}
 
 {# ---------------------------------------------------------------- hero: who, status, days left, actions #}
 {% set state_label = {'active': 'Active', 'expired': 'Expired', 'suspended': 'Suspended'}[state] %}

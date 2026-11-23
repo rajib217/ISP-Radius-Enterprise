@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Ticket settings{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Ticket settings</h1><p class="sub">Time limits and alerts, which technician gets which area, ready replies and the messages customers get.</p></div></div>
+<div class="stack" style="max-width:980px">
+<section class="panel" id="limits"><div class="panel-head"><h2>{{ icon('clock') }}Time limits, alerts and customer messages</h2></div>
+  <form class="panel-body stack" method="post">{{ csrf_input() }}<input type="hidden" name="act" value="limits">
+    <label class="check"><input type="checkbox" name="sla_on" value="1" {{ 'checked' if s.sla_on == '1' }}> <span><b>Time limit on each ticket</b> — the list and the board show the time left; a late ticket turns red</span></label>
+    <div class="grid-4">
+      {% for k, label in [('urgent', 'Urgent'), ('high', 'High'), ('normal', 'Normal'), ('low', 'Low')] %}
+      <div class="field"><label class="lbl" for="sla-{{ k }}">{{ label }} (hours)</label><input id="sla-{{ k }}" name="sla_{{ k }}" value="{{ s['sla_' ~ k] }}" inputmode="decimal"></div>
+      {% endfor %}
+    </div>
+    <details><summary>Shorter limit for a category (optional)</summary>
+      <div class="grid-4" style="margin-top:10px">{% for k, label in categories %}<div class="field"><label class="lbl" for="slc-{{ k }}">{{ label }}</label><input id="slc-{{ k }}" name="sla_cat_{{ k }}" value="{{ s['sla_cat_' ~ k] }}" placeholder="hours" inputmode="decimal"></div>{% endfor %}</div>
+      <div class="help">When set, the shorter of the priority limit and this one is used. E.g. "No connection" 4 hours even when the priority is Normal.</div>
+    </details>
+    <div class="grid-2">
+      <div class="field"><label class="lbl" for="sla-un">Alert when nobody took a new ticket for (minutes)</label><input id="sla-un" name="sla_unassigned_min" value="{{ s.sla_unassigned_min }}" inputmode="numeric"><div class="help">Sent to the Telegram group (Settings &gt; Alerts), once per ticket, as is a ticket past its time limit. 0 = off.</div></div>
+      <div class="field"><label class="lbl" for="lowr">Alert for a customer rating of this or lower</label><select id="lowr" name="ticket_low_rating">{% for n in (1, 2, 3) %}<option value="{{ n }}" {{ 'selected' if s.ticket_low_rating == n|string }}>{{ n }} star{{ '' if n == 1 else 's' }}</option>{% endfor %}</select></div>
+    </div>
+    <label class="check"><input type="checkbox" name="ticket_auto_assign" value="1" {{ 'checked' if s.ticket_auto_assign == '1' }}> <span><b>Give new tickets to the area technician</b> — the one with the fewest open jobs (set the areas below)</span></label>
+    <label class="check"><input type="checkbox" name="ticket_sms_on" value="1" {{ 'checked' if s.ticket_sms_on == '1' }}> <span><b>SMS the customer</b> when the ticket is received, a technician is given and it is solved (with the rating link). Texts: SMS &gt; Templates &gt; ticket_open, ticket_assigned, ticket_done</span></label>
+    <label class="check"><input type="checkbox" name="ticket_app_on" value="1" {{ 'checked' if s.ticket_app_on == '1' }}> <span><b>App notification</b> to the customer for the same steps and for each office reply</span></label>
+    <label class="check"><input type="checkbox" name="ticket_otp_on" value="1" {{ 'checked' if s.ticket_otp_on == '1' }}> <span><b>Customer's code on Done</b> — the technician sends a code to the customer's phone and types it in to finish the job (an administrator or manager can finish without it)</span></label>
+    <label class="check"><input type="checkbox" name="ticket_portal_on" value="1" {{ 'checked' if s.ticket_portal_on == '1' }}> <span><b>Customers open tickets on the portal</b> (Support), follow them and rate the work</span></label>
+    <div class="field" style="max-width:420px"><label class="lbl" for="proute">A portal ticket of a reseller's customer goes to</label><select id="proute" name="ticket_portal_route"><option value="office" {{ 'selected' if s.ticket_portal_route != 'seller' }}>The office</option><option value="seller" {{ 'selected' if s.ticket_portal_route == 'seller' }}>The reseller first (they can send it to the office)</option></select></div>
+    <div><button class="btn primary" type="submit">Save</button></div>
+  </form></section>
+
+<section class="panel" id="techs"><div class="panel-head"><h2>{{ icon('pin') }}Area technicians</h2></div>
+  {% if areas and techs %}
+  <form class="panel-body stack" method="post">{{ csrf_input() }}<input type="hidden" name="act" value="techs">
+    <p class="muted" style="margin:0">Tick who works in each area. A new ticket for a customer in that area goes to the ticked person with the fewest open jobs.</p>
+    <div class="tbl-wrap"><table class="tbl tk-map"><thead><tr><th>Area</th>{% for p in techs %}<th class="num">{{ p.full_name or p.username }}<small class="muted" style="display:block">{{ p.role }}</small></th>{% endfor %}</tr></thead>
+      <tbody>{% for a in areas %}<tr><td><b>{{ a }}</b></td>{% for p in techs %}<td class="num"><input type="checkbox" name="area__{{ a }}" value="{{ p.id }}" {{ 'checked' if p.id in mapping.get(a, ()) }} aria-label="{{ p.username }} works in {{ a }}"></td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
+    <div><button class="btn primary" type="submit">Save area technicians</button></div>
+  </form>
+  {% else %}<div class="panel-body muted">Add areas (Areas) and technicians (Users &gt; Staffs, role Technician) first.</div>{% endif %}</section>
+
+<section class="panel" id="canned"><div class="panel-head"><h2>{{ icon('note') }}Ready replies</h2><span class="aside">{{ canned|length }}</span></div>
+  {% if canned %}<ul class="th-list">{% for c in canned %}<li><b>{{ c.title }}</b><small class="muted">{{ c.body|truncate(140) }}</small>
+    <form method="post" data-confirm="Delete the ready reply “{{ c.title }}”?">{{ csrf_input() }}<input type="hidden" name="act" value="canned_del"><input type="hidden" name="id" value="{{ c.id }}"><button class="btn sm" type="submit" aria-label="Delete">{{ icon('trash') }}</button></form></li>{% endfor %}</ul>{% endif %}
+  <form class="panel-body stack" method="post">{{ csrf_input() }}<input type="hidden" name="act" value="canned_add">
+    <div class="grid-2"><div class="field"><label class="lbl" for="cn-t">Name</label><input id="cn-t" name="title" maxlength="80" placeholder="Restart the router"></div></div>
+    <div class="field"><label class="lbl" for="cn-b">Text</label><textarea id="cn-b" name="body" rows="3" maxlength="3000" placeholder="Please switch the router off for 30 seconds and on again. If the red light stays, tell us."></textarea></div>
+    <div><button class="btn" type="submit">{{ icon('plus') }}Add ready reply</button></div>
+  </form></section>
+</div>
+{% endblock %}

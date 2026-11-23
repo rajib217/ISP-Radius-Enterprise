@@ -4,29 +4,38 @@
 {% block content %}
 <div class="page-head">
   <div><h1>#{{ t.id }} · {{ t.subject }}</h1>
-    <p class="sub"><span class="badge {{ {'open': 'warn', 'pending': 'info', 'resolved': 'ok', 'closed': 'mute'}.get(t.status, 'mute') }}">{{ t.status|capitalize }}</span>
-      <span class="pri-{{ t.priority }}">{{ t.priority|capitalize }}</span> · opened {{ t.created_at|dt }} by {{ t.created_by or '—' }}</p></div>
+    <p class="sub"><span class="badge {{ {'open': 'warn', 'pending': 'info', 'resolved': 'ok', 'closed': 'mute'}.get(t.status, 'mute') }}">{{ 'In progress' if t.status == 'pending' else t.status|capitalize }}</span>
+      <span class="pri-{{ t.priority }}">{{ t.priority|capitalize }}</span>
+      {% if left.state in ('ok', 'soon', 'late') %}<span class="sla sla-{{ left.state }}">{{ icon('clock') }}{{ left_text(left.mins) }}</span>{% elif left.state == 'met' %}<span class="sla sla-met">fixed in time</span>{% elif left.state == 'missed' %}<span class="sla sla-missed">fixed late</span>{% endif %}
+      · {{ all_cats.get(t.category, t.category) }} · opened {{ t.created_at|dt }} by {{ t.created_by or '—' }}{% if t.source == 'portal' %} (customer portal){% endif %}</p></div>
   <div class="actions"><a class="btn" href="{{ url_for('tickets') }}">All tickets</a>
     {% if me.role == 'admin' %}<form method="post" action="{{ url_for('ticket_delete', tid=t.id) }}" data-confirm="Delete ticket #{{ t.id }} and all replies?">{{ csrf_input() }}<button class="btn danger" type="submit">{{ icon('trash') }}Delete</button></form>{% endif %}</div>
 </div>
+{% for o in outages %}<div class="notice warn" role="status">{{ icon('alert') }}<div><strong>Known outage{{ ' in ' ~ o.area if o.area else '' }}</strong><p>{{ o.message }}{% if o.ends_at %} · expected back {{ o.ends_at|dt }}{% endif %}</p></div></div>{% endfor %}
+{% if not t.to_office %}
+<div class="notice info tk-owner">{{ icon('user') }}<div><strong>{{ 'You handle this ticket' if is_seller else 'The reseller ' ~ t.seller ~ ' handles this ticket' }}</strong>
+  <p>{% if is_seller %}No time limit runs for the office. If you cannot fix it, send it to the office.{% else %}It has no time limit for the office until they press "Send to office".{% endif %}</p></div>
+  {% if is_seller and t.status in ('open', 'pending') and can('tickets', 'edit') %}<form method="post" action="{{ url_for('ticket_to_office', tid=t.id) }}" class="tk-forward">{{ csrf_input() }}<input name="note" placeholder="What you tried (optional)" maxlength="1000"><button class="btn primary" type="submit">{{ icon('send') }}Send to office</button></form>{% endif %}
+</div>
+{% elif is_seller and t.kind == 'customer' %}<div class="notice info">{{ icon('info') }}<div><strong>The office is working on this.</strong><p>You can follow it and write to them here.</p></div></div>{% endif %}
 <div class="split">
   <div class="stack">
     <section class="panel">
       <div class="panel-head"><h2>Conversation</h2></div>
       <div class="panel-body thread">
-        {% for r in replies %}<div class="msg {{ 'internal' if r.internal }}"><div class="meta"><b>{{ r.author }}</b><span>{{ r.created_at|dt }}</span>{% if r.internal %}<span class="badge warn">Internal note</span>{% endif %}</div><p>{{ r.body }}</p>{% if r.photo %}<a class="job-photo" href="{{ url_for('ticket_photo', name=r.photo) }}" target="_blank" rel="noopener"><img src="{{ url_for('ticket_photo', name=r.photo) }}" alt="Photo of the work" loading="lazy"></a>{% endif %}</div>
+        {% for r in replies %}<div class="msg {{ 'internal' if r.internal }} {{ 'from-cust' if r.author.startswith('customer:') }}"><div class="meta"><b>{{ 'Customer' if r.author.startswith('customer:') else r.author }}</b><span>{{ r.created_at|dt }}</span>{% if r.internal %}<span class="badge warn">Internal note</span>{% endif %}</div><p>{{ r.body }}</p>{% if r.photo %}<a class="job-photo" href="{{ url_for('ticket_photo', name=r.photo) }}" target="_blank" rel="noopener"><img src="{{ url_for('ticket_photo', name=r.photo) }}" alt="Photo" loading="lazy"></a>{% endif %}</div>
         {% else %}<div class="empty"><p>No messages yet.</p></div>{% endfor %}
       </div>
     </section>
     {% if can('tickets', 'edit') %}
     <section class="panel">
-      <div class="panel-head"><h2>Reply or update</h2></div>
+      <div class="panel-head"><h2>Reply or update</h2>{% if canned %}<select class="aside tk-canned" data-canned-pick aria-label="Ready reply" style="width:auto"><option value="">Ready reply…</option>{% for c in canned %}<option value="{{ c.body }}">{{ c.title }}</option>{% endfor %}</select>{% endif %}</div>
       <form class="panel-body stack" method="post" action="{{ url_for('ticket_reply', tid=t.id) }}">
         {{ csrf_input() }}
-        <div class="field"><label class="lbl" for="rp-body">Message</label><textarea id="rp-body" name="body" rows="4" maxlength="5000"></textarea></div>
+        <div class="field"><label class="lbl" for="rp-body">Message</label><textarea id="rp-body" name="body" rows="4" maxlength="5000" data-canned-target placeholder="{{ 'The customer sees this in their app.' if t.sid and not is_seller else '' }}"></textarea></div>
         <div class="row-gap">
-          <label class="check"><input type="checkbox" name="internal" value="1"> Internal note (staff only)</label>
-          <select name="status" aria-label="New status" style="width:auto"><option value="">Keep status ({{ t.status }})</option>{% for k, n in statuses %}{% if k != t.status %}<option value="{{ k }}">Mark {{ n|lower }}</option>{% endif %}{% endfor %}</select>
+          {% if not is_seller %}<label class="check"><input type="checkbox" name="internal" value="1"> Internal note (office only)</label>{% endif %}
+          {% if can_status %}<select name="status" aria-label="New status" style="width:auto"><option value="">Keep status ({{ t.status }})</option>{% for k, n in statuses %}{% if k != t.status %}<option value="{{ k }}">Mark {{ n|lower }}</option>{% endif %}{% endfor %}</select>{% endif %}
           <button class="btn primary" type="submit">{{ icon('send') }}Save</button>
         </div>
       </form>
@@ -35,20 +44,44 @@
   </div>
   <div class="stack">
     <section class="panel"><div class="panel-head"><h2>Customer</h2></div><div class="panel-body">
-      {% if t.sid %}<a href="{{ url_for('subscriber_view', sid=t.sid) }}"><b>{{ t.sub_name or t.username }}</b></a><div class="mono muted">{{ t.username }}</div>
-        {% if t.sub_phone %}<div>{{ t.sub_phone }}</div>{% endif %}{% if t.sub_area %}<div class="muted">{{ t.sub_area }}</div>{% endif %}
+      {% if t.sid %}<a href="{{ url_for('subscriber_view', sid=t.sid) }}"><b>{{ t.sub_name or t.username }}</b></a><div class="mono muted">{{ t.sid|subid }} · {{ t.username }}</div>
+        {% if t.sub_phone %}<div><a href="tel:{{ t.sub_phone }}">{{ t.sub_phone }}</a></div>{% endif %}{% if t.sub_address or t.sub_area %}<div class="muted">{{ t.sub_address }}{% if t.sub_area %}{{ ', ' if t.sub_address }}{{ t.sub_area }}{% endif %}</div>{% endif %}
+      {% elif t.kind == 'seller' %}<span class="muted">Request from the reseller <b>{{ t.seller }}</b>.</span>
       {% else %}<span class="muted">General ticket, no customer.</span>{% endif %}</div></section>
-    {% if can('tickets', 'edit') %}
+    {% if t.arrived_at or mats or t.rating or t.otp_ok %}
+    <section class="panel"><div class="panel-head"><h2>Visit &amp; result</h2></div><div class="panel-body stack tk-visit">
+      {% if t.arrived_at %}<div>{{ icon('pin') }} Arrived {{ t.arrived_at|dt }}{% if dist is not none %} · <span class="{{ 'g' if dist <= 150 else 'r' }}">{{ dist }} m from the saved location</span>{% elif t.arrived_lat is none %} · <span class="muted">no GPS</span>{% endif %}</div>{% endif %}
+      {% if t.otp_ok %}<div>{{ icon('shield') }} Customer confirmed with their code</div>{% endif %}
+      {% if mats %}<div><b>Materials used</b><ul class="tk-mats">{% for m in mats %}<li>{{ m.qty }} {{ m.unit }} {{ m.name }} <small class="muted">· {{ m.by_user }}</small></li>{% endfor %}</ul></div>{% endif %}
+      {% if t.rating %}<div><b>Customer rating</b> <span class="stars">{{ '★' * t.rating }}{{ '☆' * (5 - t.rating) }}</span>{% if t.rating_note %}<p class="muted" style="margin:4px 0 0">“{{ t.rating_note }}”</p>{% endif %}</div>{% endif %}
+    </div></section>
+    {% endif %}
+    {% if not is_seller and can('tickets', 'edit') %}
     <section class="panel"><div class="panel-head"><h2>Details</h2></div>
       <form class="panel-body stack" method="post" action="{{ url_for('ticket_update', tid=t.id) }}">
         {{ csrf_input() }}
-        <div class="field"><label class="lbl" for="tu-cat">Category</label><select id="tu-cat" name="category">{% for k, n in categories %}<option value="{{ k }}" {{ 'selected' if t.category == k }}>{{ n }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="tu-who">Assigned to</label><select id="tu-who" name="assigned_to"><option value="">Nobody</option>{% for s in staff %}<option value="{{ s.id }}" {{ 'selected' if t.assigned_to == s.id }}>{{ s.full_name or s.username }} · {{ s.role }}</option>{% endfor %}</select></div>
         <div class="field"><label class="lbl" for="tu-pri">Priority</label><select id="tu-pri" name="priority">{% for k, n in priorities %}<option value="{{ k }}" {{ 'selected' if t.priority == k }}>{{ n }}</option>{% endfor %}</select></div>
-        <div class="field"><label class="lbl" for="tu-dept">Department</label><select id="tu-dept" name="department_id"><option value="">None</option>{% for d in depts %}<option value="{{ d.id }}" {{ 'selected' if t.department_id == d.id }}>{{ d.name }}</option>{% endfor %}</select></div>
-        <div class="field"><label class="lbl" for="tu-who">Assigned to</label><select id="tu-who" name="assigned_to"><option value="">Nobody</option>{% for s in staff %}<option value="{{ s.id }}" {{ 'selected' if t.assigned_to == s.id }}>{{ s.full_name or s.username }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="tu-cat">Category</label><select id="tu-cat" name="category">{% for k, n in all_cats.items() %}<option value="{{ k }}" {{ 'selected' if t.category == k }}>{{ n }}</option>{% endfor %}</select></div>
+        {% if depts %}<div class="field"><label class="lbl" for="tu-dept">Department</label><select id="tu-dept" name="department_id"><option value="">None</option>{% for d in depts %}<option value="{{ d.id }}" {{ 'selected' if t.department_id == d.id }}>{{ d.name }}</option>{% endfor %}</select></div>{% endif %}
+        {% if t.due_at and t.to_office %}<div class="help">Time limit: {{ t.due_at|dt }}. Changing the priority or category recalculates it.</div>{% endif %}
         <div><button class="btn" type="submit">Save details</button></div>
       </form></section>
+    {% elif t.assignee %}
+    <section class="panel"><div class="panel-head"><h2>Technician</h2></div><div class="panel-body">{{ t.assignee_name or t.assignee }}</div></section>
     {% endif %}
   </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var pick = document.querySelector("[data-canned-pick]"), box = document.querySelector("[data-canned-target]");
+  if (pick && box) pick.addEventListener("change", function () {
+    if (!pick.value) return;
+    box.value = box.value ? box.value.replace(/\s*$/, "") + "\n" + pick.value : pick.value;
+    pick.value = ""; box.focus();
+  });
+})();
+</script>
 {% endblock %}

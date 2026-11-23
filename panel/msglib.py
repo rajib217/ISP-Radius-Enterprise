@@ -4,8 +4,10 @@ Everything that touches the database takes an open cursor, so callers decide whe
 """
 import re
 
-SYSTEM_TEMPLATE_NAMES = ("welcome", "payment", "expiry", "due")
-VARIABLES = ("name", "username", "phone", "plan", "price", "expiry", "amount", "password", "isp", "id", "paylink")
+SYSTEM_TEMPLATE_NAMES = ("welcome", "payment", "expiry", "due", "ticket_open", "ticket_assigned", "ticket_done",
+                         "ticket_otp", "outage")
+VARIABLES = ("name", "username", "phone", "plan", "price", "expiry", "amount", "password", "isp", "id", "paylink",
+             "ticket", "tech", "techphone", "link", "code", "message")
 
 DEFAULT_TEMPLATES = {
     ("sms", "welcome"): {"subject": "", "body":
@@ -29,6 +31,14 @@ DEFAULT_TEMPLATES = {
         "Dear {name},\n\nYour {plan} package expires on {expiry}.\nPlease pay BDT {price} to stay connected.\n\n"
         "Thank you,\n{isp}"},
 }
+
+def _ticket_defaults():
+    import ticketlib
+    for name, body in ticketlib.SMS_TEMPLATES.items():
+        DEFAULT_TEMPLATES.setdefault(("sms", name), {"subject": "", "body": body})
+
+
+_ticket_defaults()
 
 _VAR = re.compile(r"\{(\w+)\}")
 

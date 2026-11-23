@@ -636,7 +636,10 @@ def attention():
     """Counts that need a human, limited to what this user may open."""
     rows = []
     if can("tickets"):
-        c = q("SELECT COUNT(*) AS c FROM tickets WHERE status IN ('open', 'pending')", one=True)["c"]
+        names = my_downline()            # a reseller counts only their own downline's tickets
+        c = q("SELECT COUNT(*) AS c FROM tickets WHERE status IN ('open', 'pending')" +
+              ("" if names is None else " AND seller IN (%s)" % ",".join(["%s"] * len(names))),
+              [] if names is None else list(names), one=True)["c"]
         rows.append({"label": "Open tickets", "c": c, "endpoint": "tickets", "args": {"status": "open"}})
     if can("inventory"):
         c = q("SELECT COUNT(*) AS c FROM inventory_items WHERE min_qty > 0 AND qty <= min_qty", one=True)["c"]

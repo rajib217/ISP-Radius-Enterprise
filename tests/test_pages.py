@@ -2246,6 +2246,163 @@ def check_rules(flask_app, ids):
           and "ci-tech-onu" in _home2 and "Done today" in _home2,
           "technician: never Network, Accounting, Packages, My Packages, Inventory, Zones or reports (even if ticked); no password "
           "change; home shows their jobs (no graphs or ISP numbers) with Start, Update and Done")
+
+    # ================= tickets v2
+    def setv(k, v):
+        run("INSERT INTO settings (skey, svalue) VALUES (%s, %s) ON DUPLICATE KEY UPDATE svalue = VALUES(svalue)", (k, v))
+    import ticketlib as _tl
+    run("INSERT IGNORE INTO areas (name) VALUES ('CI-Area')")
+    run("UPDATE subscribers SET area = 'CI-Area', phone = '01711555444', sms_on = 1, status = 'active' WHERE id = %s", (_asub["id"],))
+    run("UPDATE subscribers SET phone = '01711555333', sms_on = 1 WHERE id = %s", (_rsub["id"],))
+    for k, v in (("sla_on", "1"), ("sla_urgent", "2"), ("ticket_auto_assign", "1"), ("ticket_sms_on", "1"), ("ticket_app_on", "1"),
+                 ("ticket_otp_on", "0"), ("portal_on", "1"), ("ticket_portal_on", "1")):
+        setv(k, v)
+    # settings: area technician, ready reply
+    _tset = adm.post("/tickets/settings", data={"_csrf": "ci", "act": "techs", "area__CI-Area": str(_tech_uid)}).status_code
+    adm.post("/tickets/settings", data={"_csrf": "ci", "act": "canned_add", "title": "CI restart", "body": "Please restart the router (ci)."})
+    _tset_tech = _tc.get("/tickets/settings").status_code
+    # new ticket: found by phone, urgent = 2 hours, given to the area technician, customer told
+    _lk = json.loads(adm.get("/tickets/lookup?q=01711555444").get_data(as_text=True))
+    _lk_res = json.loads(_rc2.get("/tickets/lookup?q=%s" % _asub["username"]).get_data(as_text=True))
+    _ob0 = one("SELECT COUNT(*) AS c FROM outbox WHERE subscriber_id = %s", (_asub["id"],))["c"]
+    adm.post("/tickets/new", data={"_csrf": "ci", "customer": "01711555444", "subject": "ci-v2-urgent", "category": "connection",
+                                   "priority": "urgent", "body": "red light"})
+    _t1 = one("SELECT * FROM tickets WHERE subject = 'ci-v2-urgent'")
+    _ob1 = run_q("SELECT body FROM outbox WHERE subscriber_id = %s ORDER BY id", (_asub["id"],))[_ob0:]
+    _due_h = (_t1["due_at"] - _t1["created_at"]).total_seconds() / 3600 if _t1["due_at"] else 0
+    _app = one("SELECT COUNT(*) AS c FROM sub_notifications WHERE subscriber_id = %s AND kind = 'ticket'", (_asub["id"],))["c"]
+    adm.post("/tickets/new", data={"_csrf": "ci", "customer": _asub["username"], "subject": "ci-v2-phone", "category": "slow",
+                                   "priority": "normal", "solved": "1"})
+    _t2 = one("SELECT status, closed_at FROM tickets WHERE subject = 'ci-v2-phone'")
+    _tv1 = adm.get("/tickets/%d" % _t1["id"]).get_data(as_text=True)
+    _tl1 = adm.get("/tickets?view=free").status_code
+    check(_tset == 302 and _tset_tech == 403 and any(r["id"] == _asub["id"] and "online" in r for r in _lk)
+          and not any(r["id"] == _asub["id"] for r in _lk_res) and 1.9 < _due_h < 2.1 and _t1["assigned_to"] == _tech_uid
+          and _t1["to_office"] == 1 and any("#%d" % _t1["id"] in _b["body"] for _b in _ob1) and len(_ob1) >= 2 and _app >= 2
+          and _t2["status"] == "resolved" and _t2["closed_at"] and "CI restart" in _tv1 and "left" in _tv1 and _tl1 == 200,
+          "tickets: find the customer by phone; urgent = 2 h limit; the area technician gets it; customer SMS + app notice; "
+          "solved on the phone; ready replies; settings for administrators / managers only")
+    # alert: nobody took it / past the time limit -> Telegram once
+    _sent = []
+    import alertlib as _al
+    _orig_send = _al.send
+    _al.send = lambda s, text: (_sent.append(text) or (True, ""))
+    setv("tg_on", "1"); setv("tg_token", "x"); setv("tg_chat", "1"); setv("sla_unassigned_min", "60")
+    adm.post("/tickets/new", data={"_csrf": "ci", "subject": "ci-v2-nobody", "category": "other", "priority": "normal"})
+    run("UPDATE tickets SET created_at = NOW() - INTERVAL 3 HOUR WHERE subject = 'ci-v2-nobody'")
+    run("UPDATE tickets SET due_at = NOW() - INTERVAL 5 MINUTE WHERE id = %s", (_t1["id"],))
+    _conn = db.connect()
+    with _conn.cursor() as _cur:
+        _s = db.load_settings(_cur)
+        _n1 = _tl.sla_run(_conn, _cur, _s)
+        _n2 = _tl.sla_run(_conn, _cur, _s)
+    _conn.close()
+    _al.send = _orig_send
+    setv("tg_on", "0")
+    _late_list = adm.get("/tickets?view=late").get_data(as_text=True)
+    check(_n1 >= 2 and _n2 == 0 and _sent and "ci-v2-nobody" in _sent[0] and "ci-v2-urgent" in _sent[0] and "ci-v2-urgent" in _late_list
+          and "sla-late" in _late_list,
+          "tickets: Telegram alert once for a ticket nobody took and one past its time limit; the list shows it late")
+    # resellers: only their own, never internal notes, fix it themselves or send it to the office
+    _r_list = _rc2.get("/tickets").get_data(as_text=True)
+    _r_foreign = _rc2.get("/tickets/%d" % _t1["id"]).status_code
+    _rc2.post("/tickets/new", data={"_csrf": "ci", "kind": "customer", "customer": _rsub["username"], "subject": "ci-v2-res-own",
+                                    "category": "slow", "priority": "normal", "handler": "me"})
+    _rt = one("SELECT * FROM tickets WHERE subject = 'ci-v2-res-own'")
+    adm.post("/tickets/%d/reply" % _rt["id"], data={"_csrf": "ci", "body": "ci-secret-office-note", "internal": "1"})
+    _r_view = _rc2.get("/tickets/%d" % _rt["id"]).get_data(as_text=True)
+    _a_view = adm.get("/tickets/%d" % _rt["id"]).get_data(as_text=True)
+    _r_upd = _rc2.post("/tickets/%d/update" % _rt["id"], data={"_csrf": "ci", "assigned_to": str(ids["admin"])}).status_code
+    _r_fw = _rc2.post("/tickets/%d/to-office" % _rt["id"], data={"_csrf": "ci", "note": "tried restart"}).status_code
+    _rt2 = one("SELECT to_office, due_at FROM tickets WHERE id = %s", (_rt["id"],))
+    _rc2.post("/tickets/new", data={"_csrf": "ci", "kind": "seller", "subject": "ci-v2-res-balance", "category": "balance", "priority": "normal"})
+    _rb = one("SELECT to_office, kind, seller, subscriber_id FROM tickets WHERE subject = 'ci-v2-res-balance'")
+    _r_bulk = _rc2.post("/tickets/bulk", data={"_csrf": "ci", "ids": [str(_t1["id"])], "action": "resolved"}).status_code
+    _r_board = _rc2.get("/tickets/board").status_code
+    _r_rep = _rc2.get("/tickets/report").status_code
+    check("ci-v2-urgent" not in _r_list and _r_foreign == 403 and _rt["to_office"] == 0 and _rt["seller"] == _rname and _rt["due_at"] is None
+          and "ci-secret-office-note" not in _r_view and "ci-secret-office-note" in _a_view and "Send to office" in _r_view
+          and _r_upd == 403 and _r_fw == 302 and _rt2["to_office"] == 1 and _rt2["due_at"] is not None
+          and _rb["to_office"] == 1 and _rb["kind"] == "seller" and _rb["seller"] == _rname and _rb["subscriber_id"] is None
+          and _r_bulk == 403 and _r_board == 302 and _r_rep == 403,
+          "tickets: a reseller sees only their downline's tickets (no internal notes), fixes one or sends it to the office, "
+          "asks the office for their own needs; no assigning, bulk, board or report")
+    # bulk, board, report
+    _bk = adm.post("/tickets/bulk", data={"_csrf": "ci", "ids": [str(_rt["id"])], "action": "assign", "assign_to": str(_tech_uid)}).status_code
+    _bd = adm.get("/tickets/board").get_data(as_text=True)
+    _mv = adm.post("/tickets/%d/move" % _rt["id"], data={"_csrf": "ci", "col": "working"}).status_code
+    _mv_st = one("SELECT status FROM tickets WHERE id = %s", (_rt["id"],))["status"]
+    _rp = adm.get("/tickets/report?days=30").get_data(as_text=True)
+    check(_bk == 302 and one("SELECT assigned_to FROM tickets WHERE id = %s", (_rt["id"],))["assigned_to"] == _tech_uid
+          and 'data-col="new"' in _bd and "ci-v2-urgent" in _bd and _mv == 302 and _mv_st == "pending"
+          and "Per person" in _rp and "Areas with the most tickets" in _rp,
+          "tickets: tick several and assign; board columns with drag / buttons; report per person, area and repeat customers")
+    # outages + customer portal: open, follow, reopen, rate
+    _og = adm.post("/outages", data={"_csrf": "ci", "area": "CI-Area", "message": "ci fiber cut near the bridge"}).status_code
+    _pc = flask_app.test_client()
+    with _pc.session_transaction() as _ps:
+        _ps["csrf"] = "ci"; _ps["cid"] = _asub["id"]
+    _ph = _pc.get("/portal").get_data(as_text=True)
+    _psup = _pc.get("/portal/support").get_data(as_text=True)
+    _pnew = _pc.post("/portal/support", data={"_csrf": "ci", "category": "connection", "body": "ci portal no internet"}).status_code
+    _pt = one("SELECT * FROM tickets WHERE subscriber_id = %s AND source = 'portal' ORDER BY id DESC LIMIT 1", (_asub["id"],))
+    _pv = _pc.get("/portal/support/%d" % _pt["id"]).get_data(as_text=True)
+    _pforeign = _pc.get("/portal/support/%d" % _rt["id"]).status_code
+    adm.post("/tickets/%d/reply" % _pt["id"], data={"_csrf": "ci", "body": "ci office answer", "status": "resolved"})
+    _pv2 = _pc.get("/portal/support/%d" % _pt["id"]).get_data(as_text=True)
+    _prate = _pc.post("/portal/support/%d/rate" % _pt["id"], data={"_csrf": "ci", "stars": "4", "note": "quick"}).status_code
+    _prate2 = _pc.post("/portal/support/%d/rate" % _pt["id"], data={"_csrf": "ci", "stars": "1"}).status_code
+    _pr = one("SELECT rating, rating_note FROM tickets WHERE id = %s", (_pt["id"],))
+    _pc.post("/portal/support/%d/reply" % _pt["id"], data={"_csrf": "ci", "body": "still down", "reopen": "1"})
+    _preopen = one("SELECT status FROM tickets WHERE id = %s", (_pt["id"],))["status"]
+    _oid = one("SELECT id FROM outages WHERE message = 'ci fiber cut near the bridge'")["id"]
+    adm.post("/outages", data={"_csrf": "ci", "act": "close", "id": str(_oid)})
+    _ph2 = _pc.get("/portal").get_data(as_text=True)
+    _rated_list = adm.get("/tickets?view=portal").get_data(as_text=True)
+    check(_og == 302 and "ci fiber cut near the bridge" in _ph and "ci fiber cut near the bridge" in _psup and _pnew == 302
+          and _pt["to_office"] == 1 and _pt["priority"] == "high" and "ci portal no internet" in _pv and _pforeign == 404
+          and "ci office answer" in _pv2 and "ps-stars" in _pv2 and _prate == 302 and _pr["rating"] == 4 and _pr["rating_note"] == "quick"
+          and _preopen == "open" and "ci fiber cut near the bridge" not in _ph2 and "portal" in _rated_list,
+          "tickets: an area outage shows on the portal until fixed; customers open a complaint, follow it, rate it once and reopen it")
+    # technician visit: I'm here (GPS), materials out of stock, the customer's code
+    run("UPDATE subscribers SET lat = 23.8, lng = 90.4 WHERE id = %s", (_asub["id"],))
+    run("INSERT INTO inventory_items (name, unit, qty) VALUES ('CI ONU', 'pcs', 5)")
+    _item = one("SELECT id FROM inventory_items WHERE name = 'CI ONU'")["id"]
+    _vt = _t1["id"]
+    _arr = _tc.post("/jobs/%d/arrived" % _vt, data={"_csrf": "ci", "next": "/", "lat": "23.8005", "lng": "90.4"}).status_code
+    _va = one("SELECT arrived_at, arrived_lat, status FROM tickets WHERE id = %s", (_vt,))
+    _vnote = one("SELECT body FROM ticket_replies WHERE ticket_id = %s ORDER BY id DESC LIMIT 1", (_vt,))["body"]
+    setv("ticket_otp_on", "1")
+    _jb = _tc.get("/jobs").get_data(as_text=True)
+    _d0 = _tc.post("/jobs/%d/done" % _vt, data={"_csrf": "ci", "next": "/jobs", "note": "replaced ONU", "item": str(_item), "qty": "2"})
+    _st0 = one("SELECT status FROM tickets WHERE id = %s", (_vt,))["status"]
+    _otp = _tc.post("/jobs/%d/otp" % _vt, data={"_csrf": "ci", "next": "/jobs"})
+    _sms = one("SELECT body FROM outbox WHERE subscriber_id = %s AND body LIKE %s ORDER BY id DESC LIMIT 1", (_asub["id"], "%code for complaint%"))
+    _code = re.search(r"is (\d{6})", _sms["body"]).group(1) if _sms else ""
+    _bad = "000000" if _code != "000000" else "111111"
+    _tc.post("/jobs/%d/done" % _vt, data={"_csrf": "ci", "next": "/jobs", "note": "replaced ONU", "otp": _bad})
+    _tries = one("SELECT status, otp_tries FROM tickets WHERE id = %s", (_vt,))
+    _too_much = _tc.post("/jobs/%d/done" % _vt, data={"_csrf": "ci", "next": "/jobs", "note": "replaced ONU", "otp": _code,
+                                                     "item": str(_item), "qty": "99"})
+    _st_mid = one("SELECT status FROM tickets WHERE id = %s", (_vt,))["status"]
+    _dn = _tc.post("/jobs/%d/done" % _vt, data={"_csrf": "ci", "next": "/jobs", "note": "replaced ONU", "otp": _code,
+                                               "item": str(_item), "qty": "2"})
+    _vend = one("SELECT status, otp_ok FROM tickets WHERE id = %s", (_vt,))
+    _stock = one("SELECT qty FROM inventory_items WHERE id = %s", (_item,))["qty"]
+    _mat = one("SELECT qty FROM ticket_materials WHERE ticket_id = %s", (_vt,))
+    _move = one("SELECT COUNT(*) AS c FROM inventory_moves WHERE item_id = %s AND kind = 'out'", (_item,))["c"]
+    _done_sms = one("SELECT COUNT(*) AS c FROM outbox WHERE subscriber_id = %s AND body LIKE %s", (_asub["id"], "%#" + str(_vt) + " is solved%"))["c"]
+    _tview = adm.get("/tickets/%d" % _vt).get_data(as_text=True)
+    setv("ticket_otp_on", "0")
+    check(_arr == 302 and _va["arrived_at"] and abs(float(_va["arrived_lat"]) - 23.8005) < 1e-6 and _va["status"] == "pending"
+          and "m from the saved location" in _vnote and "arrived " in _jb
+          and "Customer's code" in _jb and _d0.headers["Location"].endswith("#done-%d" % _vt) and _st0 == "pending"
+          and _otp.status_code == 302 and _code and _tries["status"] == "pending" and _tries["otp_tries"] == 1
+          and _st_mid == "pending" and _dn.status_code == 302 and _vend["status"] == "resolved" and _vend["otp_ok"] == 1
+          and _stock == 3 and _mat and _mat["qty"] == 2 and _move >= 1 and _done_sms >= 1 and "Materials used" in _tview
+          and "Arrived" in _tview,
+          "technician visit: I'm here with GPS (distance to the saved location), materials taken out of stock, Done needs the "
+          "customer's SMS code (wrong code counted), the customer gets the solved SMS with the rating link")
     return bad
 
 

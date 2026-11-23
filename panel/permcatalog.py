@@ -215,6 +215,7 @@ ENDPOINT_FN = {
     "onu_save": "onu.edit", "onu_map": "onu.edit", "onu_delete": "onu.delete",
     "inventory_save": ("itm.add", "itm.edit"), "inventory_move": "itm.move", "inventory_delete": "itm.delete",
     "ticket_new": "tk.add", "ticket_reply": "tk.reply", "ticket_update": "tk.update", "ticket_delete": "tk.delete",
+    "ticket_lookup": "tk.add", "tickets_bulk": "tk.update", "ticket_move": "tk.update", "ticket_to_office": "tk.reply",
     "note_save": "note.add", "note_delete": "note.delete",
     "document_upload": "doc.add", "document_delete": "doc.delete",
     "plan_save": "pkg.assign", "plan_delete": "pkg.delete",

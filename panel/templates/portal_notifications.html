@@ -4,7 +4,7 @@
 {% block top %}{% include "_portal_top.html" %}{% endblock %}
 {% block content %}
 <div class="push-card" data-push-card="list" hidden></div>
-{% set icons = {'payment': 'check', 'balance': 'wallet', 'expiring': 'alert', 'expired': 'power', 'custom': 'bell'} %}
+{% set icons = {'payment': 'check', 'balance': 'wallet', 'expiring': 'alert', 'expired': 'power', 'custom': 'bell', 'ticket': 'ticket'} %}
 <h1 class="pp-page-h">{{ icon('bell') }}নোটিফিকেশন</h1>
 <section class="panel notif-list-wrap">
   {% if rows %}

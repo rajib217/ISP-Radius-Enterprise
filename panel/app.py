@@ -296,6 +296,7 @@ def inject():
         "asset": asset_url,
         "pwa_name": _pwa_name(),
         "portal_unread": _portal_unread(),
+        "portal_support_on": "cid" in session and cfg().get("ticket_portal_on") == "1",
         "pwa_icon_key": _pwa_icon_key(),
         "can": core.can,
         "can_fn": core.can_fn,
@@ -1726,6 +1727,7 @@ import mod_expired  # noqa: E402,F401
 import mod_pwa  # noqa: E402,F401
 import mod_field  # noqa: E402,F401
 import mod_ops  # noqa: E402,F401
+import mod_support  # noqa: E402,F401
 
 core.attach(app)
 

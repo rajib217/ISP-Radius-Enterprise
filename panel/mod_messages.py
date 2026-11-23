@@ -28,7 +28,9 @@ def _templates(kind):
     out = []
     for name in msglib.SYSTEM_TEMPLATE_NAMES:
         t = custom.get(name)
-        d = msglib.DEFAULT_TEMPLATES[(kind, name)]
+        d = msglib.DEFAULT_TEMPLATES.get((kind, name))
+        if not d:                        # SMS only (the ticket and outage messages)
+            continue
         out.append({"id": t["id"] if t else None, "name": name, "system": True, "custom": bool(t),
                     "subject": (t or d)["subject"], "body": (t or d)["body"]})
     out += [dict(r, system=False, custom=True) for r in rows if r["name"] not in msglib.SYSTEM_TEMPLATE_NAMES]

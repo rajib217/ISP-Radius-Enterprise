@@ -1,0 +1,33 @@
+{% extends "portal_base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}অভিযোগ #{{ t.id }}{% endblock %}
+{% block top %}{% include "_portal_top.html" %}{% endblock %}
+{% block content %}
+<p style="margin:0 0 8px"><a href="{{ url_for('portal_support') }}">&larr; সব অভিযোগ</a></p>
+<h1 class="pp-page-h">#{{ t.id }} {{ t.subject }}</h1>
+{% include "_portal_outage.html" %}
+{% set step = {'open': 1, 'pending': 3, 'resolved': 4, 'closed': 4}.get(t.status, 1) %}{% if t.status == 'open' and t.assigned_to %}{% set step = 2 %}{% endif %}
+<ol class="ps-steps" aria-label="অবস্থা">
+  {% for n, label in [(1, 'পাওয়া গেছে'), (2, 'টেকনিশিয়ান ঠিক হয়েছে'), (3, 'কাজ চলছে'), (4, 'সমাধান')] %}<li class="{{ 'done' if step >= n }} {{ 'now' if step == n }}"><i>{{ n }}</i><span>{{ label }}</span></li>{% endfor %}
+</ol>
+{% if (t.tech_name or t.tech_user) and t.status in ('open', 'pending') %}<div class="notice info">{{ icon('user') }}<div><strong>টেকনিশিয়ান: {{ t.tech_name or t.tech_user }}</strong>{% if t.tech_phone %}<p><a href="tel:{{ t.tech_phone }}">{{ t.tech_phone }}</a></p>{% endif %}</div></div>{% endif %}
+{% if t.status in ('resolved', 'closed') and not t.rating %}
+<section class="panel ps-rate"><div class="panel-head"><h2>{{ icon('star') }}আমাদের কাজ কেমন লাগলো?</h2></div>
+  <form class="panel-body stack" method="post" action="{{ url_for('portal_ticket_rate', tid=t.id) }}">{{ csrf_input() }}
+    <div class="ps-stars" role="radiogroup" aria-label="রেটিং">{% for n in (5, 4, 3, 2, 1) %}<input type="radio" id="st{{ n }}" name="stars" value="{{ n }}" required><label for="st{{ n }}" title="{{ n }}">★</label>{% endfor %}</div>
+    <div class="field"><label class="lbl" for="rt-note">কিছু বলতে চাইলে (ঐচ্ছিক)</label><textarea id="rt-note" name="note" rows="2" maxlength="500"></textarea></div>
+    <div><button class="btn primary" type="submit">রেটিং দিন</button></div>
+  </form></section>
+{% elif t.rating %}<p class="muted">আপনার রেটিং: <span class="stars">{{ '★' * t.rating }}{{ '☆' * (5 - t.rating) }}</span> · ধন্যবাদ!</p>{% endif %}
+<section class="panel">
+  <div class="panel-head"><h2>কথোপকথন</h2></div>
+  <div class="panel-body thread">
+    {% for r in replies %}<div class="msg {{ 'mine' if r.author.startswith('customer:') }}"><div class="meta"><b>{{ 'আপনি' if r.author.startswith('customer:') else 'অফিস' }}</b><span>{{ r.created_at.strftime('%d-%m-%Y, %I:%M %p') }}</span></div><p>{{ r.body }}</p>{% if r.photo %}<span class="muted">(কাজের ছবি অফিসে রাখা আছে)</span>{% endif %}</div>{% else %}<div class="empty"><p>এখনো কোনো বার্তা নেই।</p></div>{% endfor %}
+  </div>
+  <form class="panel-body stack" method="post" action="{{ url_for('portal_ticket_reply', tid=t.id) }}">{{ csrf_input() }}
+    <div class="field"><label class="lbl" for="pr-body">লিখুন</label><textarea id="pr-body" name="body" rows="3" maxlength="3000" required></textarea></div>
+    {% if t.status in ('resolved', 'closed') %}<label class="check"><input type="checkbox" name="reopen" value="1"> সমস্যা এখনো ঠিক হয়নি, আবার খুলুন</label>{% endif %}
+    <div><button class="btn primary" type="submit">{{ icon('send') }}পাঠান</button></div>
+  </form>
+</section>
+{% endblock %}

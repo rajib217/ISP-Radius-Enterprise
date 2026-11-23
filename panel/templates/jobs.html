@@ -13,7 +13,7 @@
 </div>
 {% if rows %}
 <div class="jobs">
-  {% for t in rows %}{{ job_card(t, priorities, categories, request.full_path, done_view=(show == 'done')) }}{% endfor %}
+  {% for t in rows %}{{ job_card(t, priorities, categories, request.full_path, done_view=(show == 'done'), stock=stock, otp_on=otp_on) }}{% endfor %}
 </div>
 {% else %}
 <section class="panel"><div class="empty"><h3>{{ 'No open jobs' if show == 'mine' else ('Nothing waiting' if show == 'free' else 'Nothing finished this week') }}</h3><p>Jobs are tickets assigned to you (Tickets &gt; a ticket &gt; Assigned to).</p></div></section>

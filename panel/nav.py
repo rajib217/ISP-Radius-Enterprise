@@ -99,11 +99,15 @@ STRUCTURE = [
         _i("Area report", "area_report"),
     ]),
     _g("tickets", "Tickets", "ticket", module="tickets", items=[
-        _i("All tickets", "tickets", ["tickets", "ticket_view"], none_of=["status", "mine"]),
+        _i("All tickets", "tickets", ["tickets", "ticket_view"], none_of=["status", "mine", "view"]),
         _i("Open", "tickets", args={"status": "open"}),
-        _i("My jobs", "jobs", ["jobs"]),
-        _i("My tickets", "tickets", args={"mine": "1"}),
+        _i("Board", "ticket_board", ["ticket_board"], office=True),
+        _i("My jobs", "jobs", ["jobs"], office=True),
+        _i("My tickets", "tickets", args={"mine": "1"}, office=True),
         _i("New ticket", "ticket_new"),
+        _i("Outages", "outages", ["outages"], office=True),
+        _i("Report", "ticket_report", ["ticket_report"], office=True),
+        _i("Settings", "ticket_settings", ["ticket_settings"], allow="ticket_admin"),
     ]),
     _g("email", "Email", "mail", module="email", items=[
         _i("Compose", "email_compose"),
@@ -157,6 +161,8 @@ def _allowed(key):
     if key == "coa":
         import mod_coa
         return mod_coa.allowed()
+    if key == "ticket_admin":
+        return g.me["role"] in ("admin", "manager")
     return False
 
 

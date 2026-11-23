@@ -299,6 +299,9 @@ def portal():
     ring = 0 if state != "active" else (100 if left is None else max(0, min(100, int(round((left + 1) * 100 / total_days)))))
     nid = (sub.get("identity") or "").strip()
     terms = pay_terms(sub)
+    import ticketlib
+    with core.get_db().cursor() as _cur:
+        outages = ticketlib.active_outages(_cur, sub.get("area") or "")
     info = {"ends": ends, "ring": ring, "last": last, "onu": onu, "plan": plan,
             "ip": (online or {}).get("framedipaddress") or sub.get("static_ip") or (last or {}).get("framedipaddress") or "",
             "mac": (last or {}).get("callingstationid") or "",
@@ -311,7 +314,7 @@ def portal():
                            payments=payments, tries=pending, terms=terms, isp=s.get("isp_name", ""),
                            cur=s.get("currency", ""), can_pw=s.get("sub_reset_pw") == "1", due=due, used_gb=used_gb,
                            uptime=uptime, photo=_photo_v(sv._photo_path(sub["id"])), owner=_owner(sub),
-                           phone=s.get("support_phone", ""))
+                           phone=s.get("support_phone", ""), outages=outages)
 
 
 @route("/portal/rate")

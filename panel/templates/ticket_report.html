@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Ticket report{% endblock %}
+{% block content %}
+{% set timed = (tot.sla_met or 0) + (tot.sla_missed or 0) %}
+<div class="page-head">
+  <div><h1>Ticket report</h1><p class="sub">The office's tickets opened in the last {{ days }} days: how fast they are fixed, who fixes them and where problems repeat.</p></div>
+  <div class="chips">{% for d in (7, 30, 90, 365) %}<a class="chip {{ 'on' if days == d }}" href="{{ url_for('ticket_report', days=d) }}">{{ d }} days</a>{% endfor %}</div>
+</div>
+<div class="th-stats tk-kpis">
+  <div class="th-stat"><span class="th-v">{{ tot.opened or 0 }}</span><span class="th-k">Opened <small>· {{ tot.portal or 0 }} from the portal</small></span></div>
+  <div class="th-stat"><span class="th-v">{{ hours_text(tot.fix_min) }}</span><span class="th-k">Average time to fix</span></div>
+  <div class="th-stat"><span class="th-v">{{ hours_text(tot.reply_min) }}</span><span class="th-k">Average first answer</span></div>
+  <div class="th-stat {{ 'good' if timed and (tot.sla_met or 0) * 100 / timed >= 90 else ('hot' if timed and (tot.sla_met or 0) * 100 / timed < 70 else '') }}"><span class="th-v">{{ ('%d%%' % ((tot.sla_met or 0) * 100 / timed)) if timed else '—' }}</span><span class="th-k">Fixed within the time limit <small>· {{ tot.sla_missed or 0 }} late</small></span></div>
+  <div class="th-stat"><span class="th-v">{{ ('%.1f' % tot.rating|float) if tot.rating else '—' }}{% if tot.rating %}<small class="stars"> ★</small>{% endif %}</span><span class="th-k">Customer rating <small>· {{ tot.rated or 0 }} rated</small></span></div>
+  <div class="th-stat {{ 'hot' if tot.still_open }}"><span class="th-v">{{ tot.still_open or 0 }}</span><span class="th-k">Still open</span></div>
+</div>
+<div class="grid2 tk-rep">
+  <section class="panel"><div class="panel-head"><h2>{{ icon('users') }}Per person</h2></div>
+    {% if techs %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th class="num">Jobs</th><th class="num">Done</th><th class="num">Open</th><th class="num">Avg fix</th><th class="num">In time</th><th class="num">Rating</th><th class="num hide-sm">Visits</th></tr></thead><tbody>
+    {% for r in techs %}<tr><td><b>{{ r.full_name or r.username }}</b><small class="muted" style="display:block">{{ r.role }}</small></td><td class="num">{{ r.jobs }}</td><td class="num">{{ r.done or 0 }}</td><td class="num">{{ r.open_now or 0 }}</td><td class="num">{{ hours_text(r.fix_min) }}</td><td class="num">{{ ('%d%%' % ((r.met or 0) * 100 / r.timed)) if r.timed else '—' }}</td><td class="num">{{ ('%.1f ★' % r.rating|float) if r.rating else '—' }}</td><td class="num hide-sm">{{ r.visits or 0 }}</td></tr>{% endfor %}
+    </tbody></table></div>{% else %}<div class="empty"><p>No assigned tickets in this period.</p></div>{% endif %}</section>
+  <section class="panel"><div class="panel-head"><h2>{{ icon('pin') }}Areas with the most tickets</h2></div>
+    {% if areas %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Area</th><th class="num">Tickets</th><th class="num">No connection</th><th class="num">Open now</th></tr></thead><tbody>
+    {% set top = areas[0].n or 1 %}{% for a in areas %}<tr><td><a href="{{ url_for('tickets', area=a.area) }}">{{ a.area }}</a><span class="tk-bar"><i style="width:{{ (a.n * 100 / top)|int }}%"></i></span></td><td class="num">{{ a.n }}</td><td class="num">{{ a.no_conn or 0 }}</td><td class="num">{{ a.open_now or 0 }}</td></tr>{% endfor %}
+    </tbody></table></div>{% else %}<div class="empty"><p>No customer tickets in this period.</p></div>{% endif %}</section>
+  <section class="panel"><div class="panel-head"><h2>{{ icon('refresh') }}Customers with repeat problems</h2><span class="aside">2+ tickets within 7 days</span></div>
+    {% if repeat %}<ul class="th-list">{% for r in repeat %}<li><a href="{{ url_for('subscriber_view', sid=r.id) }}"><b>{{ r.full_name or r.username }}</b></a> <span class="mono muted">{{ r.id|subid }}</span><small class="muted">{{ r.n }} tickets · {{ r.area or 'no area' }} · last {{ r.last|ago }}</small><a class="btn sm" href="{{ url_for('tickets', q=r.username) }}">Tickets</a></li>{% endfor %}</ul>
+    {% else %}<div class="panel-body muted">No customer came back with a new problem within a week. Good work.</div>{% endif %}</section>
+  <section class="panel"><div class="panel-head"><h2>{{ icon('layers') }}By category</h2></div>
+    {% if cats %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Category</th><th class="num">Tickets</th><th class="num">Avg fix</th></tr></thead><tbody>
+    {% for c in cats %}<tr><td>{{ all_cats.get(c.category, c.category) }}</td><td class="num">{{ c.n }}</td><td class="num">{{ hours_text(c.fix_min) }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+    {% if mats %}<div class="panel-head"><h2>{{ icon('package') }}Materials used</h2></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Item</th><th class="num">Used</th><th class="num">Jobs</th></tr></thead><tbody>
+    {% for m in mats %}<tr><td>{{ m.name }}</td><td class="num">{{ m.qty }} {{ m.unit }}</td><td class="num">{{ m.jobs }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+  </section>
+</div>
+{% endblock %}

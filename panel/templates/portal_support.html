@@ -1,0 +1,31 @@
+{% extends "portal_base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}সাপোর্ট{% endblock %}
+{% block top %}{% include "_portal_top.html" %}{% endblock %}
+{% block content %}
+<h1 class="pp-page-h">{{ icon('ticket') }}সাপোর্ট</h1>
+{% include "_portal_outage.html" %}
+<div class="ps-grid">
+  <section class="panel">
+    <div class="panel-head"><h2>নতুন অভিযোগ</h2></div>
+    <form class="panel-body stack" method="post">{{ csrf_input() }}
+      {% if outages %}<p class="muted" style="margin:0">উপরের কাজটা চলাকালীন একই সমস্যার জন্য অভিযোগ করার দরকার নেই, ঠিক হলে জানানো হবে।</p>{% endif %}
+      <div class="field"><span class="lbl">কী সমস্যা?</span>
+        <div class="ps-cats" role="radiogroup">{% for k, label in categories %}<label class="ps-cat"><input type="radio" name="category" value="{{ k }}" {{ 'checked' if form.category == k }}><span>{{ label }}</span></label>{% endfor %}</div></div>
+      <div class="field"><label class="lbl" for="ps-sub">শিরোনাম (ঐচ্ছিক)</label><input id="ps-sub" name="subject" value="{{ form.subject }}" maxlength="120" placeholder="যেমন: সকাল থেকে নেট নেই"></div>
+      <div class="field"><label class="lbl" for="ps-body">বিস্তারিত লিখুন <b class="req">*</b></label><textarea id="ps-body" name="body" rows="4" maxlength="3000" required placeholder="কখন থেকে সমস্যা, রাউটারে কোন বাতি জ্বলছে, ইত্যাদি">{{ form.body }}</textarea></div>
+      <div><button class="btn primary" type="submit">{{ icon('send') }}অভিযোগ পাঠান</button></div>
+      {% if phone %}<p class="muted" style="margin:0">জরুরি হলে ফোন করুন: <a href="tel:{{ phone }}">{{ phone }}</a></p>{% endif %}
+    </form>
+  </section>
+  <section class="panel">
+    <div class="panel-head"><h2>আমার অভিযোগ</h2><span class="aside">{{ rows|length }}</span></div>
+    {% if rows %}<ul class="ps-list">
+      {% for t in rows %}<li><a href="{{ url_for('portal_ticket', tid=t.id) }}">
+        <div class="ps-top"><b>#{{ t.id }} {{ t.subject }}</b><span class="badge {{ {'open': 'warn', 'pending': 'info', 'resolved': 'ok', 'closed': 'mute'}.get(t.status, 'mute') }}">{{ status_bn.get(t.status, t.status) }}</span></div>
+        <small class="muted">{{ cats.get(t.category, t.category) }} · {{ t.created_at.strftime('%d-%m-%Y') }}{% if t.tech_name or t.tech_user %} · টেকনিশিয়ান {{ t.tech_name or t.tech_user }}{% endif %}{% if t.status in ('resolved', 'closed') and not t.rating %} · <b class="ps-rate-cta">রেটিং দিন</b>{% elif t.rating %} · <span class="stars">{{ '★' * t.rating }}</span>{% endif %}</small>
+      </a></li>{% endfor %}
+    </ul>{% else %}<div class="empty"><p>এখনো কোনো অভিযোগ নেই।</p></div>{% endif %}
+  </section>
+</div>
+{% endblock %}

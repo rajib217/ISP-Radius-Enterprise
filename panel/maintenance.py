@@ -432,6 +432,15 @@ def main():
         print("alerts failed: %s" % exc)
 
     try:
+        import ticketlib
+        n_tk = ticketlib.sla_run(conn, cur, s)
+        if n_tk:
+            print("tickets: Telegram alert for %d ticket(s) nobody took or past the time limit" % n_tk)
+    except Exception as exc:   # a ticket alert must not stop the rest of the job
+        conn.rollback()
+        print("ticket alerts failed: %s" % exc)
+
+    try:
         fixed = bkash_sweep()
         if fixed:
             print("bKash: settled or closed %d stuck payment(s)" % fixed)

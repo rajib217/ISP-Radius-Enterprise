@@ -1,42 +1,85 @@
 {% extends "base.html" %}
 {% from "_macros.html" import icon, pager %}
+{% macro sla(t) -%}
+  {%- if t.left.state in ('ok', 'soon', 'late') %}<span class="sla sla-{{ t.left.state }}" title="Time limit {{ t.due_at|dt }}">{{ icon('clock') }}{{ left_text(t.left.mins) }}</span>
+  {%- elif t.left.state == 'met' %}<span class="sla sla-met">in time</span>
+  {%- elif t.left.state == 'missed' %}<span class="sla sla-missed">late</span>
+  {%- elif not t.to_office %}<span class="badge plain mute" title="The reseller handles this one">Reseller</span>{% endif %}
+{%- endmacro %}
 {% block title %}Tickets{% endblock %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Tickets</h1><p class="sub">Customer problems and requests, from the first call to the fix.</p></div>
-  {% if can('tickets', 'edit') %}<div class="actions"><a class="btn primary" href="{{ url_for('ticket_new') }}">{{ icon('plus') }}New ticket</a></div>{% endif %}
+  <div><h1>Tickets</h1><p class="sub">{% if is_seller %}Problems of your customers, and your own requests to the office.{% else %}Customer problems and requests, from the first call to the fix.{% endif %}</p></div>
+  {% if can('tickets', 'edit') %}<div class="actions">
+    {% if not is_seller %}<a class="btn" href="{{ url_for('ticket_board') }}">{{ icon('grid') }}Board</a>{% endif %}
+    {% if is_seller %}<a class="btn" href="{{ url_for('ticket_new', kind='seller') }}">{{ icon('send') }}Ask the office</a>{% endif %}
+    <a class="btn primary" href="{{ url_for('ticket_new') }}">{{ icon('plus') }}New ticket</a></div>{% endif %}
 </div>
 <div class="chips">
-  <a class="chip {{ 'on' if not request.args.get('status') and not request.args.get('mine') }}" href="{{ url_for('tickets') }}">All</a>
-  <a class="chip {{ 'on' if request.args.get('status') == 'open' }}" href="{{ url_for('tickets', status='open') }}">Open <b>{{ counts.open_all }}</b></a>
-  <a class="chip {{ 'on' if request.args.get('status') == 'resolved' }}" href="{{ url_for('tickets', status='resolved') }}">Resolved <b>{{ counts.get('resolved', 0) }}</b></a>
-  <a class="chip {{ 'on' if request.args.get('status') == 'closed' }}" href="{{ url_for('tickets', status='closed') }}">Closed <b>{{ counts.get('closed', 0) }}</b></a>
+  <a class="chip {{ 'on' if not request.args.get('status') and not request.args.get('mine') and not request.args.get('view') }}" href="{{ url_for('tickets') }}">All</a>
+  <a class="chip {{ 'on' if request.args.get('status') == 'open' and not request.args.get('view') }}" href="{{ url_for('tickets', status='open') }}">Open <b>{{ counts.open_all }}</b></a>
+  {% if not is_seller %}
+  <a class="chip {{ 'on' if request.args.get('view') == 'late' }} {{ 'chip-bad' if counts.late }}" href="{{ url_for('tickets', view='late') }}">Past time limit <b>{{ counts.late }}</b></a>
+  <a class="chip {{ 'on' if request.args.get('view') == 'free' }}" href="{{ url_for('tickets', view='free') }}">Nobody on it <b>{{ counts.free }}</b></a>
+  <a class="chip {{ 'on' if request.args.get('view') == 'reseller' }}" href="{{ url_for('tickets', view='reseller', status='open') }}">Resellers handle <b>{{ counts.reseller }}</b></a>
+  <a class="chip {{ 'on' if request.args.get('view') == 'portal' }}" href="{{ url_for('tickets', view='portal') }}">From the portal</a>
   <a class="chip {{ 'on' if request.args.get('mine') == '1' }}" href="{{ url_for('tickets', mine=1) }}">Assigned to me</a>
+  {% else %}
+  <a class="chip {{ 'on' if request.args.get('view') == 'reseller' }}" href="{{ url_for('tickets', view='reseller', status='open') }}">I handle <b>{{ counts.reseller }}</b></a>
+  <a class="chip {{ 'on' if request.args.get('view') == 'office' }}" href="{{ url_for('tickets', view='office', status='open') }}">With the office</a>
+  {% endif %}
+  <a class="chip {{ 'on' if request.args.get('status') == 'resolved' }}" href="{{ url_for('tickets', status='resolved') }}">Resolved <b>{{ counts.get('resolved', 0) }}</b></a>
 </div>
 <section class="panel">
   <form class="filters panel-body" method="get" style="padding-bottom:0">
-    {% if request.args.get('status') %}<input type="hidden" name="status" value="{{ request.args.get('status') }}">{% endif %}
-    {% if request.args.get('mine') %}<input type="hidden" name="mine" value="1">{% endif %}
+    {% for k in ('status', 'mine', 'view') %}{% if request.args.get(k) %}<input type="hidden" name="{{ k }}" value="{{ request.args.get(k) }}">{% endif %}{% endfor %}
     <div class="search">{{ icon('search') }}<input type="search" name="q" value="{{ request.args.get('q', '') }}" placeholder="Ticket number, subject or username" aria-label="Search"></div>
     <select name="category" aria-label="Category"><option value="">All categories</option>{% for k, t in categories %}<option value="{{ k }}" {{ 'selected' if request.args.get('category') == k }}>{{ t }}</option>{% endfor %}</select>
     <select name="priority" aria-label="Priority"><option value="">Any priority</option>{% for k, t in priorities %}<option value="{{ k }}" {{ 'selected' if request.args.get('priority') == k }}>{{ t }}</option>{% endfor %}</select>
-    <select name="dept" aria-label="Department"><option value="">All departments</option>{% for d in depts %}<option value="{{ d.id }}" {{ 'selected' if request.args.get('dept') == d.id|string }}>{{ d.name }}</option>{% endfor %}</select>
+    {% if areas %}<select name="area" aria-label="Area"><option value="">All areas</option>{% for a in areas %}<option {{ 'selected' if request.args.get('area') == a }}>{{ a }}</option>{% endfor %}</select>{% endif %}
+    {% if not is_seller and depts %}<select name="dept" aria-label="Department"><option value="">All departments</option>{% for d in depts %}<option value="{{ d.id }}" {{ 'selected' if request.args.get('dept') == d.id|string }}>{{ d.name }}</option>{% endfor %}</select>{% endif %}
     <button class="btn" type="submit">Filter</button>
   </form>
   {% if rows %}
+  {% set bulk = not is_seller and can('tickets', 'edit') %}
+  {% if bulk %}
+  <form id="bulkForm" method="post" action="{{ url_for('tickets_bulk') }}" class="dues-bar panel-body">
+    {{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path }}">
+    <span><b data-bulk-count>0</b> ticked</span>
+    <select name="assign_to" aria-label="Give to" style="width:auto"><option value="">Give to…</option>{% for s in staff %}<option value="{{ s.id }}">{{ s.full_name or s.username }} ({{ s.role }})</option>{% endfor %}</select>
+    <button class="btn sm" type="submit" name="action" value="assign" data-bulk-btn disabled>{{ icon('user') }}Assign</button>
+    <button class="btn sm" type="submit" name="action" value="resolved" data-bulk-btn disabled>{{ icon('check') }}Resolve</button>
+    <button class="btn sm" type="submit" name="action" value="closed" data-bulk-btn disabled>Close</button>
+    <button class="btn sm" type="submit" name="action" value="urgent" data-bulk-btn disabled>Make urgent</button>
+  </form>
+  {% endif %}
   <div class="tbl-wrap"><table class="tbl">
-    <thead><tr><th>#</th><th>Ticket</th><th>Customer</th><th>Priority</th><th>Status</th><th class="hide-sm">Assigned to</th><th>Updated</th></tr></thead>
-    <tbody>{% for t in rows %}<tr>
+    <thead><tr>{% if bulk %}<th class="chk"><input type="checkbox" data-bulk-all aria-label="Tick all on this page"></th>{% endif %}<th>#</th><th>Ticket</th><th>Customer</th><th>Priority</th><th>Status</th><th>Time limit</th><th class="hide-sm">Assigned to</th><th class="hide-sm">Updated</th></tr></thead>
+    <tbody>{% for t in rows %}<tr class="{{ 'row-late' if t.left.state == 'late' }}">
+      {% if bulk %}<td class="chk"><input type="checkbox" name="ids" value="{{ t.id }}" form="bulkForm" data-bulk-id aria-label="Tick ticket {{ t.id }}"></td>{% endif %}
       <td class="mono"><a href="{{ url_for('ticket_view', tid=t.id) }}">#{{ t.id }}</a></td>
-      <td class="who-cell" data-card="title"><a href="{{ url_for('ticket_view', tid=t.id) }}"><b>{{ t.subject }}</b></a><small>{% for k, n in categories %}{% if k == t.category %}{{ n }}{% endif %}{% endfor %}{% if t.dept_name %} · {{ t.dept_name }}{% endif %}</small></td>
-      <td data-card="key">{% if t.sid %}<a class="mono" href="{{ url_for('subscriber_view', sid=t.sid) }}">{{ t.username }}</a>{% else %}<span class="muted">General</span>{% endif %}</td>
+      <td class="who-cell" data-card="title"><a href="{{ url_for('ticket_view', tid=t.id) }}"><b>{{ t.subject }}</b></a><small>{{ all_cats.get(t.category, t.category) }}{% if t.dept_name %} · {{ t.dept_name }}{% endif %}{% if t.source == 'portal' %} · <span class="badge plain info">portal</span>{% elif t.kind == 'seller' %} · <span class="badge plain warn">from {{ t.seller }}</span>{% endif %}</small></td>
+      <td data-card="key">{% if t.sid %}<a class="mono" href="{{ url_for('subscriber_view', sid=t.sid) }}">{{ t.username }}</a>{% if t.sub_area %}<small class="muted" style="display:block">{{ t.sub_area }}</small>{% endif %}{% else %}<span class="muted">{{ 'Reseller request' if t.kind == 'seller' else 'General' }}</span>{% endif %}</td>
       <td data-card="key"><span class="pri-{{ t.priority }}">{{ t.priority|capitalize }}</span></td>
-      <td data-card="key"><span class="badge {{ {'open': 'warn', 'pending': 'info', 'resolved': 'ok', 'closed': 'mute'}.get(t.status, 'mute') }}">{{ t.status|capitalize }}</span></td>
+      <td data-card="key"><span class="badge {{ {'open': 'warn', 'pending': 'info', 'resolved': 'ok', 'closed': 'mute'}.get(t.status, 'mute') }}">{{ 'In progress' if t.status == 'pending' else t.status|capitalize }}</span>{% if t.rating %} <span class="stars" title="Customer rating {{ t.rating }}/5">{{ '★' * t.rating }}</span>{% endif %}</td>
+      <td data-card="key">{{ sla(t) }}</td>
       <td class="hide-sm">{{ t.assignee or '—' }}</td>
-      <td class="nowrap" data-card="key">{{ t.updated_at|ago }}</td>
+      <td class="nowrap hide-sm">{{ t.updated_at|ago }}</td>
     </tr>{% endfor %}</tbody>
   </table></div>
   {{ pager(pg, keep, 'tickets') }}
   {% else %}<div class="empty"><h3>No tickets found</h3><p>Create a ticket when a customer reports a problem so nothing gets forgotten.</p></div>{% endif %}
 </section>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var all = document.querySelector("[data-bulk-all]"), boxes = document.querySelectorAll("[data-bulk-id]");
+  var count = document.querySelector("[data-bulk-count]"), btns = document.querySelectorAll("[data-bulk-btn]");
+  function upd() { var n = 0; boxes.forEach(function (b) { if (b.checked) n++; }); if (count) count.textContent = n; btns.forEach(function (b) { b.disabled = !n; }); }
+  if (all) all.addEventListener("change", function () { boxes.forEach(function (b) { b.checked = all.checked; }); upd(); });
+  boxes.forEach(function (b) { b.addEventListener("change", upd); });
+  upd();
+})();
+</script>
 {% endblock %}

@@ -4,10 +4,10 @@ Written with a plain database cursor so the web panel, the portal and the mainte
 A notification with a `key` is created only once per customer (the unique key stops duplicates: one per payment,
 one per "expires in 3 days" for a given expiry date, and so on).
 
-  kinds: payment, balance, expiring, expired, custom
+  kinds: payment, balance, expiring, expired, custom, ticket (a complaint: received, technician, reply, solved)
   read_at NULL = unread (the bell's red number and the app icon badge)"""
 
-KINDS = ("payment", "balance", "expiring", "expired", "custom")
+KINDS = ("payment", "balance", "expiring", "expired", "custom", "ticket")
 KEEP_DAYS = 120
 
 

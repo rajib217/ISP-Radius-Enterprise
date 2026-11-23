@@ -18,6 +18,7 @@ from datetime import date, datetime
 from flask import abort, flash, g, jsonify, redirect, render_template, request, send_file, url_for
 
 import core
+import mod_tickets
 from core import audit, commit, insert, pager, q, route, x
 
 OUTCOMES = [("called", "Talked"), ("no_answer", "No answer"), ("promised", "Promised to pay"), ("paid", "Paid"),
@@ -273,8 +274,10 @@ def job_rows(where, params, order="FIELD(t.priority, 'urgent', 'high', 'normal',
              " ORDER BY " + order + " LIMIT %d" % int(limit), params)
 
 
-def _job_back():
-    return redirect(core.safe_next(request.form.get("next")) or url_for("jobs"))
+def _job_back(dialog=""):
+    """Back to the page the button was on; with dialog, that job's Done box opens again (wrong code, materials)."""
+    url = (core.safe_next(request.form.get("next")) or url_for("jobs")).split("#")[0]
+    return redirect(url + ("#" + dialog if dialog else ""))
 
 
 @route("/jobs", module="tickets")
@@ -295,7 +298,8 @@ def jobs():
     import mod_tickets
     counts = q("SELECT SUM(status IN ('open', 'pending') AND assigned_to = %s) AS mine, "
                "SUM(status IN ('open', 'pending') AND assigned_to IS NULL) AS free FROM tickets", (g.me["id"],), one=True)
-    return render_template("jobs.html", rows=rows, show=show, categories=dict(mod_tickets.CATEGORIES),
+    return render_template("jobs.html", rows=rows, show=show, categories=mod_tickets.ALL_CATEGORIES, stock=stock_items(),
+                           otp_on=core.cfg().get("ticket_otp_on") == "1",
                            priorities=dict(mod_tickets.PRIORITIES),
                            counts={"mine": int(counts["mine"] or 0), "free": int(counts["free"] or 0)})
 
@@ -343,17 +347,154 @@ def job_done(tid):
     if len(note) < 3:
         flash("Write what was done (a few words) before marking the job done.", "error")
         return _job_back()
+    otp_err = _check_otp(t)
+    if otp_err:
+        flash(otp_err, "error")
+        return _job_back("done-%d" % tid)
+    mats, err = _materials(t)
+    if err:
+        flash(err, "error")
+        return _job_back("done-%d" % tid)
     photo, err = _save_job_photo(tid)
     if err:
         flash(err, "error")
-        return _job_back()
+        return _job_back("done-%d" % tid)
+    _use_materials(t, mats)
     insert("INSERT INTO ticket_replies (ticket_id, author, body, internal, photo) VALUES (%s, %s, %s, 0, %s)",
            (tid, g.me["username"], "Done: " + note, photo))
-    x("UPDATE tickets SET status = 'resolved', closed_at = NOW(), assigned_to = %s, updated_at = NOW() WHERE id = %s",
-      (t["assigned_to"] or g.me["id"], tid))
+    x("UPDATE tickets SET status = 'resolved', closed_at = NOW(), assigned_to = %s, first_reply_at = COALESCE(first_reply_at, NOW()), "
+      "updated_at = NOW() WHERE id = %s", (t["assigned_to"] or g.me["id"], tid))
+    mod_tickets.done(t)
     audit("job_done", "#%d" % tid, note[:200])
     commit()
     flash("Job #%d marked done." % tid, "success")
+    return _job_back()
+
+
+# ---- the visit: "I'm here" (time and GPS), materials from stock, the customer's code
+def stock_items():
+    """Stock a technician may record as used (name, unit, how many left); they never see the Inventory pages."""
+    try:
+        return q("SELECT id, name, unit, qty FROM inventory_items WHERE qty > 0 ORDER BY category, name LIMIT 300")
+    except Exception:
+        return []
+
+
+def _materials(t):
+    """[(item, qty)] from the form's item / qty rows, or an error when something is not in stock."""
+    out = []
+    items = request.form.getlist("item")
+    qtys = request.form.getlist("qty")
+    for iid, n in zip(items, qtys):
+        if not iid.isdigit() or not n.strip():
+            continue
+        if not n.strip().isdigit() or not 1 <= int(n) <= 10000:
+            return [], "Materials: the amount must be a whole number."
+        it = q("SELECT id, name, unit, qty FROM inventory_items WHERE id = %s", (int(iid),), one=True)
+        if not it:
+            return [], "Materials: that item is not in stock any more."
+        if it["qty"] < int(n):
+            return [], "Materials: only %d %s of %s left in stock." % (it["qty"], it["unit"], it["name"])
+        out.append((it, int(n)))
+    return out, ""
+
+
+def _use_materials(t, mats):
+    for it, n in mats:
+        x("UPDATE inventory_items SET qty = qty - %s WHERE id = %s", (n, it["id"]))
+        insert("INSERT INTO inventory_moves (item_id, kind, qty, subscriber_id, username, note, by_user) "
+               "VALUES (%s, 'out', %s, %s, %s, %s, %s)", (it["id"], n, t.get("sid"), t.get("username") or "",
+                                                          "Ticket #%d" % t["id"], g.me["username"]))
+        insert("INSERT INTO ticket_materials (ticket_id, item_id, qty, by_user) VALUES (%s, %s, %s, %s)",
+               (t["id"], it["id"], n, g.me["username"]))
+    if mats:
+        insert("INSERT INTO ticket_replies (ticket_id, author, body, internal) VALUES (%s, %s, %s, 1)",
+               (t["id"], g.me["username"], "Materials used: " + ", ".join("%d %s %s" % (n, it["unit"], it["name"]) for it, n in mats)))
+
+
+def otp_needed(t):
+    return core.cfg().get("ticket_otp_on") == "1" and bool(t.get("sid")) and bool((t.get("sub_phone") or "").strip())
+
+
+def _otp_hash(salt, code):
+    import hashlib
+    return hashlib.sha256(("%s|%s" % (salt, code)).encode()).hexdigest()
+
+
+def _check_otp(t):
+    if not otp_needed(t):
+        return ""
+    if request.form.get("skip_otp") == "1" and g.me["role"] in ("admin", "manager"):
+        insert("INSERT INTO ticket_replies (ticket_id, author, body, internal) VALUES (%s, %s, %s, 1)",
+               (t["id"], g.me["username"], "Finished without the customer's code."))
+        return ""
+    code = (request.form.get("otp") or "").strip()
+    if not t.get("otp_hash"):
+        return "Press \"Send code\": the customer gets a code by SMS to give you when the work is done."
+    if t["otp_tries"] >= 5:
+        return "Too many wrong codes. Send a new code to the customer."
+    salt, _sep, h = t["otp_hash"].partition("$")
+    if not code.isdigit() or not secrets.compare_digest(_otp_hash(salt, code), h):
+        x("UPDATE tickets SET otp_tries = otp_tries + 1 WHERE id = %s", (t["id"],))
+        commit()
+        return "That code is not right. Ask the customer for the code in their SMS."
+    x("UPDATE tickets SET otp_ok = 1 WHERE id = %s", (t["id"],))
+    return ""
+
+
+@route("/jobs/<int:tid>/otp", module="tickets", methods=["POST"])
+def job_otp(tid):
+    """Send the customer a 6-digit code by SMS (once a minute at most)."""
+    t = _job(tid)
+    if t["status"] not in ("open", "pending") or not otp_needed(t):
+        flash("No code is needed for this job.", "warn")
+        return _job_back()
+    if t["otp_sent_at"] and (datetime.now() - t["otp_sent_at"]).total_seconds() < 60:
+        flash("A code was sent less than a minute ago. Wait a little before sending another.", "warn")
+        return _job_back("done-%d" % tid)
+    code = "%06d" % secrets.randbelow(1000000)
+    salt = secrets.token_hex(8)
+    x("UPDATE tickets SET otp_hash = %s, otp_sent_at = NOW(), otp_tries = 0, otp_ok = 0 WHERE id = %s",
+      ("%s$%s" % (salt, _otp_hash(salt, code)), tid))
+    import ticketlib
+    with core.get_db().cursor() as cur:
+        sub = ticketlib._sub(cur, t["sid"])
+        n = ticketlib.sms_to(cur, core.cfg(), sub, "ticket_otp", {"ticket": tid, "code": code},
+                             "otp:%d:%s" % (tid, salt), force=True)
+    audit("job_otp_sent", "#%d" % tid)
+    commit()
+    flash("Code sent to the customer's phone. Ask them for it when the work is done." if n else
+          "The SMS could not be queued (check the customer's phone number and SMS settings).", "success" if n else "error")
+    return _job_back("done-%d" % tid)
+
+
+@route("/jobs/<int:tid>/arrived", module="tickets", methods=["POST"])
+def job_arrived(tid):
+    """The technician reached the customer: time and (when the phone allows) position, compared with the saved one."""
+    t = _job(tid)
+    if t["status"] not in ("open", "pending"):
+        flash("This job is already finished.", "warn")
+        return _job_back()
+    lat = lng = None
+    try:
+        lat, lng = float(request.form.get("lat", "")), float(request.form.get("lng", ""))
+        if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+            lat = lng = None
+    except ValueError:
+        lat = lng = None
+    x("UPDATE tickets SET arrived_at = NOW(), arrived_lat = %s, arrived_lng = %s, status = 'pending', "
+      "assigned_to = COALESCE(assigned_to, %s), updated_at = NOW() WHERE id = %s", (lat, lng, g.me["id"], tid))
+    where = ""
+    if lat is not None and t.get("lat") is not None:
+        import ticketlib
+        where = " (%d m from the saved location)" % ticketlib.distance_m(lat, lng, t["lat"], t["lng"])
+    elif lat is None:
+        where = " (no GPS)"
+    insert("INSERT INTO ticket_replies (ticket_id, author, body, internal) VALUES (%s, %s, %s, 1)",
+           (tid, g.me["username"], "Arrived at the customer" + where + "."))
+    audit("job_arrived", "#%d" % tid, where.strip(" ()"))
+    commit()
+    flash("Arrival noted for job #%d." % tid, "success")
     return _job_back()
 
 
@@ -373,10 +514,15 @@ def job_update(tid):
     if len(note) < 3:
         flash("Write a short note about where the job stands.", "error")
         return _job_back()
+    mats, err = _materials(t)
+    if err:
+        flash(err, "error")
+        return _job_back("upd-%d" % tid)
     photo, err = _save_job_photo(tid)
     if err:
         flash(err, "error")
         return _job_back()
+    _use_materials(t, mats)
     insert("INSERT INTO ticket_replies (ticket_id, author, body, internal, photo) VALUES (%s, %s, %s, 0, %s)",
            (tid, g.me["username"], "%s: %s" % (state, note), photo))
     x("UPDATE tickets SET status = 'pending', assigned_to = %s, updated_at = NOW() WHERE id = %s",
@@ -412,7 +558,8 @@ def tech_home(notices=None):
     greet = "Good morning" if hour < 12 else ("Good afternoon" if hour < 17 else "Good evening")
     return render_template("tech_home.html", mine=mine, done_today=done_today, counts=counts, follow=fu,
                            outcomes=dict(OUTCOMES), greet=greet, today=today, notices=notices or [],
-                           categories=dict(mod_tickets.CATEGORIES), priorities=dict(mod_tickets.PRIORITIES))
+                           categories=mod_tickets.ALL_CATEGORIES, priorities=dict(mod_tickets.PRIORITIES), stock=stock_items(),
+                           otp_on=core.cfg().get("ticket_otp_on") == "1")
 
 
 @route("/tickets/photo/<name>", module="tickets")

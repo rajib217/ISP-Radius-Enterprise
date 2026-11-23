@@ -39,10 +39,10 @@
     <div class="th-head"><h2>My jobs</h2><a href="{{ url_for('jobs') }}">See all &rarr;</a></div>
     {% if mine %}
       <p class="th-label">Next up</p>
-      {{ job_card(mine[0], priorities, categories, nxt, big=True) }}
+      {{ job_card(mine[0], priorities, categories, nxt, big=True, stock=stock, otp_on=otp_on) }}
       {% if mine|length > 1 %}
       <p class="th-label">Then</p>
-      <div class="jobs">{% for t in mine[1:] %}{{ job_card(t, priorities, categories, nxt) }}{% endfor %}</div>
+      <div class="jobs">{% for t in mine[1:] %}{{ job_card(t, priorities, categories, nxt, stock=stock, otp_on=otp_on) }}{% endfor %}</div>
       {% endif %}
     {% else %}
       <section class="panel"><div class="empty"><h3>All clear</h3><p>No job is given to you right now.{% if counts.free %} There {{ 'is' if counts.free == 1 else 'are' }} {{ counts.free }} job{{ '' if counts.free == 1 else 's' }} waiting for someone.{% endif %}</p>{% if counts.free %}<a class="btn primary" href="{{ url_for('jobs', show='free') }}">Take a job</a>{% endif %}</div></section>

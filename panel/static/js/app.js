@@ -817,3 +817,28 @@
     });
   });
 })();
+
+/* jobs: "I'm here" adds the phone's position when it can (a few seconds at most); a #done-12 / #upd-12 address
+   opens that job's box again (after "Send code" or a wrong code) */
+(function () {
+  document.querySelectorAll("form[data-arrive]").forEach(function (f) {
+    f.addEventListener("submit", function (e) {
+      if (f.dataset.sent || !navigator.geolocation || !window.isSecureContext) return;
+      e.preventDefault();
+      var b = f.querySelector("button"); if (b) { b.disabled = true; b.textContent = "Finding…"; }
+      var go = function () { f.dataset.sent = "1"; f.submit(); };
+      var timer = setTimeout(go, 8000);
+      navigator.geolocation.getCurrentPosition(function (p) {
+        clearTimeout(timer);
+        f.querySelector("[name=lat]").value = p.coords.latitude.toFixed(6);
+        f.querySelector("[name=lng]").value = p.coords.longitude.toFixed(6);
+        go();
+      }, function () { clearTimeout(timer); go(); }, { enableHighAccuracy: true, timeout: 7000, maximumAge: 60000 });
+    });
+  });
+  var id = (location.hash || "").slice(1);
+  if (/^(done|upd)-\d+$/.test(id)) {
+    var d = document.getElementById(id);
+    if (d && d.showModal) { try { d.showModal(); } catch (e) {} }
+  }
+})();

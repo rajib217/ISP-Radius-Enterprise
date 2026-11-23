@@ -6,6 +6,13 @@ import pymysql
 from pymysql.cursors import DictCursor
 
 DEFAULT_SETTINGS = {
+    # tickets: time limit per priority (hours), alert when nobody takes a new one (minutes), area technicians,
+    # customer messages, the customer's code on Done, portal tickets (tickets_lib.py)
+    "sla_on": "1", "sla_urgent": "2", "sla_high": "4", "sla_normal": "24", "sla_low": "72", "sla_unassigned_min": "60",
+    "sla_cat_connection": "", "sla_cat_slow": "", "sla_cat_billing": "", "sla_cat_new": "", "sla_cat_shift": "",
+    "sla_cat_hardware": "", "sla_cat_other": "",
+    "ticket_auto_assign": "1", "ticket_sms_on": "1", "ticket_app_on": "1", "ticket_otp_on": "0",
+    "ticket_portal_on": "1", "ticket_portal_route": "office", "ticket_low_rating": "2",
     # expired customers: kept online in the "expired-notice" RADIUS group (MikroTik address list "expired") and shown
     # the unpaid-bill page (mod_expired.py) instead of being refused
     "expired_notice_on": "0", "expired_notice_phone": "", "expired_notice_msg": "", "expired_notice_rate": "256k/256k",

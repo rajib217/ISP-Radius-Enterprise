@@ -853,3 +853,67 @@ ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS lng DECIMAL(9,6) NULL;
 
 -- Technician jobs: a photo of the finished work on the ticket reply that closed it
 ALTER TABLE ticket_replies ADD COLUMN IF NOT EXISTS photo VARCHAR(64) NOT NULL DEFAULT '';
+
+-- Tickets v2: time limit (SLA) and alerts, who owns it (office / reseller), the technician's visit (arrived,
+-- materials, the customer's code), the customer's rating, ready replies, area technicians and area outages
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS due_at DATETIME NULL;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS first_reply_at DATETIME NULL;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS alerted TINYINT UNSIGNED NOT NULL DEFAULT 0;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS source VARCHAR(16) NOT NULL DEFAULT 'office';
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS kind VARCHAR(16) NOT NULL DEFAULT 'customer';
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS seller VARCHAR(64) NOT NULL DEFAULT '';
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS to_office TINYINT NOT NULL DEFAULT 1;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS arrived_at DATETIME NULL;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS arrived_lat DECIMAL(9,6) NULL;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS arrived_lng DECIMAL(9,6) NULL;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS otp_hash VARCHAR(96) NOT NULL DEFAULT '';
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS otp_sent_at DATETIME NULL;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS otp_tries TINYINT UNSIGNED NOT NULL DEFAULT 0;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS otp_ok TINYINT NOT NULL DEFAULT 0;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS rating TINYINT NULL;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS rating_note VARCHAR(500) NOT NULL DEFAULT '';
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS rated_at DATETIME NULL;
+ALTER TABLE tickets ADD INDEX IF NOT EXISTS idx_due (status, due_at);
+ALTER TABLE tickets ADD INDEX IF NOT EXISTS idx_seller (seller, status);
+
+CREATE TABLE IF NOT EXISTS ticket_canned (
+  id         INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  title      VARCHAR(80)  NOT NULL,
+  body       TEXT         NOT NULL,
+  created_by VARCHAR(64)  NOT NULL DEFAULT '',
+  created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS ticket_area_techs (
+  area     VARCHAR(64)  NOT NULL,
+  admin_id INT UNSIGNED NOT NULL,
+  PRIMARY KEY (area, admin_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS ticket_materials (
+  id         INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  ticket_id  INT UNSIGNED NOT NULL,
+  item_id    INT UNSIGNED NOT NULL,
+  qty        INT NOT NULL,
+  by_user    VARCHAR(64) NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_ticket (ticket_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS outages (
+  id         INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  area       VARCHAR(64)  NOT NULL DEFAULT '',
+  message    VARCHAR(500) NOT NULL,
+  ends_at    DATETIME NULL,
+  active     TINYINT NOT NULL DEFAULT 1,
+  sms_sent   INT NOT NULL DEFAULT 0,
+  created_by VARCHAR(64) NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  closed_at  DATETIME NULL,
+  KEY idx_active (active, area)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- which reseller each existing ticket belongs to (idempotent: only rows still empty)
+UPDATE tickets t JOIN subscribers s ON s.id = t.subscriber_id JOIN panel_admins a ON a.username = s.created_by
+   AND a.role IN ('reseller', 'subreseller', 'retailer') SET t.seller = s.created_by WHERE t.seller = '';
+UPDATE tickets t JOIN panel_admins a ON a.username = t.created_by AND a.role IN ('reseller', 'subreseller', 'retailer')
+   SET t.seller = t.created_by WHERE t.seller = '' AND t.subscriber_id IS NULL;

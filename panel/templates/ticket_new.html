@@ -2,20 +2,84 @@
 {% from "_macros.html" import icon, field %}
 {% block title %}New ticket{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>New ticket</h1><p class="sub">Record what the customer reported.</p></div></div>
-<section class="panel" style="max-width:760px">
+<div class="page-head"><div><h1>{{ 'Ask the office' if form.kind == 'seller' else 'New ticket' }}</h1><p class="sub">{% if form.kind == 'seller' %}Your own problem: balance, a package or a whole area down. The office answers here.{% else %}Find the customer, write what they reported. The time limit and the technician are set by themselves.{% endif %}</p></div></div>
+<section class="panel" style="max-width:820px">
   <form class="panel-body stack" method="post">
     {{ csrf_input() }}
-    <div class="grid-2">
-      {{ field('Customer username', 'username', form.username, errors.username, help='Leave empty for a general ticket.', attrs='spellcheck="false" autofocus') }}
-      {{ field('Subject', 'subject', form.subject, errors.subject, attrs='maxlength="200" required') }}
-      <div class="field"><label class="lbl" for="f-category">Category</label><select id="f-category" name="category">{% for k, t in categories %}<option value="{{ k }}" {{ 'selected' if form.category == k }}>{{ t }}</option>{% endfor %}</select></div>
-      <div class="field"><label class="lbl" for="f-priority">Priority</label><select id="f-priority" name="priority">{% for k, t in priorities %}<option value="{{ k }}" {{ 'selected' if form.priority == k }}>{{ t }}</option>{% endfor %}</select></div>
-      <div class="field"><label class="lbl" for="f-dept">Department</label><select id="f-dept" name="department_id"><option value="">None</option>{% for d in depts %}<option value="{{ d.id }}" {{ 'selected' if form.department_id == d.id|string }}>{{ d.name }}</option>{% endfor %}</select></div>
-      <div class="field"><label class="lbl" for="f-assign">Assign to</label><select id="f-assign" name="assigned_to"><option value="">Nobody yet</option>{% for s in staff %}<option value="{{ s.id }}" {{ 'selected' if form.assigned_to == s.id|string }}>{{ s.full_name or s.username }}</option>{% endfor %}</select></div>
+    {% if is_seller %}
+    <div class="chips" role="radiogroup" aria-label="Ticket about">
+      <label class="chip {{ 'on' if form.kind != 'seller' }}"><input type="radio" name="kind" value="customer" {{ 'checked' if form.kind != 'seller' }} data-kind> A customer's problem</label>
+      <label class="chip {{ 'on' if form.kind == 'seller' }}"><input type="radio" name="kind" value="seller" {{ 'checked' if form.kind == 'seller' }} data-kind> My own request to the office</label>
     </div>
-    <div class="field {{ 'bad' if errors.body }}"><label class="lbl" for="f-body">Details</label><textarea id="f-body" name="body" rows="5" maxlength="5000">{{ form.body }}</textarea>{% if errors.body %}<div class="err">{{ errors.body }}</div>{% endif %}</div>
-    <div class="row-gap"><button class="btn primary" type="submit">Create ticket</button><a class="btn" href="{{ url_for('tickets') }}">Cancel</a></div>
+    {% endif %}
+    <div class="field {{ 'bad' if errors.customer }}" data-cust-box {{ 'hidden' if form.kind == 'seller' }}>
+      <label class="lbl" for="f-customer">Customer {% if is_seller %}<b class="req">*</b>{% endif %}</label>
+      <div class="search tk-find">{{ icon('search') }}<input id="f-customer" name="customer" value="{{ form.customer }}" placeholder="Name, username, ID (RN05) or phone" autocomplete="off" spellcheck="false" autofocus data-lookup="{{ url_for('ticket_lookup') }}"></div>
+      {% if errors.customer %}<div class="err">{{ errors.customer }}</div>{% endif %}
+      <div class="tk-results" data-lookup-results hidden></div>
+      <div class="tk-picked" data-lookup-card hidden></div>
+      {% if not is_seller %}<div class="help">Leave it empty for a general ticket (a whole area, a device).</div>{% endif %}
+    </div>
+    <div class="grid-2">
+      {{ field('Subject', 'subject', form.subject, errors.subject, attrs='maxlength="200" required placeholder="e.g. No internet since morning, red light on ONU"') }}
+      <div class="field"><label class="lbl" for="f-category">Category</label><select id="f-category" name="category">
+        <optgroup label="Customer problem" data-cat-cust {{ 'disabled' if form.kind == 'seller' }}>{% for k, t in categories %}<option value="{{ k }}" {{ 'selected' if form.category == k }}>{{ t }}</option>{% endfor %}</optgroup>
+        {% if is_seller %}<optgroup label="My request" data-cat-seller {{ 'disabled' if form.kind != 'seller' }}>{% for k, t in seller_categories %}<option value="{{ k }}" {{ 'selected' if form.category == k }}>{{ t }}</option>{% endfor %}<option value="other">Other</option></optgroup>{% endif %}
+      </select></div>
+      <div class="field"><label class="lbl" for="f-priority">Priority</label><select id="f-priority" name="priority">{% for k, t in priorities %}<option value="{{ k }}" {{ 'selected' if form.priority == k }}>{{ t }}</option>{% endfor %}</select></div>
+      {% if not is_seller %}
+      <div class="field"><label class="lbl" for="f-assign">Assign to</label><select id="f-assign" name="assigned_to"><option value="">Automatic (area technician)</option>{% for s in staff %}<option value="{{ s.id }}" {{ 'selected' if form.assigned_to == s.id|string }}>{{ s.full_name or s.username }} · {{ s.role }}</option>{% endfor %}</select></div>
+      {% if depts %}<div class="field"><label class="lbl" for="f-dept">Department</label><select id="f-dept" name="department_id"><option value="">None</option>{% for d in depts %}<option value="{{ d.id }}" {{ 'selected' if form.department_id == d.id|string }}>{{ d.name }}</option>{% endfor %}</select></div>{% endif %}
+      {% endif %}
+    </div>
+    <div class="field {{ 'bad' if errors.body }}"><label class="lbl" for="f-body">Details</label><textarea id="f-body" name="body" rows="4" maxlength="5000" placeholder="What the customer said, what you already tried.">{{ form.body }}</textarea>{% if errors.body %}<div class="err">{{ errors.body }}</div>{% endif %}</div>
+    {% if is_seller %}
+    <div class="field" data-handler-box {{ 'hidden' if form.kind == 'seller' }}><span class="lbl">Who fixes it?</span>
+      <div class="chips" role="radiogroup">
+        <label class="chip"><input type="radio" name="handler" value="office" {{ 'checked' if form.handler != 'me' }}> Send to the office now</label>
+        <label class="chip"><input type="radio" name="handler" value="me" {{ 'checked' if form.handler == 'me' }}> I will fix it (send it to the office later if needed)</label>
+      </div></div>
+    {% else %}
+    <label class="check tk-solved"><input type="checkbox" name="solved" value="1" {{ 'checked' if form.solved == '1' }}> <span><b>Solved on the phone</b> — save it as resolved now, no technician needed</span></label>
+    {% endif %}
+    <div class="row-gap"><button class="btn primary" type="submit">{{ 'Send to the office' if form.kind == 'seller' else 'Create ticket' }}</button><a class="btn" href="{{ url_for('tickets') }}">Cancel</a></div>
   </form>
 </section>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var box = document.querySelector("[data-lookup]"), list = document.querySelector("[data-lookup-results]"), card = document.querySelector("[data-lookup-card]");
+  function esc(v) { return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function show(c) {
+    card.hidden = false; list.hidden = true;
+    card.innerHTML = '<div class="tk-card"><b>' + esc(c.name || c.username) + '</b> <span class="mono muted">' + esc(c.code) + ' · ' + esc(c.username) + '</span>' +
+      '<span class="badge ' + (c.online ? 'ok">Online now' : 'warn">Offline') + '</span>' + (c.status === 'suspended' ? ' <span class="badge bad">Suspended</span>' : '') +
+      '<div class="muted">' + esc([c.phone, c.area, c.expiry ? 'valid until ' + c.expiry : ''].filter(Boolean).join(' · ')) + '</div>' +
+      (c.last ? '<div class="tk-last">Last ticket <a href="/tickets/' + c.last.id + '">#' + c.last.id + ' ' + esc(c.last.subject) + '</a> · ' + esc(c.last.status) + ' · ' + esc(c.last.when) + '</div>' : '') + '</div>';
+  }
+  var timer = null, rows = [];
+  if (box) box.addEventListener("input", function () {
+    clearTimeout(timer); card.hidden = true;
+    var v = box.value.trim(); if (v.length < 2) { list.hidden = true; return; }
+    timer = setTimeout(function () {
+      fetch(box.dataset.lookup + "?q=" + encodeURIComponent(v), { credentials: "same-origin" }).then(function (r) { return r.json(); }).then(function (data) {
+        rows = data; if (!data.length) { list.hidden = false; list.innerHTML = '<div class="muted tk-none">No customer matches.</div>'; return; }
+        list.hidden = false;
+        list.innerHTML = data.map(function (c, i) { return '<button type="button" class="tk-row" data-i="' + i + '"><i class="dot ' + (c.online ? 's-online' : 's-offline') + '"></i><b>' + esc(c.name || c.username) + '</b> <span class="mono muted">' + esc(c.code) + '</span> <span class="muted">' + esc(c.username) + (c.phone ? ' · ' + esc(c.phone) : '') + (c.area ? ' · ' + esc(c.area) : '') + '</span></button>'; }).join("");
+      }).catch(function () {});
+    }, 250);
+  });
+  if (list) list.addEventListener("click", function (e) { var b = e.target.closest(".tk-row"); if (!b) return; var c = rows[+b.dataset.i]; box.value = c.username; show(c); });
+  document.querySelectorAll("[data-kind]").forEach(function (r) { r.addEventListener("change", function () {
+    var seller = r.value === "seller" && r.checked; if (!r.checked) return;
+    document.querySelector("[data-cust-box]").hidden = seller;
+    var hb = document.querySelector("[data-handler-box]"); if (hb) hb.hidden = seller;
+    var cc = document.querySelector("[data-cat-cust]"), cs = document.querySelector("[data-cat-seller]");
+    if (cc) cc.disabled = seller; if (cs) cs.disabled = !seller;
+    var sel = document.getElementById("f-category"); var first = sel.querySelector("optgroup:not([disabled]) option"); if (first) sel.value = first.value;
+    document.querySelectorAll("[data-kind]").forEach(function (x) { x.parentNode.classList.toggle("on", x.checked); });
+  }); });
+})();
+</script>
 {% endblock %}

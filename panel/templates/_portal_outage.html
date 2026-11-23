@@ -1,0 +1,1 @@
+{% for o in outages or [] %}<div class="notice warn pp-outage" role="status">{{ icon('alert') }}<div><strong>{{ 'আপনার এলাকায়' if o.area else 'সব এলাকায়' }} লাইনে কাজ চলছে</strong><p>{{ o.message }}{% if o.ends_at %} · আনুমানিক ঠিক হবে {{ o.ends_at.strftime('%d-%m-%Y, %I:%M %p') }}{% endif %}</p></div></div>{% endfor %}

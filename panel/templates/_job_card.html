@@ -1,7 +1,13 @@
 {# One job (ticket) card with its actions, used on My jobs and on the technician's home page.
    t: a row from mod_field job_rows(); nxt: where the buttons come back to; done_view: no actions (finished list) #}
 {% from "_macros.html" import icon %}
-{% macro job_card(t, priorities, categories, nxt, done_view=False, big=False) %}
+{% macro mats_rows(stock) %}{% if stock %}
+      <details class="field job-mats"><summary>Materials used (optional)</summary>
+        {% for i in range(3) %}<div class="job-mat"><select name="item" aria-label="Item {{ i + 1 }}"><option value="">Item…</option>{% for s in stock %}<option value="{{ s.id }}">{{ s.name }} ({{ s.qty }} {{ s.unit }} left)</option>{% endfor %}</select><input name="qty" inputmode="numeric" placeholder="Qty" aria-label="Amount {{ i + 1 }}"></div>{% endfor %}
+        <div class="help">Taken out of stock with this ticket's number.</div>
+      </details>{% endif %}{% endmacro %}
+{% macro job_card(t, priorities, categories, nxt, done_view=False, big=False, stock=[], otp_on=False) %}
+{% set need_otp = otp_on and t.sid and t.sub_phone %}
 <article class="panel job pri-b-{{ t.priority }}{{ ' job-big' if big }}">
   <div class="job-head">
     <a class="job-title" href="{{ url_for('ticket_view', tid=t.id) }}"><span class="mono muted">#{{ t.id }}</span> {{ t.subject }}</a>
@@ -24,6 +30,7 @@
     {% if t.lat is not none and t.lng is not none %}<a class="btn" href="https://www.google.com/maps/dir/?api=1&destination={{ t.lat }},{{ t.lng }}" target="_blank" rel="noopener">{{ icon('pin') }}Directions</a>
     {% elif t.sub_address %}<a class="btn" href="https://www.google.com/maps/search/?api=1&query={{ (t.sub_address ~ ' ' ~ (t.sub_area or ''))|urlencode }}" target="_blank" rel="noopener">{{ icon('pin') }}Map</a>{% endif %}
     {% if not done_view and can('tickets', 'edit') %}
+      {% if t.assigned_to and not t.arrived_at and t.sid %}<form method="post" action="{{ url_for('job_arrived', tid=t.id) }}" data-arrive>{{ csrf_input() }}<input type="hidden" name="next" value="{{ nxt }}"><input type="hidden" name="lat"><input type="hidden" name="lng"><button class="btn" type="submit">{{ icon('pin') }}I'm here</button></form>{% elif t.arrived_at %}<span class="badge plain ok" title="Arrived {{ t.arrived_at|dt }}">{{ icon('pin') }}arrived {{ t.arrived_at.strftime('%H:%M') }}</span>{% endif %}
       {% if t.status == 'open' %}<form method="post" action="{{ url_for('job_start', tid=t.id) }}">{{ csrf_input() }}<input type="hidden" name="next" value="{{ nxt }}"><button class="btn" type="submit">{{ icon('bolt') }}{{ 'Take & start' if not t.assigned_to else 'Start' }}</button></form>
       {% else %}<button class="btn" type="button" data-open="upd-{{ t.id }}">{{ icon('note') }}Update</button>{% endif %}
       {% if t.assigned_to %}<button class="btn primary" type="button" data-open="done-{{ t.id }}">{{ icon('check') }}Done</button>{% endif %}
@@ -38,6 +45,15 @@
     <div class="modal-body stack">
       <div class="field"><label class="lbl" for="dn-{{ t.id }}">What was done <b class="req">*</b></label><textarea id="dn-{{ t.id }}" name="note" rows="3" minlength="3" maxlength="5000" required placeholder="e.g. Fiber re-spliced at the box, ONU signal -19 dBm, customer online."></textarea></div>
       <div class="field"><label class="lbl" for="dp-{{ t.id }}">Photo of the work (optional)</label><input id="dp-{{ t.id }}" name="photo" type="file" accept="image/jpeg,image/png" capture="environment"><div class="help">JPG or PNG, up to 5 MB. On a phone this opens the camera.</div></div>
+      {{ mats_rows(stock) }}
+      {% if need_otp %}
+      <div class="field job-otp"><label class="lbl" for="do-{{ t.id }}">Customer's code <b class="req">*</b></label>
+        <div class="row-gap"><input id="do-{{ t.id }}" name="otp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6 digits" style="max-width:140px">
+          <button class="btn sm" type="submit" formaction="{{ url_for('job_otp', tid=t.id) }}" formnovalidate>{{ icon('send') }}{{ 'Send again' if t.otp_hash else 'Send code' }}</button></div>
+        <div class="help">{% if t.otp_hash %}Sent {{ t.otp_sent_at|ago }}. {% endif %}The customer gets it by SMS; ask for it only when the work is done.</div>
+        {% if me.role in ('admin', 'manager') %}<label class="check"><input type="checkbox" name="skip_otp" value="1"> Finish without the code</label>{% endif %}
+      </div>
+      {% endif %}
     </div>
     <div class="modal-foot"><span style="flex:1"></span><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Mark done</button></div>
   </form>
@@ -57,6 +73,7 @@
       </div>
       <div class="field"><label class="lbl" for="un-{{ t.id }}">Note <b class="req">*</b></label><textarea id="un-{{ t.id }}" name="note" rows="3" minlength="3" maxlength="5000" required placeholder="e.g. Need a new ONU, coming back tomorrow morning."></textarea></div>
       <div class="field"><label class="lbl" for="up-{{ t.id }}">Photo (optional)</label><input id="up-{{ t.id }}" name="photo" type="file" accept="image/jpeg,image/png" capture="environment"></div>
+      {{ mats_rows(stock) }}
     </div>
     <div class="modal-foot"><span style="flex:1"></span><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save update</button></div>
   </form>

@@ -2,6 +2,7 @@
   <a class="pp-brand" href="{{ url_for('portal') }}">{% include "_portal_logo.html" %}<span><b>{{ isp or 'My connection' }}</b><small>Customer portal</small></span></a>
   <span class="pp-bar-acts">
     {% if endpoint != 'portal' %}<a class="btn sm pp-home" href="{{ url_for('portal') }}">{{ icon('home') }}<span>Home</span></a>{% endif %}
+    {% if portal_support_on and endpoint not in ('portal_support', 'portal_ticket') %}<a class="btn sm" href="{{ url_for('portal_support') }}">{{ icon('ticket') }}<span class="pp-hide-sm">সাপোর্ট</span></a>{% endif %}
     <a class="notif-bell" href="{{ url_for('portal_notifications') }}" aria-label="Notifications{{ ' (%d unread)' % portal_unread if portal_unread }}" data-notif-link>{{ icon('bell') }}{% if portal_unread %}<b class="notif-dot" data-notif-count>{{ portal_unread if portal_unread < 100 else '99+' }}</b>{% else %}<b class="notif-dot" data-notif-count hidden></b>{% endif %}</a>
     <button type="button" class="btn sm icon pp-theme" data-pp-theme aria-label="Light / dark" title="Light / dark">{{ icon('sun') }}</button>
     <form method="post" action="{{ url_for('portal_logout') }}">{{ csrf_input() }}<button class="btn sm" title="Sign out">{{ icon('logout') }}<span class="pp-hide-sm">Sign out</span></button></form>

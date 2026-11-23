@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Ticket board{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Ticket board</h1><p class="sub">The office's open tickets. Drag a card to another column (or use the buttons on it) to move it.</p></div>
+  <div class="actions"><a class="btn" href="{{ url_for('tickets') }}">{{ icon('table') }}List</a>{% if can('tickets', 'edit') %}<a class="btn primary" href="{{ url_for('ticket_new') }}">{{ icon('plus') }}New ticket</a>{% endif %}</div>
+</div>
+<form class="filters" method="get" style="margin-bottom:12px">
+  <select name="area" aria-label="Area" onchange="this.form.submit()" style="width:auto"><option value="">All areas</option>{% for a in areas %}<option {{ 'selected' if request.args.get('area') == a }}>{{ a }}</option>{% endfor %}</select>
+  <select name="who" aria-label="Technician" onchange="this.form.submit()" style="width:auto"><option value="">Everyone</option>{% for s in staff %}<option value="{{ s.id }}" {{ 'selected' if request.args.get('who') == s.id|string }}>{{ s.full_name or s.username }}</option>{% endfor %}</select>
+</form>
+<form id="moveTpl" method="post" hidden>{{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path }}"><input type="hidden" name="col"></form>
+<div class="kb" data-kb data-edit="{{ 1 if can('tickets', 'edit') else 0 }}">
+  {% for key, label, hint in board_cols %}
+  <section class="kb-col" data-col="{{ key }}" aria-label="{{ label }}">
+    <header class="kb-head"><b>{{ label }}</b><span class="kb-n">{{ cols[key]|length }}</span><small>{{ hint }}</small></header>
+    <div class="kb-list">
+      {% for t in cols[key] %}
+      <article class="kb-card pri-b-{{ t.priority }}" draggable="{{ 'true' if can('tickets', 'edit') else 'false' }}" data-tid="{{ t.id }}" data-move="{{ url_for('ticket_move', tid=t.id) }}">
+        <a class="kb-title" href="{{ url_for('ticket_view', tid=t.id) }}"><span class="mono muted">#{{ t.id }}</span> {{ t.subject }}</a>
+        <div class="kb-meta"><span class="pri-{{ t.priority }}">{{ t.priority|capitalize }}</span><span>{{ all_cats.get(t.category, t.category) }}</span>
+          {% if t.left.state in ('ok', 'soon', 'late') %}<span class="sla sla-{{ t.left.state }}">{{ icon('clock') }}{{ left_text(t.left.mins) }}</span>{% elif t.left.state == 'missed' %}<span class="sla sla-missed">late</span>{% elif t.left.state == 'met' %}<span class="sla sla-met">in time</span>{% endif %}</div>
+        {% if t.username %}<div class="kb-who">{{ t.sub_name or t.username }}{% if t.sub_area %} · <span class="muted">{{ t.sub_area }}</span>{% endif %}</div>{% endif %}
+        {% if key != 'done' and can('tickets', 'edit') %}
+        <form method="post" action="{{ url_for('ticket_move', tid=t.id) }}" class="kb-assign">{{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path }}">
+          <select name="assign_to" aria-label="Give ticket {{ t.id }} to" onchange="this.form.submit()"><option value="">{{ ('→ ' ~ (t.assignee_name or t.assignee)) if t.assignee else 'Give to…' }}</option>{% for s in staff %}{% if s.id != t.assigned_to %}<option value="{{ s.id }}">{{ s.full_name or s.username }}</option>{% endif %}{% endfor %}</select>
+          {% if key != 'working' %}<button class="btn sm" type="submit" name="col" value="working" title="Mark in progress">{{ icon('play') }}</button>{% endif %}
+          <button class="btn sm" type="submit" name="col" value="done" title="Mark done" data-confirm="Mark ticket #{{ t.id }} done? The customer is told it is solved.">{{ icon('check') }}</button>
+        </form>
+        {% elif t.rating %}<div class="stars">{{ '★' * t.rating }}</div>{% endif %}
+      </article>
+      {% else %}<p class="kb-empty">Nothing here.</p>{% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var kb = document.querySelector("[data-kb]"); if (!kb || kb.dataset.edit !== "1") return;
+  var dragged = null, tpl = document.getElementById("moveTpl");
+  kb.addEventListener("dragstart", function (e) { var c = e.target.closest(".kb-card"); if (!c) return; dragged = c; c.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", c.dataset.tid); });
+  kb.addEventListener("dragend", function () { if (dragged) dragged.classList.remove("dragging"); dragged = null; kb.querySelectorAll(".kb-col").forEach(function (c) { c.classList.remove("over"); }); });
+  kb.querySelectorAll(".kb-col").forEach(function (col) {
+    col.addEventListener("dragover", function (e) { if (!dragged) return; e.preventDefault(); col.classList.add("over"); });
+    col.addEventListener("dragleave", function (e) { if (!col.contains(e.relatedTarget)) col.classList.remove("over"); });
+    col.addEventListener("drop", function (e) {
+      e.preventDefault(); col.classList.remove("over"); if (!dragged) return;
+      if (dragged.closest(".kb-col") === col) return;
+      if (col.dataset.col === "done" && !confirm("Mark ticket #" + dragged.dataset.tid + " done? The customer is told it is solved.")) return;
+      tpl.action = dragged.dataset.move; tpl.querySelector("[name=col]").value = col.dataset.col; tpl.submit();
+    });
+  });
+})();
+</script>
+{% endblock %}
