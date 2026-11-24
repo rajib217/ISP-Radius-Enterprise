@@ -4,9 +4,13 @@
 {% block top %}{% include "_portal_top.html" %}{% endblock %}
 {% block content %}
 <h1 class="pp-page-h">{{ icon('ticket') }}সাপোর্ট</h1>
+<div class="ps-acts">
+  <a class="btn primary" href="#ps-new" data-ps-new>{{ icon('plus') }}নতুন অভিযোগ তৈরি করুন</a>
+  {% if help_phone %}<a class="btn ph-call" href="tel:{{ help_phone|replace(' ', '') }}">{{ icon('phone') }}Call support</a>{% endif %}
+</div>
 {% include "_portal_outage.html" %}
 <div class="ps-grid">
-  <section class="panel">
+  <section class="panel" id="ps-new">
     <div class="panel-head"><h2>নতুন অভিযোগ</h2></div>
     <form class="panel-body stack" method="post">{{ csrf_input() }}
       {% if outages %}<p class="muted" style="margin:0">উপরের কাজটা চলাকালীন একই সমস্যার জন্য অভিযোগ করার দরকার নেই, ঠিক হলে জানানো হবে।</p>{% endif %}
@@ -15,7 +19,7 @@
       <div class="field"><label class="lbl" for="ps-sub">শিরোনাম (ঐচ্ছিক)</label><input id="ps-sub" name="subject" value="{{ form.subject }}" maxlength="120" placeholder="যেমন: সকাল থেকে নেট নেই"></div>
       <div class="field"><label class="lbl" for="ps-body">বিস্তারিত লিখুন <b class="req">*</b></label><textarea id="ps-body" name="body" rows="4" maxlength="3000" required placeholder="কখন থেকে সমস্যা, রাউটারে কোন বাতি জ্বলছে, ইত্যাদি">{{ form.body }}</textarea></div>
       <div><button class="btn primary" type="submit">{{ icon('send') }}অভিযোগ পাঠান</button></div>
-      {% if phone %}<p class="muted" style="margin:0">জরুরি হলে ফোন করুন: <a href="tel:{{ phone }}">{{ phone }}</a></p>{% endif %}
+      {% if help_phone %}<p class="muted" style="margin:0">জরুরি হলে ফোন করুন: <a href="tel:{{ help_phone|replace(' ', '') }}">{{ help_phone }}</a></p>{% endif %}
     </form>
   </section>
   <section class="panel">
@@ -29,3 +33,9 @@
   </section>
 </div>
 {% endblock %}
+{% block scripts %}<script>
+(function () {   /* the "new complaint" button: go to the form and start typing */
+  var b = document.querySelector("[data-ps-new]"), box = document.getElementById("ps-body");
+  if (b && box) b.addEventListener("click", function (e) { e.preventDefault(); document.getElementById("ps-new").scrollIntoView({ behavior: "smooth", block: "start" }); setTimeout(function () { box.focus(); }, 300); });
+})();
+</script>{% endblock %}

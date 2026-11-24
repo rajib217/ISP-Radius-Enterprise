@@ -2904,6 +2904,17 @@ def check_rules(flask_app, ids):
           and _near_res == 403 and "Find Technicians" in _tn_page,
           "New ticket > Find Technicians: lists technicians seen within 500 m of the customer (none farther away); without a "
           "customer location it says so and the list is used by hand")
+    # customer portal: "Contact Support" opens the support page, which has "new complaint" and "Call support"
+    setv("support_phone", "01700-111222"); setv("portal_on", "1"); setv("ticket_portal_on", "1")
+    _pc4 = flask_app.test_client()
+    with _pc4.session_transaction() as _s4:
+        _s4["csrf"] = "ci"; _s4["cid"] = _asub["id"]
+    _ph4 = _pc4.get("/portal").get_data(as_text=True)
+    _ps4 = _pc4.get("/portal/support").get_data(as_text=True)
+    check("Contact Support" in _ph4 and "Call support" not in _ph4 and 'href="/portal/support"' in _ph4
+          and "নতুন অভিযোগ তৈরি করুন" in _ps4
+          and "Call support" in _ps4 and 'href="tel:01700-111222"' in _ps4,
+          "customer portal: Contact Support opens the support page; it has a new-complaint button and Call support")
     # Packages list: toolbar, the reference columns, Actions (Assign / Edit / Copy / Delete)
     _pk = adm.get("/plans").get_data(as_text=True)
     _pk_plan = one("SELECT * FROM plans WHERE id = %s", (_ppid,))

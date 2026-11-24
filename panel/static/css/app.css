@@ -2493,3 +2493,4 @@ a.pk-count:hover { text-decoration: none; background: var(--accent-soft); color:
 .tk-near-pick em { margin-left: auto; font-style: normal; font-weight: 600; color: var(--accent); }
 .tk-near-pick.on { border-color: var(--ok); box-shadow: 0 0 0 2px var(--ok-soft); }
 .tk-near-pick.on em { color: var(--ok); }
+.ps-acts { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 14px; }

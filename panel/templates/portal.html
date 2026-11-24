@@ -44,7 +44,8 @@
     <div class="ph-acts">
       {% if terms.ok %}<a class="btn-bkash ph-pay" href="{{ url_for('portal_pay') }}">{{ icon('wallet') }}Pay {{ cur }} {{ (terms.amount + terms.fee)|money }}</a>{% endif %}
       {% set help_phone = owner.phone if owner and owner.role != 'admin' and owner.phone else phone %}
-      {% if help_phone %}<a class="btn ph-call" href="tel:{{ help_phone|replace(' ', '') }}">{{ icon('phone') }}Call support</a>{% endif %}
+      {% if portal_support_on %}<a class="btn ph-call" href="{{ url_for('portal_support') }}">{{ icon('ticket') }}Contact Support</a>
+      {% elif help_phone %}<a class="btn ph-call" href="tel:{{ help_phone|replace(' ', '') }}">{{ icon('phone') }}Contact Support</a>{% endif %}
     </div>
   </div>
   {% if info.id_ref %}<p class="ph-tip">{{ icon('info') }}<span>Paying by bKash "Send Money"? Write your subscriber ID <b class="mono">{{ sub.id|subid }}</b> in <b>Reference</b> and your connection renews by itself.</span></p>{% endif %}

@@ -33,7 +33,11 @@ def _ctx(sub, **kw):
     s = core.cfg()
     with get_db().cursor() as cur:
         outs = ticketlib.active_outages(cur, sub.get("area") or "")
-    return dict(sub=sub, isp=s.get("isp_name", ""), phone=s.get("support_phone", ""), outages=outs, status_bn=STATUS_BN,
+    # who the customer calls: their reseller when they belong to one (as on the portal home), else the office
+    owner = mod_portal._owner(sub)
+    help_phone = owner["phone"] if owner and owner["role"] != "admin" and owner.get("phone") else s.get("support_phone", "")
+    return dict(sub=sub, isp=s.get("isp_name", ""), phone=s.get("support_phone", ""), help_phone=help_phone,
+                outages=outs, status_bn=STATUS_BN,
                 cats=dict(CATEGORIES + [("new", "নতুন সংযোগ")] + mod_tickets.SELLER_CATEGORIES), **kw)
 
 
