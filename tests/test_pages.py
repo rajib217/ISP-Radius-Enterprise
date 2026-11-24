@@ -2889,12 +2889,18 @@ def check_rules(flask_app, ids):
     _near = json.loads(adm.get("/tickets/nearby-techs?customer=%s" % _asub["username"]).get_data(as_text=True))
     run("UPDATE staff_locations SET lat = 23.812000 WHERE admin_id = %s", (_tech_row["id"],))
     _far = json.loads(adm.get("/tickets/nearby-techs?customer=%s" % _asub["username"]).get_data(as_text=True))
-    run("UPDATE subscribers SET lat = NULL, lng = NULL WHERE id = %s", (_asub["id"],))
+    run("UPDATE subscribers SET lat = NULL, lng = NULL, address = 'House 5, Road 2', notes = '' WHERE id = %s", (_asub["id"],))
     _noloc = json.loads(adm.get("/tickets/nearby-techs?customer=%s" % _asub["username"]).get_data(as_text=True))
+    # coordinates written in the address (a Google Maps link) are used when the Location box is empty, and kept
+    run("UPDATE staff_locations SET lat = 23.802000 WHERE admin_id = %s", (_tech_row["id"],))
+    run("UPDATE subscribers SET address = 'House 5 https://www.google.com/maps/@23.800000,90.400000,17z' WHERE id = %s", (_asub["id"],))
+    _from_addr = json.loads(adm.get("/tickets/nearby-techs?customer=%s" % _asub["username"]).get_data(as_text=True))
+    _kept = one("SELECT lat, lng FROM subscribers WHERE id = %s", (_asub["id"],))
     _near_res = _rc2.get("/tickets/nearby-techs?customer=%s" % _rsub["username"]).status_code
     _tn_page = adm.get("/tickets/new").get_data(as_text=True)
     check(_near["ok"] and [x["id"] for x in _near["techs"]] == [_tech_row["id"]] and 200 <= _near["techs"][0]["m"] <= 245
-          and _far["ok"] and _far["techs"] == [] and not _noloc["ok"] and "no map location" in _noloc["why"]
+          and _far["ok"] and _far["techs"] == [] and not _noloc["ok"] and "no saved map location" in _noloc["why"]
+          and _from_addr["ok"] and [x["id"] for x in _from_addr["techs"]] == [_tech_row["id"]] and _kept["lat"] is not None
           and _near_res == 403 and "Find Technicians" in _tn_page,
           "New ticket > Find Technicians: lists technicians seen within 500 m of the customer (none farther away); without a "
           "customer location it says so and the list is used by hand")

@@ -380,10 +380,27 @@ def ticket_nearby_techs():
     sub = resolve_customer(request.args.get("customer", ""))
     if not sub:
         return jsonify({"ok": False, "why": "Pick the customer first."})
-    row = q("SELECT lat, lng FROM subscribers WHERE id = %s", (sub["id"],), one=True)
+    row = q("SELECT lat, lng, address, notes FROM subscribers WHERE id = %s", (sub["id"],), one=True)
+    if row and (row["lat"] is None or row["lng"] is None):
+        # the Location box is empty, but a Google Maps link or "23.81, 90.41" may sit in the address or the notes:
+        # use it, and keep it as the customer's location from now on
+        import mod_field
+        for text in (row["address"], row["notes"]):
+            try:
+                pos = mod_field.parse_location(text) if text and any(ch.isdigit() for ch in text) else None
+            except ValueError:
+                pos = None
+            if pos:
+                x("UPDATE subscribers SET lat = %s, lng = %s WHERE id = %s AND lat IS NULL", (pos[0], pos[1], sub["id"]))
+                audit("location_saved", sub["username"], "%s, %s (read from the address / notes)" % pos)
+                commit()
+                row["lat"], row["lng"] = pos
+                break
     if not row or row["lat"] is None or row["lng"] is None:
-        return jsonify({"ok": False, "why": "%s has no map location yet, so nobody can be found nearby. Assign by hand, or set the "
-                                            "location on the customer's page." % sub["username"]})
+        return jsonify({"ok": False, "why": "%s has no saved map location: on the customer's page, Address Information > Location "
+                                            "says \"Not set\" (a map drawn from the address text is only a search, not a saved "
+                                            "point). Set it there with Use my location or a Google Maps link, or assign by hand."
+                                            % sub["username"]})
     out = []
     for r in q("SELECT a.id, a.username, a.full_name, a.phone, l.lat, l.lng, l.updated_at, "
                "(SELECT COUNT(*) FROM tickets t WHERE t.assigned_to = a.id AND t.status IN ('open', 'pending')) AS jobs "
