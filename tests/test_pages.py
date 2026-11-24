@@ -2881,6 +2881,23 @@ def check_rules(flask_app, ids):
           and 'data-refresh="60"' in _tmp and _tm_no == [403, 403] and "js/staff-location.js" in _hom_t,
           "technician location: their phone sends its position while the app is open; administrators and managers see it "
           "live on the technician map; nobody else")
+    # New ticket > Find Technicians: technicians within 500 m of the customer's location
+    run("UPDATE subscribers SET lat = 23.800000, lng = 90.400000 WHERE id = %s", (_asub["id"],))
+    _tech_row = one("SELECT id FROM panel_admins WHERE username = 'ci_tech'")
+    run("INSERT INTO staff_locations (admin_id, lat, lng, accuracy, updated_at) VALUES (%s, 23.802000, 90.400000, 10, NOW()) "
+        "ON DUPLICATE KEY UPDATE lat = 23.802000, lng = 90.400000, updated_at = NOW()", (_tech_row["id"],))
+    _near = json.loads(adm.get("/tickets/nearby-techs?customer=%s" % _asub["username"]).get_data(as_text=True))
+    run("UPDATE staff_locations SET lat = 23.812000 WHERE admin_id = %s", (_tech_row["id"],))
+    _far = json.loads(adm.get("/tickets/nearby-techs?customer=%s" % _asub["username"]).get_data(as_text=True))
+    run("UPDATE subscribers SET lat = NULL, lng = NULL WHERE id = %s", (_asub["id"],))
+    _noloc = json.loads(adm.get("/tickets/nearby-techs?customer=%s" % _asub["username"]).get_data(as_text=True))
+    _near_res = _rc2.get("/tickets/nearby-techs?customer=%s" % _rsub["username"]).status_code
+    _tn_page = adm.get("/tickets/new").get_data(as_text=True)
+    check(_near["ok"] and [x["id"] for x in _near["techs"]] == [_tech_row["id"]] and 200 <= _near["techs"][0]["m"] <= 245
+          and _far["ok"] and _far["techs"] == [] and not _noloc["ok"] and "no map location" in _noloc["why"]
+          and _near_res == 403 and "Find Technicians" in _tn_page,
+          "New ticket > Find Technicians: lists technicians seen within 500 m of the customer (none farther away); without a "
+          "customer location it says so and the list is used by hand")
     # Packages list: toolbar, the reference columns, Actions (Assign / Edit / Copy / Delete)
     _pk = adm.get("/plans").get_data(as_text=True)
     _pk_plan = one("SELECT * FROM plans WHERE id = %s", (_ppid,))

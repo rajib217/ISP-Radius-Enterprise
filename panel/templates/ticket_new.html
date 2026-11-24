@@ -28,7 +28,9 @@
       </select></div>
       <div class="field"><label class="lbl" for="f-priority">Priority</label><select id="f-priority" name="priority">{% for k, t in priorities %}<option value="{{ k }}" {{ 'selected' if form.priority == k }}>{{ t }}</option>{% endfor %}</select></div>
       {% if not is_seller %}
-      <div class="field"><label class="lbl" for="f-assign">Assign to</label><select id="f-assign" name="assigned_to"><option value="">Automatic (area technician)</option>{% for s in staff %}<option value="{{ s.id }}" {{ 'selected' if form.assigned_to == s.id|string }}>{{ s.full_name or s.username }} · {{ s.role }}</option>{% endfor %}</select></div>
+      <div class="field"><label class="lbl" for="f-assign">Assign to</label><select id="f-assign" name="assigned_to"><option value="">Automatic (area technician)</option>{% for s in staff %}<option value="{{ s.id }}" {{ 'selected' if form.assigned_to == s.id|string }}>{{ s.full_name or s.username }} · {{ s.role }}</option>{% endfor %}</select>
+        <button type="button" class="btn sm tk-findtech" data-find-tech="{{ url_for('ticket_nearby_techs') }}">{{ icon('pin') }}Find Technicians</button>
+        <div class="tk-near" data-near-out hidden aria-live="polite"></div></div>
       {% if depts %}<div class="field"><label class="lbl" for="f-dept">Department</label><select id="f-dept" name="department_id"><option value="">None</option>{% for d in depts %}<option value="{{ d.id }}" {{ 'selected' if form.department_id == d.id|string }}>{{ d.name }}</option>{% endfor %}</select></div>{% endif %}
       {% endif %}
     </div>
@@ -80,6 +82,36 @@
     var sel = document.getElementById("f-category"); var first = sel.querySelector("optgroup:not([disabled]) option"); if (first) sel.value = first.value;
     document.querySelectorAll("[data-kind]").forEach(function (x) { x.parentNode.classList.toggle("on", x.checked); });
   }); });
+})();
+/* Find Technicians: who was last seen within 500 m of the chosen customer; press a name to assign it */
+(function () {
+  var btn = document.querySelector("[data-find-tech]"), out = document.querySelector("[data-near-out]");
+  var sel = document.getElementById("f-assign"), cust = document.getElementById("f-customer");
+  if (!btn || !out || !sel) return;
+  function esc(v) { return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function say(html, cls) { out.className = "tk-near " + (cls || ""); out.innerHTML = html; out.hidden = false; }
+  btn.addEventListener("click", function () {
+    var c = cust ? cust.value.trim() : "";
+    if (!c) { say("Pick the customer first, then press Find Technicians.", "warn"); return; }
+    btn.disabled = true; say("Looking for technicians near the customer…");
+    fetch(btn.dataset.findTech + "?customer=" + encodeURIComponent(c), { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) { say(esc(d.why) , "warn"); return; }
+        if (!d.techs.length) { say("No technician is within " + d.radius + " m of " + esc(d.customer) + " right now. Choose one from the list above.", "warn"); return; }
+        say("<b>Within " + d.radius + " m of " + esc(d.customer) + ":</b>" + d.techs.map(function (t) {
+          return '<button type="button" class="tk-near-pick" data-id="' + t.id + '"><b>' + esc(t.name) + '</b><span>' + t.m + ' m away · seen ' +
+                 esc(t.seen) + ' · ' + t.jobs + ' open job' + (t.jobs === 1 ? '' : 's') + '</span><em>Assign</em></button>';
+        }).join(""), "ok");
+      })
+      .catch(function () { say("Could not look it up. Choose a technician from the list above.", "warn"); })
+      .then(function () { btn.disabled = false; });
+  });
+  out.addEventListener("click", function (e) {
+    var b = e.target.closest(".tk-near-pick"); if (!b) return;
+    sel.value = b.dataset.id;
+    out.querySelectorAll(".tk-near-pick").forEach(function (x) { x.classList.toggle("on", x === b); });
+  });
 })();
 </script>
 {% endblock %}

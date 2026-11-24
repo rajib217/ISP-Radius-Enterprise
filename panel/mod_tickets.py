@@ -368,6 +368,38 @@ def ticket_lookup():
     return resp
 
 
+NEAR_METRES = 500           # Find Technicians: how close to the customer
+NEAR_FRESH_MIN = 120        # ...and how recent the technician's position must be
+
+
+@route("/tickets/nearby-techs", module="tickets")
+def ticket_nearby_techs():
+    """New ticket > Find Technicians: technicians whose phone was last seen within 500 m of the customer's map location."""
+    if seller():
+        abort(403)
+    sub = resolve_customer(request.args.get("customer", ""))
+    if not sub:
+        return jsonify({"ok": False, "why": "Pick the customer first."})
+    row = q("SELECT lat, lng FROM subscribers WHERE id = %s", (sub["id"],), one=True)
+    if not row or row["lat"] is None or row["lng"] is None:
+        return jsonify({"ok": False, "why": "%s has no map location yet, so nobody can be found nearby. Assign by hand, or set the "
+                                            "location on the customer's page." % sub["username"]})
+    out = []
+    for r in q("SELECT a.id, a.username, a.full_name, a.phone, l.lat, l.lng, l.updated_at, "
+               "(SELECT COUNT(*) FROM tickets t WHERE t.assigned_to = a.id AND t.status IN ('open', 'pending')) AS jobs "
+               "FROM staff_locations l JOIN panel_admins a ON a.id = l.admin_id WHERE a.role = 'technician' AND a.is_active = 1 "
+               "AND l.updated_at >= NOW() - INTERVAL %s MINUTE", (NEAR_FRESH_MIN,)):
+        d = ticketlib.distance_m(row["lat"], row["lng"], r["lat"], r["lng"])
+        if d <= NEAR_METRES:
+            mins = int((datetime.now() - r["updated_at"]).total_seconds() // 60)
+            out.append({"id": r["id"], "name": r["full_name"] or r["username"], "m": int(d), "jobs": int(r["jobs"] or 0),
+                        "seen": "just now" if mins < 1 else ("%d min ago" % mins if mins < 60 else "%d h ago" % (mins // 60))})
+    out.sort(key=lambda t: (t["m"], t["jobs"]))
+    resp = jsonify({"ok": True, "customer": sub["username"], "radius": NEAR_METRES, "techs": out})
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 @route("/tickets/new", module="tickets", methods=["GET", "POST"])
 def ticket_new():
     is_seller = seller()
