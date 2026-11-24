@@ -51,28 +51,7 @@
     <span class="kcard-s"><span class="due">Due {{ money(v3.dues.amount) }}</span><span>· {{ '{:,}'.format(v3.dues.customers) }} expired</span></span>
   </a>
   {% endif %}
-  {% if v3.bw %}
-  <a class="kcard" href="{{ url_for('network_graph') if can('network') else url_for('online') }}">
-    <span class="kcard-top"><span class="kcard-k">Live throughput</span><span class="kcard-ic">{{ icon('gauge') }}</span></span>
-    {% if v3.now %}
-    <span class="kcard-v">{{ v3.now.down_bps|bps }}</span>
-    <span class="kcard-s"><span class="bw down">{{ icon('arrow-down') }}download</span><span class="bw up">· {{ icon('arrow-up') }}<b class="num">{{ v3.now.up_bps|bps }}</b> upload</span><span>· {{ '{:,}'.format(v3.now.sessions) }} sessions</span></span>
-    {% else %}
-    <span class="kcard-v muted">—</span>
-    <span class="kcard-s"><span>Collecting: first figure appears within 10 minutes</span></span>
-    {% endif %}
-  </a>
-  {% endif %}
 </section>
-
-{# ---- v3: analytics ---- #}
-<div class="cols dash-charts">
-  <section class="panel c-12">
-    <div class="panel-head"><h2>Subscriber status</h2><a class="aside" href="{{ url_for('subscribers') }}">View all</a></div>
-    <div class="panel-body"><div class="chart" data-kind="donut" data-src="status-mix" data-link="{{ url_for('subscribers') }}"></div>
-      <script type="application/json" id="status-mix">{{ v3.mix|tojson }}</script></div>
-  </section>
-</div>
 {% endif %}
 
 {% if tabs %}

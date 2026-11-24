@@ -2779,6 +2779,11 @@ def check_rules(flask_app, ids):
     _rm_gone = not one("SELECT plan_id FROM user_plans WHERE user_id = %s AND plan_id = %s", (ids["reseller"], _ppid))
     check("Not removed" in _rm_used and _rm_gone,
           "User Packages > Delete: removes a package from a user, not while their customers use it")
+    # admin dashboard: no Live throughput card and no Subscriber status chart
+    _dash = adm.get("/").get_data(as_text=True)
+    check("Live throughput" not in _dash and "Subscriber status" not in _dash and "status-mix" not in _dash
+          and "Active subscribers" in _dash,
+          "admin dashboard: the Live throughput card and the Subscriber status chart are gone, the other cards stay")
     return bad
 
 
