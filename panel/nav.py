@@ -255,6 +255,8 @@ _BOTTOM = {
               ("online", "Online", "activity"), ("payments", "Payments", "dollar")],
     "tech": [("dashboard", "Home", "home"), ("jobs", "My jobs", "ticket"),
              ("customer_map", "Map", "pin"), ("subscribers", "Customers", "users3")],
+    "collector": [("collect", "Due list", "wallet"), ("collect_report", "My cash", "dollar"),
+                  ("subscribers", "Customers", "users3"), ("tickets", "Tickets", "ticket")],
     "seller": [("dashboard", "Home", "home"), ("subscribers", "Subscribers", "users3"),
                ("subscriber_activation", "Activate", "bolt"), ("add_balance", "Balance", "wallet")],
 }
@@ -276,7 +278,8 @@ def bottom_nav(nodes=None):
     # two seller shortcuts are pages, not menu items; gate them exactly as the dashboard does
     extra_ok = {"subscriber_activation": lambda: core.can("subscribers", "edit"),
                 "add_balance": lambda: g.me["role"] in core.SELLER_ROLES}
-    want = _BOTTOM["seller" if g.me["role"] in core.SELLER_ROLES else ("tech" if g.me["role"] == "technician" else "staff")]
+    want = _BOTTOM["seller" if g.me["role"] in core.SELLER_ROLES else (g.me["role"] if g.me["role"] in ("collector",) else (
+        "tech" if g.me["role"] == "technician" else "staff"))]
     out = []
     for endpoint, label, icon in want:
         try:

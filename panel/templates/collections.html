@@ -2,40 +2,99 @@
 {% from "_macros.html" import icon %}
 {% block title %}Collectors{% endblock %}
 {% block content %}
-<div class="tk-report">
-<div class="page-head"><div><h1>Bill collectors <small class="muted">· বিল কালেক্টর</small></h1><p class="sub">{% if me.role == 'admin' %}Every bill collector{% else %}The bill collectors you added (My Users &gt; Add bill collector){% endif %}: cash in hand, deposits to confirm, and what they took from {{ start|d }} to {{ end|d }}.</p></div></div>
-<form class="rep-filter" method="get">
-  <div class="rep-dates" style="margin-left:0"><label class="lbl" for="cl-from">From</label><input id="cl-from" type="date" name="from" value="{{ start.isoformat() }}">
-    <label class="lbl" for="cl-to">To</label><input id="cl-to" type="date" name="to" value="{{ end.isoformat() }}"><button class="btn primary" type="submit">Show</button></div>
-</form>
-<div class="grid2 tk-rep">
-  <section class="panel"><div class="panel-head"><h2>{{ icon('users') }}Collectors</h2><span class="aside">{{ currency }} {{ total|money }} collected</span></div>
-    {% if people %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Collector</th>{% if me.role == 'admin' %}<th>Added by</th>{% endif %}<th class="num">Cash in hand</th><th class="num">Waiting</th></tr></thead><tbody>
-      {% for p in people %}<tr><td class="who-cell"><b>{{ p.full_name or p.username }}</b><small class="mono">{{ p.username }}{% if p.phone %} · {{ p.phone }}{% endif %}{% if not p.is_active %} · disabled{% endif %}</small></td>
-        {% if me.role == 'admin' %}<td>{{ p.boss or 'Office' }}</td>{% endif %}<td class="num"><b>{{ p.hand|money }}</b></td><td class="num">{{ p.pending|money }}</td></tr>{% endfor %}
-    </tbody></table></div>{% else %}<div class="empty"><p>No bill collectors yet.{% if me.role != 'admin' %} Add one under My Users.{% endif %}</p></div>{% endif %}</section>
-  <section class="panel"><div class="panel-head"><h2>{{ icon('archive') }}Deposits</h2></div>
-    {% if deps %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Collector</th><th class="num">Amount</th><th>Status</th><th></th></tr></thead><tbody>
-      {% for d in deps %}<tr><td>{{ d.collector_user }}<small class="muted" style="display:block">{{ d.created_at|dt }}{% if d.note %} · {{ d.note }}{% endif %}</small></td><td class="num">{{ d.amount|money }}</td>
-        <td><span class="badge {{ {'pending': 'warn', 'confirmed': 'ok', 'rejected': 'bad'}[d.status] }}">{{ d.status }}</span></td>
-        <td class="nowrap">{% if d.status == 'pending' %}<form method="post" action="{{ url_for('collect_deposit_confirm') }}" style="display:inline">{{ csrf_input() }}<input type="hidden" name="deposit_id" value="{{ d.id }}"><button class="btn sm primary" name="act" value="confirm">Got it</button> <button class="btn sm" name="act" value="reject" data-confirm="Turn this deposit down? The cash stays in the collector's hand.">Not received</button></form>{% endif %}</td></tr>{% endfor %}
-    </tbody></table></div>{% else %}<div class="empty"><p>No deposits in this period.</p></div>{% endif %}</section>
-</div>
-<section class="panel tk-past"><div class="panel-head"><h2>{{ icon('file') }}Collections</h2><span class="aside">{{ rows|length }}</span></div>
-  {% if rows %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Receipt</th><th>Time</th><th>Collector</th><th>Customer</th><th>Method</th><th class="num">Amount</th><th>Applied</th>{% if me.role == 'admin' %}<th></th>{% endif %}</tr></thead><tbody>
-    {% for r in rows %}<tr><td class="mono"><a href="{{ url_for('collect_receipt', cid=r.id) }}">{{ r.receipt_no }}</a>{% if r.status == 'void' %} <span class="badge bad" title="{{ r.void_reason }}">void</span>{% endif %}</td>
-      <td class="nowrap">{{ r.created_at|dt }}</td><td>{{ r.collector_user }}</td><td>{{ r.full_name or r.username }}</td><td>{{ methods.get(r.method, r.method) }}{% if r.pos_ref or r.trx_id %}<small class="muted mono" style="display:block">{{ r.pos_ref or r.trx_id }}</small>{% endif %}</td>
-      <td class="num">{{ r.amount|money }}</td><td><small>{{ r.result }}</small></td>
-      {% if me.role == 'admin' %}<td class="nowrap">{% if r.status == 'posted' %}<form method="post" action="{{ url_for('collection_void', cid=r.id) }}" class="row-gap" data-confirm="Void receipt {{ r.receipt_no }}? It cannot be undone.">{{ csrf_input() }}<input name="reason" placeholder="Why (required)" maxlength="255" required style="width:150px"><button class="btn sm red">Void</button></form>{% endif %}</td>{% endif %}</tr>{% endfor %}
-  </tbody></table></div>{% else %}<div class="empty"><p>No collections in this period.</p></div>{% endif %}
-</section>
-{% if me.role == 'admin' %}
-<section class="panel tk-past"><div class="panel-head"><h2>{{ icon('sliders') }}Limits</h2></div>
-  <form class="panel-body row-gap" method="post">{{ csrf_input() }}
-    <div class="field"><label class="lbl" for="lm-txn">Most per collection</label><input id="lm-txn" name="col_max_txn" type="number" step="0.01" min="1" value="{{ '%.2f' % max_txn }}"></div>
-    <div class="field"><label class="lbl" for="lm-day">Most per collector per day</label><input id="lm-day" name="col_max_day" type="number" step="0.01" min="1" value="{{ '%.2f' % max_day }}"></div>
-    <div><button class="btn primary" type="submit">Save limits</button></div>
-  </form></section>
-{% endif %}
+{% set tk = currency or '৳' %}{% set admin = me.role == 'admin' %}
+{% set pay_icons = {'cash': 'dollar', 'pos': 'card', 'bkash': 'wallet'} %}
+{% set keep = {'from': start.isoformat(), 'to': end.isoformat()} %}
+<div class="cl">
+  <div class="cl-head">
+    <div><h1>Bill collectors <small>বিল কালেক্টর</small></h1>
+      <p class="sub">{% if admin %}Every bill collector{% else %}The bill collectors you added under My Users{% endif %}: cash in their hands, deposits to confirm, and what they took from {{ start|d }} to {{ end|d }}.</p></div>
+    {% if not admin %}<a class="btn" href="{{ url_for('my_users') }}">{{ icon('plus') }}Add bill collector</a>{% endif %}
+  </div>
+
+  <div class="cl-stats">
+    <div class="cl-stat"><b><span class="cl-tk">{{ tk }}</span>{{ total|money }}</b><span>Collected{% if pick %} by this collector{% endif %}</span></div>
+    <div class="cl-stat {{ 'hero' if in_hand > 0 }}"><b><span class="cl-tk">{{ tk }}</span>{{ in_hand|money }}</b><span>Cash still in their hands</span></div>
+    <div class="cl-stat {{ 'warn' if pending }}"><b><span class="cl-tk">{{ tk }}</span>{{ waiting|money }}</b><span>{{ pending|length }} deposit{{ '' if pending|length == 1 else 's' }} to confirm</span></div>
+    <div class="cl-stat"><b>{{ people|length }}</b><span>Collector{{ '' if people|length == 1 else 's' }}</span></div>
+  </div>
+
+  {% if pending %}
+  <section class="cl-alert" aria-label="Deposits to confirm">
+    <h2>{{ icon('bell') }}Cash handed to you: confirm when you have it</h2>
+    <ul class="cl-rows">{% for d in pending %}
+      <li><span class="cl-mic cash" aria-hidden="true">{{ icon('dollar') }}</span>
+        <div style="min-width:0"><b>{{ d.collector_user }}</b><small>{{ d.created_at.strftime('%d %b, %I:%M %p') }}{% if d.note %} · {{ d.note }}{% endif %}</small></div>
+        <div class="cl-side"><span class="cl-num">{{ d.amount|money }}</span>
+          <form method="post" action="{{ url_for('collect_deposit_confirm') }}" class="row-gap">{{ csrf_input() }}<input type="hidden" name="deposit_id" value="{{ d.id }}">
+            <button class="btn sm primary" name="act" value="confirm">{{ icon('check') }}Got it</button>
+            <button class="btn sm" name="act" value="reject" data-confirm="Turn this deposit down? The cash stays in {{ d.collector_user }}'s hand.">Not received</button></form></div>
+      </li>{% endfor %}</ul>
+  </section>
+  {% endif %}
+
+  <form class="rep-filter" method="get" style="margin:0">
+    {% if pick %}<input type="hidden" name="collector" value="{{ pick }}">{% endif %}
+    <div class="rep-dates" style="margin-left:0"><label class="lbl" for="cl-from">From</label><input id="cl-from" type="date" name="from" value="{{ start.isoformat() }}">
+      <label class="lbl" for="cl-to">To</label><input id="cl-to" type="date" name="to" value="{{ end.isoformat() }}"><button class="btn primary" type="submit">Show</button></div>
+  </form>
+
+  {% if people %}
+  <div class="cl-team">
+    {% for p in people %}
+    <a class="cl-member {{ 'on' if pick == p.id }} {{ 'off' if not p.is_active }}" href="{{ url_for('collections', collector=none if pick == p.id else p.id, **keep) }}"{% if pick == p.id %} aria-current="true"{% endif %}>
+      <header><div class="cl-ava" aria-hidden="true">{{ (p.full_name or p.username)[:1] }}</div>
+        <div><b>{{ p.full_name or p.username }}</b><small>{{ p.username }}{% if p.phone %} · {{ p.phone }}{% endif %}{% if admin %} · {{ p.boss or 'Office' }}{% endif %}{% if not p.is_active %} · disabled{% endif %}</small></div></header>
+      <dl>
+        <div><dt>In hand</dt><dd class="{{ 'hot' if p.hand > 0 }}">{{ p.hand|money }}</dd></div>
+        <div><dt>Collected</dt><dd>{{ (p.took or 0)|money }}</dd></div>
+        <div><dt>Receipts</dt><dd>{{ p.n or 0 }}</dd></div>
+      </dl>
+      <small class="muted">{% if p.last %}Last {{ p.last|ago }}{% else %}Nothing in this period{% endif %}{% if p.pending %} · {{ p.pending|money }} waiting{% endif %}</small>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="cl-empty">{{ icon('users') }}<h3>No bill collectors yet</h3><p>{% if admin %}Add one under Users with the role Bill Collector.{% else %}Add one under My Users &gt; Add bill collector.{% endif %}</p></div>
+  {% endif %}
+
+  <section class="cl-box">
+    <h2>{{ icon('file') }}Receipts{% if pick %} · {{ (people|selectattr('id', 'equalto', pick)|first).username }}{% endif %}<span class="aside">{{ rows|length }}</span></h2>
+    {% if rows %}<ul class="cl-rows">{% for r in rows %}
+      <li class="{{ 'void' if r.status == 'void' }}">
+        <span class="cl-mic {{ r.method }}" aria-hidden="true">{{ icon(pay_icons.get(r.method, 'dollar')) }}</span>
+        <div style="min-width:0"><b>{{ r.full_name or r.username }}</b>
+          <small><a class="mono" href="{{ url_for('collect_receipt', cid=r.id) }}">{{ r.receipt_no }}</a> · {{ r.created_at.strftime('%d %b, %I:%M %p') }} · {{ r.collector_user }} · {{ methods.get(r.method, r.method) }}{% if r.pos_ref or r.trx_id %} <span class="mono">{{ r.pos_ref or r.trx_id }}</span>{% endif %}</small>
+          {% if r.result %}<small>{{ r.result }}</small>{% endif %}
+          {% if r.status == 'void' %}<small>Void: {{ r.void_reason }} ({{ r.void_by }})</small>{% endif %}</div>
+        <div class="cl-side"><span class="cl-num">{{ r.amount|money }}</span>
+          {% if r.status == 'void' %}<span class="cl-tag late">void</span>
+          {% elif admin %}<form method="post" action="{{ url_for('collection_void', cid=r.id) }}" class="cl-void" data-confirm="Void receipt {{ r.receipt_no }}? It cannot be undone.">{{ csrf_input() }}<label class="sr-only" for="vr-{{ r.id }}">Why</label><input id="vr-{{ r.id }}" name="reason" placeholder="Why (required)" maxlength="255" required><button class="btn sm red">Void</button></form>{% endif %}</div>
+      </li>{% endfor %}</ul>
+    {% else %}<div class="cl-pad"><p class="muted" style="margin:0">No collections in this period.</p></div>{% endif %}
+  </section>
+
+  {% set past = deps|rejectattr('status', 'equalto', 'pending')|list %}
+  {% if past %}
+  <section class="cl-box">
+    <h2>{{ icon('archive') }}Deposits</h2>
+    <ul class="cl-rows">{% for d in past %}
+      <li><span class="cl-mic" aria-hidden="true">{{ icon('send') }}</span>
+        <div style="min-width:0"><b>{{ d.collector_user }}</b><small>{{ d.created_at.strftime('%d %b, %I:%M %p') }}{% if d.confirmed_by %} · {{ d.confirmed_by }}{% endif %}{% if d.note %} · {{ d.note }}{% endif %}</small></div>
+        <div class="cl-side"><span class="cl-num">{{ d.amount|money }}</span><span class="cl-tag {{ 'ok' if d.status == 'confirmed' else 'late' }}">{{ d.status }}</span></div>
+      </li>{% endfor %}</ul>
+  </section>
+  {% endif %}
+
+  {% if admin %}
+  <details class="cl-box cl-limits">
+    <summary>{{ icon('sliders') }}Limits · per collection {{ max_txn|money }}, per collector per day {{ max_day|money }}</summary>
+    <form method="post">{{ csrf_input() }}
+      <div class="field"><label class="lbl" for="lm-txn">Most per collection</label><input id="lm-txn" name="col_max_txn" type="number" step="0.01" min="1" value="{{ '%.2f' % max_txn }}"></div>
+      <div class="field"><label class="lbl" for="lm-day">Most per collector per day</label><input id="lm-day" name="col_max_day" type="number" step="0.01" min="1" value="{{ '%.2f' % max_day }}"></div>
+      <button class="btn primary" type="submit">Save limits</button>
+    </form>
+  </details>
+  {% endif %}
 </div>
 {% endblock %}

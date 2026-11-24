@@ -2,38 +2,62 @@
 {% from "_macros.html" import icon %}
 {% block title %}My collections{% endblock %}
 {% block content %}
-<div class="tk-report">
-<div class="page-head"><div><h1>My collections <small class="muted">· আমার কালেকশন</small></h1><p class="sub">What you took from {{ start|d }} to {{ end|d }}. Only you{% if boss %}, {{ boss.full_name or boss.username }}{% endif %} and the office see this.</p></div></div>
-<form class="rep-filter" method="get">
-  <div class="rep-dates" style="margin-left:0"><label class="lbl" for="cr-from">From</label><input id="cr-from" type="date" name="from" value="{{ start.isoformat() }}">
-    <label class="lbl" for="cr-to">To</label><input id="cr-to" type="date" name="to" value="{{ end.isoformat() }}"><button class="btn primary" type="submit">Show</button></div>
-</form>
-<div class="th-stats">
-  <div class="th-stat"><span class="th-v">{{ currency }} {{ total|money }}</span><span class="th-k">Collected</span></div>
-  {% for k, label in methods.items() %}<div class="th-stat"><span class="th-v">{{ tot[k]|money }}</span><span class="th-k">{{ label }}</span></div>{% endfor %}
-</div>
-<div class="grid2 tk-rep">
-  <section class="panel"><div class="panel-head"><h2>{{ icon('wallet') }}Cash in hand</h2></div>
-    <div class="panel-body stack">
-      <div class="th-v">{{ currency }} {{ hand.hand|money }}</div>
-      {% if hand.pending %}<div class="muted">{{ hand.pending|money }} handed over, waiting for {{ (boss.username if boss else 'the office') }} to confirm.</div>{% endif %}
-      {% if can_fn('col.deposit') and hand.hand - hand.pending > 0 %}
-      <form method="post" action="{{ url_for('collect_deposit') }}" class="stack">{{ csrf_input() }}
-        <div class="field"><label class="lbl" for="dp-amt">Deposit to {{ boss.full_name or boss.username if boss else 'the office' }}</label><input id="dp-amt" name="amount" type="number" step="0.01" min="0.01" max="{{ hand.hand - hand.pending }}" value="{{ '%.2f' % (hand.hand - hand.pending) }}" required></div>
-        <div class="field"><label class="lbl" for="dp-note">Note</label><input id="dp-note" name="note" maxlength="255"></div>
-        <div><button class="btn primary" type="submit">{{ icon('send') }}Deposit cash</button></div>
-      </form>{% endif %}
-    </div></section>
-  <section class="panel"><div class="panel-head"><h2>{{ icon('archive') }}Deposits</h2></div>
-    {% if deps %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th class="num">Amount</th><th>Status</th></tr></thead><tbody>
-      {% for d in deps %}<tr><td class="nowrap">{{ d.created_at|dt }}</td><td class="num">{{ d.amount|money }}</td><td><span class="badge {{ {'pending': 'warn', 'confirmed': 'ok', 'rejected': 'bad'}[d.status] }}">{{ d.status }}</span>{% if d.confirmed_by %} <small class="muted">{{ d.confirmed_by }}</small>{% endif %}</td></tr>{% endfor %}
-    </tbody></table></div>{% else %}<div class="empty"><p>No deposits yet.</p></div>{% endif %}</section>
-</div>
-<section class="panel tk-past"><div class="panel-head"><h2>{{ icon('file') }}Collections</h2><span class="aside">{{ rows|length }}</span></div>
-  {% if rows %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Receipt</th><th>Time</th><th>Customer</th><th>Method</th><th class="num">Amount</th><th>Applied</th></tr></thead><tbody>
-    {% for r in rows %}<tr><td class="mono">{% if can_fn('col.receipt') %}<a href="{{ url_for('collect_receipt', cid=r.id) }}">{{ r.receipt_no }}</a>{% else %}{{ r.receipt_no }}{% endif %}{% if r.status == 'void' %} <span class="badge bad">void</span>{% endif %}</td>
-      <td class="nowrap">{{ r.created_at|dt }}</td><td>{{ r.full_name or r.username }}</td><td>{{ methods.get(r.method, r.method) }}</td><td class="num">{{ r.amount|money }}</td><td><small>{{ r.result }}</small></td></tr>{% endfor %}
-  </tbody></table></div>{% else %}<div class="empty"><p>No collections in this period.</p></div>{% endif %}
-</section>
+{% set tk = currency or '৳' %}{% set room = hand.hand - hand.pending %}
+{% set pay_icons = {'cash': 'dollar', 'pos': 'card', 'bkash': 'wallet'} %}
+{% set to_whom = (boss.full_name or boss.username) if boss else 'the office' %}
+<div class="cl">
+  <div class="cl-head">
+    <div><h1>My collections <small>আমার কালেকশন</small></h1>
+      <p class="sub">{{ start|d }}{% if end != start %} to {{ end|d }}{% endif %}. Only you, {{ to_whom }} and the administrator see this.</p></div>
+  </div>
+
+  <!-- cash in hand: the one number that matters at the end of the day -->
+  <section class="cl-cash" aria-label="Cash in hand">
+    <div><span>Cash in hand · হাতে নগদ</span><b class="cl-num"><span class="cl-tk">{{ tk }}</span>{{ hand.hand|money }}</b>
+      <span>{% if hand.pending %}{{ hand.pending|money }} handed to {{ to_whom }}, waiting for them to confirm{% elif hand.hand > 0 %}Hand it over to {{ to_whom }} and send it here{% else %}Nothing to hand over{% endif %}</span></div>
+    {% if can_fn('col.deposit') and room > 0 %}
+    <form method="post" action="{{ url_for('collect_deposit') }}">{{ csrf_input() }}
+      <label class="sr-only" for="dp-amt">Amount to deposit</label><input id="dp-amt" name="amount" type="number" step="0.01" min="0.01" max="{{ '%.2f' % room }}" value="{{ '%.2f' % room }}" required inputmode="decimal">
+      <label class="sr-only" for="dp-note">Note</label><input id="dp-note" name="note" maxlength="255" placeholder="Note (optional)">
+      <button class="btn" type="submit">{{ icon('send') }}Deposit cash</button>
+    </form>{% endif %}
+  </section>
+
+  <form class="rep-filter" method="get" style="margin:0">
+    <div class="cl-presets">{% for label, a, b in presets %}<a class="cl-chip {{ 'on' if a == start and b == end }}" href="{{ url_for('collect_report', **{'from': a.isoformat(), 'to': b.isoformat()}) }}">{{ label }}</a>{% endfor %}</div>
+    <div class="rep-dates"><label class="lbl" for="cr-from">From</label><input id="cr-from" type="date" name="from" value="{{ start.isoformat() }}">
+      <label class="lbl" for="cr-to">To</label><input id="cr-to" type="date" name="to" value="{{ end.isoformat() }}"><button class="btn primary" type="submit">Show</button></div>
+  </form>
+
+  <div class="cl-mix">
+    {% for k, label in methods.items() %}<div>
+      <span><span>{{ icon(pay_icons[k]) }} {{ label }}</span><span>{{ cnt[k] }}</span></span>
+      <b><span class="cl-tk">{{ tk }}</span>{{ tot[k]|money }}</b>
+      <i><em style="width:{{ ((tot[k] * 100 / total) if total else 0)|int }}%"></em></i>
+    </div>{% endfor %}
+  </div>
+
+  <section class="cl-box">
+    <h2>{{ icon('file') }}Receipts<span class="aside">{{ tk }} {{ total|money }} · {{ rows|selectattr('status', 'equalto', 'posted')|list|length }}</span></h2>
+    {% if rows %}<ul class="cl-rows">{% for r in rows %}
+      <li class="{{ 'void' if r.status == 'void' }}">
+        <span class="cl-mic {{ r.method }}" aria-hidden="true">{{ icon(pay_icons.get(r.method, 'dollar')) }}</span>
+        <div style="min-width:0"><b>{{ r.full_name or r.username }}</b>
+          <small>{% if can_fn('col.receipt') %}<a class="mono" href="{{ url_for('collect_receipt', cid=r.id) }}">{{ r.receipt_no }}</a>{% else %}<span class="mono">{{ r.receipt_no }}</span>{% endif %} · {{ r.created_at.strftime('%d %b, %I:%M %p') }} · {{ methods.get(r.method, r.method) }}</small>
+          {% if r.result %}<small>{{ r.result }}</small>{% endif %}</div>
+        <div class="cl-side"><span class="cl-num">{{ r.amount|money }}</span>{% if r.status == 'void' %}<span class="cl-tag late">void</span>{% endif %}</div>
+      </li>{% endfor %}</ul>
+    {% else %}<div class="cl-pad"><p class="muted" style="margin:0">No collections in this period.</p></div>{% endif %}
+  </section>
+
+  <section class="cl-box">
+    <h2>{{ icon('archive') }}Deposits to {{ to_whom }}</h2>
+    {% if deps %}<ul class="cl-rows">{% for d in deps %}
+      <li><span class="cl-mic" aria-hidden="true">{{ icon('send') }}</span>
+        <div style="min-width:0"><b>{{ d.created_at.strftime('%d %b, %I:%M %p') }}</b><small>{% if d.confirmed_by %}{{ 'Confirmed' if d.status == 'confirmed' else 'Turned down' }} by {{ d.confirmed_by }}{% else %}Waiting for {{ to_whom }}{% endif %}{% if d.note %} · {{ d.note }}{% endif %}</small></div>
+        <div class="cl-side"><span class="cl-num">{{ d.amount|money }}</span><span class="cl-tag {{ {'pending': 'fee', 'confirmed': 'ok', 'rejected': 'late'}[d.status] }}">{{ d.status }}</span></div>
+      </li>{% endfor %}</ul>
+    {% else %}<div class="cl-pad"><p class="muted" style="margin:0">No deposits yet.</p></div>{% endif %}
+  </section>
 </div>
 {% endblock %}
