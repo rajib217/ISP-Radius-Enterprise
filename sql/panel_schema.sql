@@ -1001,3 +1001,26 @@ CREATE TABLE IF NOT EXISTS staff_locations (
   accuracy   INT UNSIGNED NULL,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Staff work records: a technician's finished / given job, copied here before its ticket is deleted (by hand or the
+-- monthly clean-up), so ratings and completed work stay. Later also bill collectors (kind).
+CREATE TABLE IF NOT EXISTS staff_work_log (
+  ticket_id     INT UNSIGNED NOT NULL,
+  admin_id      INT UNSIGNED NOT NULL,
+  kind          VARCHAR(16)  NOT NULL DEFAULT 'job',
+  subscriber_id INT UNSIGNED NULL,
+  username      VARCHAR(64)  NOT NULL DEFAULT '',
+  customer      VARCHAR(128) NOT NULL DEFAULT '',
+  subject       VARCHAR(200) NOT NULL DEFAULT '',
+  category      VARCHAR(32)  NOT NULL DEFAULT '',
+  status        VARCHAR(16)  NOT NULL DEFAULT '',
+  created_at    DATETIME NULL,
+  closed_at     DATETIME NULL,
+  due_at        DATETIME NULL,
+  arrived_at    DATETIME NULL,
+  rating        TINYINT UNSIGNED NULL,
+  rating_note   VARCHAR(500) NULL,
+  saved_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (ticket_id, admin_id),
+  KEY idx_admin (admin_id, closed_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -278,7 +278,7 @@ ROLE_KEYS = {
 ROLE_NEVER = {
     "technician": frozenset((
         "sub.password", "svc.conn_pw", "sub.username", "sub.delete", "sub.mass_delete", "sub.import", "sub.export",
-        "sub.activation", "sub.mass_activation", "sub.migration", "sub.custom_expiry", "sub.expiry", "sub.grace",
+        "sub.mass_settings", "sub.activation", "sub.mass_activation", "sub.migration", "sub.custom_expiry", "sub.expiry", "sub.grace",
         "sub.mid_change", "sub.balance", "sub.mass_payment", "sub.discount", "sub.invoice", "sub.revert",
         "sub.fee_add", "sub.fee_edit", "sub.fee_delete", "sub.fee_module", "sub.fee_view", "svc.packages",
         "home.acc", "home.pred", "home.usage", "home.g_sales", "home.g_pay", "pkg.module")),

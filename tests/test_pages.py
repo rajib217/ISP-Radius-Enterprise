@@ -2996,6 +2996,35 @@ def check_rules(flask_app, ids):
           "I will fix it: the reseller picks their own technician (or Find Technicians, their own only), who gets the job alert "
           "and sees it in My jobs; office technicians do not; Send to the office goes to the office ticket list as before")
     run("DELETE FROM staff_locations WHERE admin_id = %s", (_rt["id"],))
+    # Subscribers page: a technician gets Add Subscriber only (no Activation, no Mass Settings)
+    _tsubs = _tc.get("/subscribers").get_data(as_text=True)
+    _tmass = _tc.post("/subscribers/bulk", data={"_csrf": "ci", "ids": [str(_rsub["id"])], "action": "settings"}).status_code
+    _asubs = adm.get("/subscribers").get_data(as_text=True)
+    check("Add Subscriber</button>" in _tsubs and "Activation</button>" not in _tsubs and "Mass Settings" not in _tsubs
+          and 'id="activate-dlg"' not in _tsubs and _tmass == 403
+          and "Activation</button>" in _asubs and "Mass Settings" in _asubs,
+          "Subscribers page: a technician sees Add Subscriber only; Activation and Mass Settings are gone (and refused)")
+    # Work & ratings: a deleted ticket's work and rating stay; each technician sees their own, a reseller their technicians
+    run("INSERT INTO tickets (subscriber_id, username, subject, category, priority, status, assigned_to, created_by, seller, to_office, "
+        "closed_at, rating, rating_note) VALUES (%s, %s, 'CI rated job', 'connection', 'normal', 'resolved', %s, 'ci', %s, 0, NOW(), 5, "
+        "'Very quick')", (_rsub["id"], _rsub["username"], _rt["id"], one("SELECT username FROM panel_admins WHERE id = %s", (ids["reseller"],))["username"]))
+    _wid = one("SELECT id FROM tickets WHERE subject = 'CI rated job' ORDER BY id DESC LIMIT 1")["id"]
+    _del = adm.post("/tickets/%d/delete" % _wid, data={"_csrf": "ci"}).status_code
+    _gone = one("SELECT COUNT(*) AS c FROM tickets WHERE id = %s", (_wid,))["c"]
+    _w_own = _rtc.get("/tech-work").get_data(as_text=True)
+    _w_other = _tc.get("/tech-work").get_data(as_text=True)
+    _w_peek = _tc.get("/tech-work?tech=%d&days=0" % _rt["id"]).get_data(as_text=True)   # their own page, never another's
+    _w_res = _rc2.get("/tech-work").get_data(as_text=True)
+    _w_res_peek = _rc2.get("/tech-work?tech=%d" % _tech_row["id"]).status_code
+    _w_res_one = _rc2.get("/tech-work?tech=%d&days=0" % _rt["id"]).get_data(as_text=True)
+    _w_adm = adm.get("/tech-work").get_data(as_text=True)
+    _w_sup = st.get("/tech-work").status_code
+    check(_del == 302 and _gone == 0 and "CI rated job" in _w_own and "deleted" in _w_own and "Very quick" in _w_own
+          and "My work &amp; ratings" in _w_own and "CI rated job" not in _w_other and "CI rated job" not in _w_peek
+          and "Res Tech" in _w_res and "CI Tech" not in _w_res and _w_res_peek == 403 and "CI rated job" in _w_res_one
+          and "Res Tech" in _w_adm and "CI Tech" in _w_adm and _w_sup == 403 and 'href="/tech-work"' in _rtc.get("/").get_data(as_text=True),
+          "Work & ratings: a technician's jobs and ratings stay after the ticket is deleted; each technician sees only their own, "
+          "a reseller sees the technicians they added, the administrator sees all")
     return bad
 
 

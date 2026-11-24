@@ -22,7 +22,7 @@
 <div class="toolbtns">
   {% if can('subscribers', 'edit') %}
   {% if can_fn('sub.add') %}<button class="btn tb" type="button" data-open="add-drawer">{{ icon('plus') }}Add Subscriber</button>{% endif %}
-  <button class="btn tb" type="button" data-open="activate-dlg">{{ icon('bolt') }}Activation</button>
+  {% if can_fn('sub.activation') or can_fn('sub.mass_activation') %}<button class="btn tb" type="button" data-open="activate-dlg">{{ icon('bolt') }}Activation</button>{% endif %}
   {% if can_fn('sub.mass_activation') %}<button class="btn tb" type="button" data-mass-open="mass-act-dlg">{{ icon('play') }}Mass Activation</button>{% endif %}
   {% if can_fn('sub.import') %}<a class="btn tb" href="{{ url_for('import_csv') }}">{{ icon('upload') }}Import</a>{% endif %}
   {% endif %}
@@ -31,7 +31,7 @@
   {% if can('subscribers', 'edit') %}
   {% if can_fn('sub.mass_payment') %}<button class="btn tb" type="button" data-mass-open="mass-pay-dlg">{{ icon('card') }}Mass Payment</button>{% endif %}
   {% if me.role == 'admin' %}<button class="btn tb red" type="button" data-mass-open="mass-del-dlg">{{ icon('trash') }}Mass Delete</button>{% endif %}
-  <button class="btn tb" type="button" id="massSetBtn">{{ icon('sliders') }}Mass Settings</button>
+  {% if can_fn('sub.mass_settings') %}<button class="btn tb" type="button" id="massSetBtn">{{ icon('sliders') }}Mass Settings</button>{% endif %}
   {% endif %}
   <button class="btn tb" type="button" data-open="filter-dlg">{{ icon('filter') }}Filter</button>
   <button class="btn tb" type="button" id="compactBtn" aria-pressed="false">{{ icon('table') }}Compact View</button>
@@ -206,7 +206,7 @@
   </form>
 </dialog>
 
-{% if can('subscribers', 'edit') %}
+{% if can('subscribers', 'edit') and (can_fn('sub.activation') or can_fn('sub.mass_activation')) %}
 <dialog class="modal act-modal" id="activate-dlg" aria-labelledby="act-title">
   {% set act_modal = true %}{% set pre = none %}{% set back = none %}{% include '_activation_form.html' %}
 </dialog>

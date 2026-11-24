@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}{{ 'My work & ratings' if tech and solo else 'Work & ratings' }}{% endblock %}
+{% macro stars(n) %}{% if n %}<span class="stars" title="{{ n }} of 5">{{ '★' * n }}<span class="muted">{{ '★' * (5 - n) }}</span></span>{% else %}<span class="muted">—</span>{% endif %}{% endmacro %}
+{% macro summary(s) %}
+<div class="th-stats">
+  <div class="th-stat"><span class="th-v">{{ s.done }}</span><span class="th-k">Jobs done <small>· {{ s.jobs }} given</small></span></div>
+  <div class="th-stat"><span class="th-v">{{ s.open }}</span><span class="th-k">Open now</span></div>
+  <div class="th-stat"><span class="th-v">{{ ('%d%%' % s.in_time) if s.in_time is not none else '—' }}</span><span class="th-k">Done in time</span></div>
+  <div class="th-stat"><span class="th-v">{{ ('%.1f' % s.rating) if s.rating else '—' }}{% if s.rating %}<small class="stars"> ★</small>{% endif %}</span><span class="th-k">Customer rating <small>· {{ s.rated }} rated</small></span></div>
+  <div class="th-stat"><span class="th-v">{{ s.visits }}</span><span class="th-k">Visits</span></div>
+</div>
+{% endmacro %}
+{% block content %}
+<div class="page-head">
+  <div><h1>{% if tech %}{{ 'My work & ratings' if solo else (tech.full_name or tech.username) }}{% else %}Work & ratings{% endif %}</h1>
+    <p class="sub">{% if tech and solo %}Your jobs and what customers said. Only you{% else %}Each technician's jobs and customer ratings. Only they, the office and the reseller who added them{% endif %} can see this. Records stay even when a ticket is deleted.</p></div>
+  {% if tech and not solo %}<div class="head-actions"><a class="btn" href="{{ url_for('tech_work', days=days) }}">{{ icon('arrow-left') }}All technicians</a></div>{% endif %}
+</div>
+<div class="chips">{% for d in day_opts %}<a class="chip {{ 'on' if days == d }}" href="{{ url_for('tech_work', days=d, tech=tech.id if tech and not solo else none) }}">{{ 'All time' if not d else 'Last %d days' % d }}</a>{% endfor %}</div>
+{{ summary(total) }}
+{% if tech %}
+<section class="panel">
+  <div class="panel-head"><h2>Jobs</h2><span class="aside">{{ rows|length }}</span></div>
+  {% if rows %}<div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Ticket</th><th>Customer</th><th>Category</th><th>Status</th><th>Finished</th><th>In time</th><th>Rating</th></tr></thead>
+    <tbody>{% for r in rows %}<tr>
+      <td>{% if r.deleted %}#{{ r.ticket_id }} {{ r.subject }} <span class="badge mute" title="The ticket was deleted; the record is kept">deleted</span>{% else %}<a href="{{ url_for('ticket_view', tid=r.ticket_id) if not solo else url_for('jobs') }}">#{{ r.ticket_id }} {{ r.subject }}</a>{% endif %}</td>
+      <td>{{ r.customer or r.username or '—' }}</td>
+      <td>{{ categories.get(r.category, r.category) }}</td>
+      <td><span class="badge {{ {'open': 'warn', 'pending': 'info', 'resolved': 'ok', 'closed': 'mute'}.get(r.status, 'mute') }}">{{ r.status }}</span></td>
+      <td class="nowrap">{{ r.closed_at|dt if r.closed_at else '—' }}</td>
+      <td>{% if r.due_at and r.closed_at %}<span class="badge {{ 'ok' if r.closed_at <= r.due_at else 'bad' }}">{{ 'Yes' if r.closed_at <= r.due_at else 'Late' }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td>{{ stars(r.rating) }}{% if r.rating_note %}<div class="muted small">{{ r.rating_note }}</div>{% endif %}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>{% else %}<div class="empty"><p>No jobs in this period.</p></div>{% endif %}
+</section>
+{% else %}
+<section class="panel">
+  <div class="panel-head"><h2>Technicians</h2><span class="aside">{{ table|length }}</span></div>
+  {% if table %}<div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Technician</th>{% if me.role in ('admin', 'manager') %}<th>Added by</th>{% endif %}<th class="num">Done</th><th class="num">Given</th><th class="num">Open</th><th class="num">In time</th><th>Rating</th><th class="num">Visits</th></tr></thead>
+    <tbody>{% for t in table %}<tr>
+      <td class="who-cell"><a href="{{ url_for('tech_work', tech=t.id, days=days) }}"><b>{{ t.full_name or t.username }}</b></a><small class="mono">{{ t.username }}{% if not t.is_active %} · disabled{% endif %}</small></td>
+      {% if me.role in ('admin', 'manager') %}<td>{{ t.boss or 'Office' }}</td>{% endif %}
+      <td class="num">{{ t.done }}</td><td class="num">{{ t.jobs }}</td><td class="num">{{ t.open }}</td>
+      <td class="num">{{ ('%d%%' % t.in_time) if t.in_time is not none else '—' }}</td>
+      <td>{% if t.rating %}{{ '%.1f' % t.rating }} <span class="stars">★</span> <small class="muted">({{ t.rated }})</small>{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td class="num">{{ t.visits }}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>{% else %}<div class="empty"><p>No technicians yet.</p></div>{% endif %}
+</section>
+{% endif %}
+{% endblock %}

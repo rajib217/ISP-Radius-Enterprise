@@ -633,6 +633,8 @@ def ticket_to_office(tid):
 @admin_required
 def ticket_delete(tid):
     q("SELECT id FROM tickets WHERE id = %s", (tid,), one=True) or abort(404)
+    with get_db().cursor() as cur:
+        ticketlib.save_work(cur, "t.id = %s", (tid,))     # the technician's work and rating stay in their record
     x("DELETE FROM ticket_replies WHERE ticket_id = %s", (tid,))
     x("DELETE FROM ticket_materials WHERE ticket_id = %s", (tid,))
     x("DELETE FROM tickets WHERE id = %s", (tid,))

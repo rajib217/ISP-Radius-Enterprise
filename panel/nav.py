@@ -110,6 +110,7 @@ STRUCTURE = [
         _i("Report", "ticket_report", ["ticket_report"], office=True),
         _i("Settings", "ticket_settings", ["ticket_settings"], allow="ticket_admin"),
         _i("Technician map", "tech_map", ["tech_map"], allow="ticket_admin"),
+        _i("Work & ratings", "tech_work", ["tech_work"], allow="techwork"),
     ]),
     _g("alerts", "Job alerts", "bell", endpoint="staff_alerts", match=["staff_alerts"], techs=True),
     _g("email", "Email", "mail", module="email", items=[
@@ -167,6 +168,8 @@ def _allowed(key):
         return mod_coa.allowed()
     if key == "ticket_admin":
         return g.me["role"] in ("admin", "manager")
+    if key == "techwork":                 # technicians (their own), admin / manager, resellers (the technicians they added)
+        return g.me["role"] in ("technician", "admin", "manager") + tuple(core.SELLER_ROLES)
     if key == "jobs":                     # office staff and any technician (a reseller's own too), never resellers
         return g.me["role"] not in core.SELLER_ROLES and core.can("tickets")
     return False

@@ -1220,6 +1220,8 @@ def subscribers_bulk():
         return redirect(back)
     if action == "delete" and g.me["role"] != "admin":
         abort(403)
+    if action == "settings" and not core.can_fn("sub.mass_settings"):
+        abort(403)                       # Mass Settings needs its own tick
     marks = ",".join(["%s"] * len(ids))
     subs = q("SELECT * FROM subscribers WHERE id IN (%s)" % marks, ids)
     names = core.my_downline()

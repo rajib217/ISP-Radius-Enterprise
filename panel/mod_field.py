@@ -13,7 +13,7 @@ Sellers see only their own downline's customers everywhere here (core.scope_sql 
 import os
 import re
 import secrets
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from flask import abort, flash, g, jsonify, redirect, render_template, request, send_file, url_for
 
@@ -588,3 +588,81 @@ def ticket_photo(name):
     resp = send_file(path, mimetype="image/png" if name.endswith(".png") else "image/jpeg", max_age=86400)
     resp.headers["X-Content-Type-Options"] = "nosniff"
     return resp
+
+
+# ===================================================================== work & ratings (kept after a ticket is deleted)
+WORK_DAYS = (30, 90, 365, 0)          # 0 = all time
+
+
+def work_techs():
+    """Technicians whose work this user may see: a technician only themselves; admin / manager every technician;
+    a reseller / sub-reseller / retailer the technicians added under their downline. None = no access."""
+    role = g.me["role"]
+    cols = "SELECT a.id, a.username, a.full_name, a.phone, a.is_active, p.username AS boss FROM panel_admins a " \
+           "LEFT JOIN panel_admins p ON p.id = a.parent_id WHERE a.role = 'technician'"
+    if role == "technician":
+        return q(cols + " AND a.id = %s", (g.me["id"],))
+    if role in ("admin", "manager"):
+        return q(cols + " ORDER BY a.is_active DESC, a.username")
+    if role in core.SELLER_ROLES:
+        names = core.my_downline() or [g.me["username"]]
+        return q(cols + " AND p.username IN (%s) ORDER BY a.is_active DESC, a.username" % ",".join(["%s"] * len(names)), list(names))
+    return None
+
+
+def work_rows(ids, since=None):
+    """Every job of these technicians: live tickets plus the saved records of tickets that were deleted. Newest first."""
+    if not ids:
+        return []
+    mark = ",".join(["%s"] * len(ids))
+    live = q("SELECT t.id AS ticket_id, t.assigned_to AS admin_id, t.username, COALESCE(NULLIF(s.full_name, ''), t.username) AS customer, "
+             "t.subject, t.category, t.status, t.created_at, t.closed_at, CASE WHEN t.to_office = 1 THEN t.due_at END AS due_at, "
+             "t.arrived_at, t.rating, t.rating_note, 0 AS deleted FROM tickets t LEFT JOIN subscribers s ON s.id = t.subscriber_id "
+             "WHERE t.assigned_to IN (" + mark + ")", list(ids))
+    try:
+        gone = q("SELECT w.ticket_id, w.admin_id, w.username, w.customer, w.subject, w.category, w.status, w.created_at, w.closed_at, "
+                 "w.due_at, w.arrived_at, w.rating, w.rating_note, 1 AS deleted FROM staff_work_log w "
+                 "WHERE w.kind = 'job' AND w.admin_id IN (" + mark + ") AND NOT EXISTS (SELECT 1 FROM tickets t WHERE t.id = w.ticket_id)",
+                 list(ids))
+    except Exception:
+        gone = []
+    rows = [r for r in list(live) + list(gone) if not since or (r["closed_at"] or r["created_at"]) >= since]
+    rows.sort(key=lambda r: r["closed_at"] or r["created_at"] or datetime.min, reverse=True)
+    return rows
+
+
+def work_sum(rows):
+    done = [r for r in rows if r["status"] in ("resolved", "closed")]
+    timed = [r for r in done if r["due_at"] and r["closed_at"]]
+    rated = [r["rating"] for r in rows if r["rating"]]
+    return {"jobs": len(rows), "done": len(done), "open": sum(1 for r in rows if r["status"] in ("open", "pending")),
+            "in_time": (sum(1 for r in timed if r["closed_at"] <= r["due_at"]) * 100.0 / len(timed)) if timed else None,
+            "rating": (sum(rated) * 1.0 / len(rated)) if rated else None, "rated": len(rated),
+            "visits": sum(1 for r in rows if r["arrived_at"])}
+
+
+@route("/tech-work", module="tickets")
+def tech_work():
+    """Work & ratings: each technician sees their own; admin all; a reseller the technicians they added."""
+    techs = work_techs()
+    if techs is None:
+        abort(403)
+    days = request.args.get("days", 90, type=int)
+    days = days if days in WORK_DAYS else 90
+    since = (datetime.now() - timedelta(days=days)) if days else None
+    by_id = {t["id"]: t for t in techs}
+    pick = request.args.get("tech", type=int)
+    if g.me["role"] == "technician":
+        pick = g.me["id"]
+    if pick is not None and pick not in by_id:
+        abort(403)
+    rows = work_rows([pick] if pick else list(by_id), since)
+    if pick:
+        return render_template("tech_work.html", tech=by_id[pick], rows=rows[:500], total=work_sum(rows), techs=techs, days=days,
+                               day_opts=WORK_DAYS, categories=mod_tickets.ALL_CATEGORIES, solo=g.me["role"] == "technician")
+    per = {}
+    for r in rows:
+        per.setdefault(r["admin_id"], []).append(r)
+    table = [dict(t, **work_sum(per.get(t["id"], []))) for t in techs]
+    table.sort(key=lambda t: (-t["done"], -t["jobs"], t["username"]))
+    return render_template("tech_work.html", tech=None, table=table, total=work_sum(rows), days=days, day_opts=WORK_DAYS)
