@@ -26,10 +26,16 @@ TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 @route("/plans", module="plans")
 def plans():
-    rows = q("SELECT p.*, (SELECT COUNT(*) FROM subscribers s WHERE s.plan_id = p.id) AS users "
-             "FROM plans p ORDER BY p.download_mbps, p.label")
+    rows = q("SELECT p.*, (SELECT COUNT(*) FROM subscribers s WHERE s.plan_id = p.id) AS users, "
+             "(SELECT COUNT(*) FROM user_plans up JOIN panel_admins a ON a.id = up.user_id WHERE up.plan_id = p.id) AS sellers "
+             "FROM plans p ORDER BY p.id")
+    fees = {}
+    for r in q("SELECT pf.plan_id, f.name, f.mode, f.value FROM plan_fees pf JOIN fees f ON f.id = pf.fee_id WHERE f.active = 1 "
+               "ORDER BY f.name"):
+        fees.setdefault(r["plan_id"], []).append(r)
     for r in rows:
         r["rate"] = "" if r.get("speed_from_policy") else radius.rate_string(r)
+        r["fees"] = fees.get(r["id"], [])
     return render_template("plans.html", rows=rows)
 
 
@@ -80,7 +86,49 @@ def _typed(f, pid):
 
 @route("/plans/new", module="plans")
 def plan_new():
-    return _form_page(None)
+    """Add Package; with ?copy=<id> the form starts as a copy of that package (a new name is still needed)."""
+    src = q("SELECT * FROM plans WHERE id = %s", (request.args["copy"],), one=True) if request.args.get("copy", "").isdigit() else None
+    if not src:
+        return _form_page(None)
+    p = {k: v for k, v in src.items() if k not in ("id", "name", "created_at")}
+    p["name"] = ""
+    p["description"] = "Copy of %s" % (src["description"] or src["label"] or src["name"])
+    fees = [r["fee_id"] for r in q("SELECT fee_id FROM plan_fees WHERE plan_id = %s", (src["id"],))]
+    return _form_page(p, fees_sel=fees)
+
+
+@route("/plans/<int:pid>/assign", module="plans", methods=["GET", "POST"])
+def plan_assign(pid):
+    """Give this one package to many resellers / sub-resellers / retailers / staff at once (Packages > Actions > Assign).
+    A user who gets it now starts at the package's own price (change it under Users > the user > Packages)."""
+    if core.my_downline() is not None or not core.can("plans", "edit"):
+        abort(403)
+    plan = q("SELECT * FROM plans WHERE id = %s", (pid,), one=True) or abort(404)
+    users = q("SELECT a.id, a.username, a.full_name, a.role, up.price AS my_price, up.plan_id IS NOT NULL AS has_it, "
+              "(SELECT COUNT(*) FROM subscribers s WHERE s.created_by = a.username AND s.plan_id = %s) AS customers "
+              "FROM panel_admins a LEFT JOIN user_plans up ON up.user_id = a.id AND up.plan_id = %s "
+              "WHERE a.role <> 'admin' AND a.is_active = 1 ORDER BY FIELD(a.role, 'reseller', 'subreseller', 'retailer'), a.username",
+              (pid, pid))
+    if request.method == "POST":
+        want = {int(v) for v in request.form.getlist("users") if v.isdigit()}
+        add = [u for u in users if u["id"] in want and not u["has_it"]]
+        drop = [u for u in users if u["id"] not in want and u["has_it"]]
+        kept = [u["username"] for u in drop if u["customers"]]
+        drop = [u for u in drop if not u["customers"]]
+        with get_db().cursor() as cur:
+            if add:
+                cur.executemany("INSERT IGNORE INTO user_plans (user_id, plan_id, price) VALUES (%s, %s, %s)",
+                                [(u["id"], pid, plan["price"]) for u in add])
+            for u in drop:
+                cur.execute("DELETE FROM user_plans WHERE user_id = %s AND plan_id = %s", (u["id"], pid))
+        audit("plan_assigned", plan["name"], "+%d -%d" % (len(add), len(drop)))
+        commit()
+        msg = "%s: given to %d, taken from %d." % (plan["label"] or plan["name"], len(add), len(drop))
+        if kept:
+            msg += " Kept for %s: their customers use it." % ", ".join(kept[:8])
+        flash(msg, "warn" if kept else "success")
+        return redirect(url_for("plans"))
+    return render_template("plan_assign.html", plan=plan, users=users, roles=dict(core.role_list()))
 
 
 @route("/plans/<int:pid>/edit", module="plans")

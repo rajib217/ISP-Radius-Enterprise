@@ -3,28 +3,60 @@
 {% block title %}Packages{% endblock %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Packages</h1><p class="sub">A plan sets the speed, price and validity. Each plan is also a RADIUS group.</p></div>
+  <div><h1>{{ icon('package') }} Packages</h1><p class="sub">Each package sets the speed (its Policy), price and validity, and is also a RADIUS group.</p></div>
   {% if can('plans', 'edit') %}<div class="actions"><a class="btn primary" href="{{ url_for('plan_new') }}">{{ icon('plus') }}Add Package</a></div>{% endif %}
 </div>
 
-<section class="panel">
+<section class="panel pk-list" data-tt="packages" data-tt-title="Packages">
   {% if rows %}
-  <div class="tbl-wrap"><table class="tbl">
-    <thead><tr><th>Plan</th><th class="num">Bandwidth</th><th>Policy</th><th class="num">Price</th><th class="num">Valid for</th><th class="hide-sm">IP pool</th><th class="num">Customers</th><th></th></tr></thead>
+  <div class="tt-bar">
+    <select data-tt-per aria-label="Rows per page" class="tt-per">{% for n in (10, 25, 50, 100) %}<option value="{{ n }}" {{ 'selected' if n == 50 }}>{{ n }}</option>{% endfor %}</select>
+    <div class="tt-tools" role="group" aria-label="Export">
+      <button type="button" data-tt-do="print">Print</button><button type="button" data-tt-do="copy">Copy</button><button type="button" data-tt-do="pdf">PDF</button><button type="button" data-tt-do="excel">Excel</button><button type="button" data-tt-do="csv">CSV</button>
+      <span class="tt-view-wrap"><button type="button" data-tt-view aria-expanded="false">View &#9662;</button><div class="tt-cols" data-tt-cols hidden></div></span>
+    </div>
+    <label class="tt-search">Search: <input type="search" data-tt-search placeholder="Type &amp; Search"></label>
+  </div>
+  <div class="tt-meta"><span data-tt-info class="muted"></span><nav data-tt-pages class="tt-pages" aria-label="Pages"></nav></div>
+  <div class="tbl-wrap"><table class="tbl pk-tbl" data-tt-table>
+    <thead><tr>
+      <th data-k="id" data-sort="num">ID</th>
+      <th data-k="name" data-sort="text">Name</th>
+      <th data-k="price" data-sort="num" class="num">Price</th>
+      <th data-k="subs" data-sort="num" class="num">Subscribers</th>
+      <th data-k="users" data-sort="num" class="num">Users</th>
+      <th data-k="billing" data-sort="text">Billing Type</th>
+      <th data-k="duration" data-sort="num">Duration</th>
+      <th data-k="policy" data-sort="text">Policy</th>
+      <th data-k="renew" data-sort="text">Auto Renew</th>
+      <th data-k="alloc" data-sort="text">Allocation</th>
+      <th data-k="fee" data-sort="text">Extra Fee</th>
+      <th class="act">Actions</th>
+    </tr></thead>
     <tbody>
     {% for p in rows %}
       <tr>
-        <td class="who-cell"><b>{{ p.label }}</b><small class="mono">{{ p.name }}{% if p.rate %} · {{ p.rate }}{% endif %}</small></td>
-        <td class="num">{{ bw(p) or '—' }}</td>
-        <td class="mono">{{ p.policy_group or '—' }}</td>
-        <td class="num">{{ currency }} {{ p.price|money }}</td>
-        <td class="num">{{ p.duration }} {{ p.duration_type }}{{ '' if p.duration == 1 else 's' }}</td>
-        <td class="mono hide-sm">{{ p.pool_name or '—' }}</td>
-        <td class="num"><a href="{{ url_for('subscribers', plan=p.id) }}">{{ '{:,}'.format(p.users) }}</a></td>
+        <td class="muted" data-v="{{ p.id }}">{{ p.id }}</td>
+        <td data-v="{{ p.label }}" data-x="{{ p.label }} ({{ p.name }})"><span class="pk-chip">{{ p.label }}</span><small class="muted mono pk-sub">{{ p.name }}{% if bw(p) %} · {{ bw(p) }}{% endif %}</small></td>
+        <td class="num" data-v="{{ p.price or 0 }}">{{ currency }} {{ p.price|money }}</td>
+        <td class="num" data-v="{{ p.users }}"><a class="pk-count" href="{{ url_for('subscribers', plan=p.id) }}" title="Customers on this package">{{ '{:,}'.format(p.users) }}</a></td>
+        <td class="num" data-v="{{ p.sellers }}"><span class="pk-count" title="Resellers / staff who can sell it">{{ p.sellers }}</span></td>
+        <td data-v="{{ p.billing_type or 'prepaid' }}"><span class="pk-tag {{ 'pk-post' if p.billing_type == 'postpaid' else 'pk-pre' }}">{{ (p.billing_type or 'prepaid')|capitalize }}</span></td>
+        <td data-v="{{ p.validity_days or 0 }}"><span class="pk-tag pk-dur">{{ p.duration or p.validity_days }} {{ (p.duration_type or 'day')|capitalize }}{{ '' if (p.duration or p.validity_days) == 1 else 's' }}</span></td>
+        <td class="mono" data-v="{{ p.policy_group or '' }}">{{ p.policy_group or '—' }}</td>
+        <td data-v="{{ 'on' if p.auto_renew else 'off' }}">{% if p.auto_renew %}<span class="pk-ok">{{ icon('check') }}On</span>{% else %}<span class="muted">Off</span>{% endif %}</td>
+        <td data-v="{{ 'enabled' if p.sellers else 'none' }}">{% if p.sellers %}<span class="pk-ok">{{ icon('check') }}Enabled</span>{% else %}<span class="muted">Not given</span>{% endif %}</td>
+        <td data-v="{{ p.fees|map(attribute='name')|join(', ') }}">{% if p.fees %}{% for f in p.fees %}<span class="pk-tag pk-fee" title="{{ f.value }}{{ '%' if f.mode == 'percent' }}">{{ f.name }}</span>{% endfor %}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td class="act">
           {% if can('plans', 'edit') %}
-          <a class="btn sm icon" href="{{ url_for('plan_edit', pid=p.id) }}" aria-label="Edit {{ p.label }}" title="Edit">{{ icon('edit') }}</a>
-          <form method="post" action="{{ url_for('plan_delete', pid=p.id) }}" data-confirm="Delete plan {{ p.label }}?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ p.label }}" title="Delete">{{ icon('trash') }}</button></form>
+          <details class="dd pk-dd"><summary class="btn sm pk-act">Actions &#9662;</summary>
+            <div class="dd-menu">
+              {% if me.role == 'admin' %}<a href="{{ url_for('plan_assign', pid=p.id) }}">{{ icon('users') }} Assign</a>{% endif %}
+              <a href="{{ url_for('plan_edit', pid=p.id) }}">{{ icon('edit') }} Edit</a>
+              <a href="{{ url_for('plan_new', copy=p.id) }}">{{ icon('copy') }} Copy</a>
+              <form method="post" action="{{ url_for('plan_delete', pid=p.id) }}" data-confirm="Delete package {{ p.label }}?{% if p.users %} {{ p.users }} customer(s) still use it, so it will not be deleted.{% endif %}">{{ csrf_input() }}<button type="submit" class="pk-del">{{ icon('trash') }} Delete</button></form>
+            </div>
+          </details>
           {% endif %}
         </td>
       </tr>
@@ -32,8 +64,8 @@
     </tbody>
   </table></div>
   {% else %}
-  <div class="empty"><h3>Create your first plan</h3><p>Plans decide how fast each customer connects. Add one such as 10 Mbps, then assign it to subscribers.</p>{% if can('plans', 'edit') %}<a class="btn primary" href="{{ url_for('plan_new') }}">{{ icon('plus') }}Add Package</a>{% endif %}</div>
+  <div class="empty"><h3>Create your first package</h3><p>Packages decide how fast each customer connects. Add one such as 10 Mbps, then assign it to subscribers.</p>{% if can('plans', 'edit') %}<a class="btn primary" href="{{ url_for('plan_new') }}">{{ icon('plus') }}Add Package</a>{% endif %}</div>
   {% endif %}
 </section>
-
 {% endblock %}
+{% block scripts %}<script src="{{ asset('js/table-tools.js') }}"></script>{% endblock %}

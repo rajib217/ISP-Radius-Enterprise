@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Assign {{ plan.label }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Assign package</h1><p class="sub"><a href="{{ url_for('plans') }}">Packages</a> &middot; {{ plan.label }} <span class="mono muted">{{ plan.name }}</span> &middot; {{ currency }} {{ plan.price|money }}</p></div></div>
+<section class="panel" style="max-width:860px">
+  <form method="post" class="panel-body stack">
+    {{ csrf_input() }}
+    <p class="muted" style="margin:0">Tick who may sell this package. Someone who gets it now starts at the package price ({{ currency }} {{ plan.price|money }}); change their own price under Users &gt; the user &gt; Packages. A user whose customers use it keeps it.</p>
+    {% if users %}
+    <div class="row-gap"><input type="search" placeholder="Find a user" aria-label="Find a user" data-as-find style="max-width:280px"><button type="button" class="btn sm" data-as-all>Tick all shown</button><button type="button" class="btn sm" data-as-none>Untick all shown</button></div>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th class="chk"></th><th>User</th><th>Role</th><th class="num">Their price</th><th class="num">Their customers on it</th></tr></thead><tbody>
+    {% for u in users %}<tr data-as-row data-q="{{ (u.username ~ ' ' ~ (u.full_name or ''))|lower }}">
+      <td class="chk"><input type="checkbox" name="users" value="{{ u.id }}" {{ 'checked' if u.has_it }} aria-label="Give to {{ u.username }}"></td>
+      <td><b>{{ u.full_name or u.username }}</b><small class="muted" style="display:block">{{ u.username }}</small></td>
+      <td>{{ roles.get(u.role, u.role) }}</td>
+      <td class="num">{% if u.has_it %}{{ currency }} {{ (u.my_price if u.my_price is not none else plan.price)|money }}{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td class="num">{{ u.customers or 0 }}</td>
+    </tr>{% endfor %}
+    </tbody></table></div>
+    <div class="row-gap"><button class="btn primary" type="submit">Save</button><a class="btn" href="{{ url_for('plans') }}">Cancel</a></div>
+    {% else %}<div class="empty"><p>There are no resellers or staff to give it to yet.</p></div>{% endif %}
+  </form>
+</section>
+{% endblock %}
+{% block scripts %}<script>
+(function () {
+  var rows = document.querySelectorAll("[data-as-row]"), f = document.querySelector("[data-as-find]");
+  if (f) f.addEventListener("input", function () { var v = f.value.trim().toLowerCase(); rows.forEach(function (r) { r.hidden = v && r.dataset.q.indexOf(v) < 0; }); });
+  function set(on) { rows.forEach(function (r) { if (!r.hidden) r.querySelector("input").checked = on; }); }
+  var a = document.querySelector("[data-as-all]"), n = document.querySelector("[data-as-none]");
+  if (a) a.addEventListener("click", function () { set(true); });
+  if (n) n.addEventListener("click", function () { set(false); });
+})();
+</script>{% endblock %}

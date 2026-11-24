@@ -2856,6 +2856,28 @@ def check_rules(flask_app, ids):
           and "Package Tax/Fee</a>" in _ap,
           "customer page tabs: Done codes and login links are hidden in SMS lists; Online Payments lists bKash payments; "
           "Login Log says why a login was refused; Package Tax/Fee tab")
+    # Packages list: toolbar, the reference columns, Actions (Assign / Edit / Copy / Delete)
+    _pk = adm.get("/plans").get_data(as_text=True)
+    _pk_plan = one("SELECT * FROM plans WHERE id = %s", (_ppid,))
+    _cp = adm.get("/plans/new?copy=%d" % _ppid).get_data(as_text=True)
+    _as = adm.get("/plans/%d/assign" % _ppid).get_data(as_text=True)
+    _sub_id = ids["subreseller"]
+    run("DELETE FROM user_plans WHERE plan_id = %s", (_ppid,))
+    adm.post("/plans/%d/assign" % _ppid, data={"_csrf": "ci", "users": [str(ids["reseller"]), str(_sub_id)]})
+    _given = {r["user_id"]: r["price"] for r in run_q("SELECT user_id, price FROM user_plans WHERE plan_id = %s", (_ppid,))}
+    run("UPDATE subscribers SET plan_id = %s WHERE id = %s", (_ppid, _rsub["id"]))
+    adm.post("/plans/%d/assign" % _ppid, data={"_csrf": "ci", "users": []})
+    _left = {r["user_id"] for r in run_q("SELECT user_id FROM user_plans WHERE plan_id = %s", (_ppid,))}
+    run("UPDATE subscribers SET plan_id = %s WHERE id = %s", (_old_plan, _rsub["id"]))
+    _as_res = _rc2.get("/plans/%d/assign" % _ppid).status_code
+    check('data-tt="packages"' in _pk and 'data-tt-do="excel"' in _pk and 'data-tt-view' in _pk and "Billing Type" in _pk
+          and "Allocation" in _pk and "Extra Fee" in _pk and ('/plans/%d/assign' % _ppid) in _pk and ('/plans/new?copy=%d' % _ppid) in _pk
+          and "js/table-tools.js" in _pk and 'value="Copy of ' in _cp and 'id="pk-name" name="name" value=""' in _cp
+          and "Assign package" in _as and set(_given) == {ids["reseller"], _sub_id}
+          and all(float(v) == float(_pk_plan["price"]) for v in _given.values())
+          and _left == {ids["reseller"]} and _as_res == 403,
+          "Packages list: toolbar (rows, search, print / copy / PDF / Excel / CSV / view), the new columns and an Actions menu; "
+          "Copy starts a new package from one; Assign gives one package to many users (kept where their customers use it)")
     return bad
 
 
