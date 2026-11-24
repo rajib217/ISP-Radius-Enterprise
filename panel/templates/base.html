@@ -90,7 +90,7 @@
 <script src="{{ asset('js/charts.js') }}"></script>
 <script src="{{ asset('js/app.js') }}"></script>
 <script src="{{ asset('js/pwa.js') }}"></script>
-{% if me and me.role not in ('reseller', 'subreseller', 'retailer') %}<script src="{{ asset('js/staff-push.js') }}" data-key="{{ url_for('staff_push_key') }}" data-sub="{{ url_for('staff_push_subscribe') }}" data-unsub="{{ url_for('staff_push_unsubscribe') }}" data-test="{{ url_for('staff_push_test') }}" data-csrf="{{ csrf_value }}"></script>{% endif %}
+{% if me %}<script src="{{ asset('js/staff-push.js') }}" data-key="{{ url_for('staff_push_key') }}" data-sub="{{ url_for('staff_push_subscribe') }}" data-unsub="{{ url_for('staff_push_unsubscribe') }}" data-test="{{ url_for('staff_push_test') }}" data-csrf="{{ csrf_value }}"></script>{% endif %}
 {% if me and me.role == 'technician' %}<script src="{{ asset('js/staff-location.js') }}" data-url="{{ url_for('staff_location') }}" data-csrf="{{ csrf_value }}"></script>{% endif %}
 {% block scripts %}{% endblock %}
 </body>

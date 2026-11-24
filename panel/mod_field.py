@@ -330,6 +330,7 @@ def job_start(tid):
            (tid, g.me["username"], "Work started."))
     x("UPDATE tickets SET status = 'pending', assigned_to = %s, updated_at = NOW() WHERE id = %s", (who, tid))
     audit("job_started", "#%d" % tid)
+    mod_tickets.watch_alert(tid, "started", "Work started")
     commit()
     flash("Job #%d started." % tid, "success")
     return _job_back()
@@ -381,6 +382,7 @@ def job_done(tid):
       "updated_at = NOW() WHERE id = %s", (t["assigned_to"] or g.me["id"], tid))
     mod_tickets.done(t)
     audit("job_done", "#%d" % tid, note[:200])
+    mod_tickets.watch_alert(tid, "done", "Job done", note)
     commit()
     flash("Job #%d marked done." % tid, "success")
     return _job_back()
@@ -508,6 +510,7 @@ def job_arrived(tid):
     insert("INSERT INTO ticket_replies (ticket_id, author, body, internal) VALUES (%s, %s, %s, 1)",
            (tid, g.me["username"], "Arrived at the customer" + where + "."))
     audit("job_arrived", "#%d" % tid, where.strip(" ()"))
+    mod_tickets.watch_alert(tid, "arrived", "Technician arrived", where.strip(" ()"))
     commit()
     flash("Arrival noted for job #%d." % tid, "success")
     return _job_back()
@@ -543,6 +546,9 @@ def job_update(tid):
     x("UPDATE tickets SET status = 'pending', assigned_to = %s, updated_at = NOW() WHERE id = %s",
       (t["assigned_to"] or g.me["id"], tid))
     audit("job_updated", "#%d" % tid, state)
+    # each progress note is news (no once-only key): count the replies so far to keep the keys apart
+    mod_tickets.watch_alert(tid, "update%d" % q("SELECT COUNT(*) AS c FROM ticket_replies WHERE ticket_id = %s", (tid,), one=True)["c"],
+                            state, note)
     commit()
     flash("Job #%d updated: %s." % (tid, state.lower()), "success")
     return _job_back()

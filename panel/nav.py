@@ -112,7 +112,7 @@ STRUCTURE = [
         _i("Technician map", "tech_map", ["tech_map"], allow="ticket_admin"),
         _i("Work & ratings", "tech_work", ["tech_work"], allow="techwork"),
     ]),
-    _g("alerts", "Job alerts", "bell", endpoint="staff_alerts", match=["staff_alerts"], techs=True),
+    _g("alerts", "Job alerts", "bell", endpoint="staff_alerts", match=["staff_alerts"]),   # resellers too: ticket news
     _g("email", "Email", "mail", module="email", items=[
         _i("Compose", "email_compose"),
         _i("Templates", "templates_page", args={"kind": "email"}),

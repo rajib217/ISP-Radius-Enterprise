@@ -68,9 +68,6 @@ def staff_push_test():
 @route("/me/alerts")
 def staff_alerts():
     """Menu > Job alerts: switch this phone's job notifications on or off (and, for a technician, location sharing)."""
-    if g.me["role"] in core.SELLER_ROLES:
-        from flask import abort
-        abort(403)
     from flask import render_template
     with get_db().cursor() as cur:
         phones = staffpush.subscribed(cur, g.me["id"])

@@ -144,6 +144,44 @@ def job_alert(tid, admin_id):
                                key="job:%d:%d" % (tid, admin_id), urgent=urgent)
 
 
+def watchers(seller_name):
+    """Who hears about a ticket's news: every active administrator, plus the customer's reseller / sub-reseller / retailer
+    and everyone above them up the chain (retailer -> sub-reseller -> reseller)."""
+    ids = [r["id"] for r in q("SELECT id FROM panel_admins WHERE role = 'admin' AND is_active = 1")]
+    row = q("SELECT id, role, parent_id, is_active FROM panel_admins WHERE username = %s", (seller_name,), one=True) if seller_name else None
+    seen = set()
+    while row and row["role"] in core.SELLER_ROLES and row["id"] not in seen:
+        seen.add(row["id"])
+        if row["is_active"]:
+            ids.append(row["id"])
+        row = q("SELECT id, role, parent_id, is_active FROM panel_admins WHERE id = %s", (row["parent_id"],), one=True)             if row["parent_id"] else None
+    return list(dict.fromkeys(ids))
+
+
+def watch_alert(tid, event, title, note=""):
+    """Phone notification (staff app, Job alerts) about ticket #tid to its watchers, not to the person who did it.
+    event: a short key (new, started, arrived, update, done ...) so one event is sent once per person."""
+    r = q("SELECT t.id, t.subject, t.seller, t.category, s.full_name, s.username, s.area, a.full_name AS tech_name, "
+          "a.username AS tech_user FROM tickets t LEFT JOIN subscribers s ON s.id = t.subscriber_id "
+          "LEFT JOIN panel_admins a ON a.id = t.assigned_to WHERE t.id = %s", (tid,), one=True)
+    if not r:
+        return 0
+    me = getattr(g, "me", None)
+    who = [i for i in watchers(r["seller"]) if not me or i != me["id"]]
+    if not who:
+        return 0
+    import staffpush
+    body = " · ".join(v for v in ((r["full_name"] or r["username"] or ""), r["area"] or "",
+                                  ("Technician " + (r["tech_name"] or r["tech_user"])) if (r["tech_name"] or r["tech_user"]) else "",
+                                  (note or "")[:140]) if v)
+    head = "#%d %s: %s" % (tid, title, r["subject"][:70])
+    n = 0
+    with get_db().cursor() as cur:
+        for aid in who:
+            n += staffpush.queue(cur, aid, head, body, "/tickets/%d" % tid, key="tk:%d:%s:%d" % (tid, event, aid))
+    return n
+
+
 def assigned(t, admin_id):
     """After a ticket got a (new) person: ring their phone, tell the customer who is coming."""
     job_alert(t["id"], admin_id)

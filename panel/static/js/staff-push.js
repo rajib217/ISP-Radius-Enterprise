@@ -51,7 +51,7 @@
   }
   function render(card) {
     var s = state(), html = "";
-    if (s === "ask") html = '<div class="sp-txt"><b>Get a notification for every new job</b><span>Your phone rings when a job is given to you, even when the app is closed.</span></div><button type="button" class="btn primary" data-sp-on>Turn on job alerts</button>';
+    if (s === "ask") html = '<div class="sp-txt"><b>Get a notification for jobs and ticket news</b><span>Your phone rings for a new job or complaint and when work moves on, even when the app is closed.</span></div><button type="button" class="btn primary" data-sp-on>Turn on job alerts</button>';
     else if (s === "on") html = '<div class="sp-txt"><b>Job alerts are on for this phone</b><span>A new job shows on the lock screen with the phone\'s notification sound.</span></div><button type="button" class="btn sm" data-sp-test>Send a test</button><button type="button" class="btn sm" data-sp-off>Turn off</button>';
     else if (s === "denied") html = '<div class="sp-txt"><b>Notifications are blocked for this panel</b><span>Allow them: touch and hold the app icon &gt; App info &gt; Notifications &gt; Allow (Chrome: ⋮ &gt; Settings &gt; Site settings &gt; Notifications). Then reload this page.</span></div>';
     else if (s === "ios-install") html = '<div class="sp-txt"><b>Install the app first</b><span>On iPhone, job alerts work in the installed app: Share &gt; Add to Home Screen, then open it from the home screen.</span></div>';

@@ -70,6 +70,7 @@ def portal_support():
             tid = mod_tickets.create(sub, subject, cat, pri, form["body"][:3000], "customer:" + sub["username"],
                                      source="portal", to_office=to_office)
             audit("ticket_created", "#%d" % tid, "portal: " + subject, who="customer:" + sub["username"])
+            mod_tickets.watch_alert(tid, "new", "New complaint", form["body"])   # admins + the customer's reseller chain
             commit()
             flash("অভিযোগ #%d পাঠানো হয়েছে। কাজের খবর এখানে আর নোটিফিকেশনে পাবেন।" % tid, "success")
             return redirect(url_for("portal_ticket", tid=tid))

@@ -2451,7 +2451,7 @@ def check_rules(flask_app, ids):
     check(_pk_ok and _psub == 200 and _pbad == 400 and _sn and _sn["urgent"] == 1 and _sn["link"] == "/jobs"
           and "URGENT" in _sn["title"] and _self == 0 and _bulk_n == 1 and _ptest.get("ok") and _np >= 3 and _left == 0
           and _job_push and _job_push["staff"] == 1 and _job_push["url"] == "/jobs" and _job_push["urgent"] == 1 and _gone == 0
-          and "data-staff-push" in _tc.get("/me/alerts").get_data(as_text=True) and "js/staff-push.js" in _th and "js/staff-push.js" not in _rhome
+          and "data-staff-push" in _tc.get("/me/alerts").get_data(as_text=True) and "js/staff-push.js" in _th and "js/staff-push.js" in _rhome
           and "staff-push" in _sw and "requireInteraction" in _sw,
           "staff app: a technician turns on job alerts; every job given to them (new, bulk, board...) rings their phone "
           "(urgent stays on screen), not when they take it themselves; a gone phone is forgotten")
@@ -3049,6 +3049,45 @@ def check_rules(flask_app, ids):
           and 'name="to" value="2021-01-31"' in _w_jan and "CI rated job" in _w_all,
           "Ticket report: a deleted ticket still counts (opened, rating, in time, per person); From / To dates on the report "
           "and on Work & ratings")
+    # ticket news on the phone: a customer's complaint and the technician's progress go to the administrators and the
+    # customer's reseller chain (not to the person who did it); an office customer's ticket does not go to a reseller
+    setv("portal_on", "1"); setv("ticket_portal_on", "1"); setv("ticket_portal_route", "seller")
+    _pc5 = flask_app.test_client()
+    with _pc5.session_transaction() as _s5:
+        _s5["csrf"] = "ci"; _s5["cid"] = _rsub["id"]
+    run("UPDATE tickets SET status = 'closed', created_at = created_at - INTERVAL 2 DAY WHERE subscriber_id = %s", (_rsub["id"],))
+    _pc5.post("/portal/support", data={"_csrf": "ci", "category": "slow", "subject": "CI watch new", "body": "ci slow since noon"})
+    _wn = one("SELECT id FROM tickets WHERE subject = 'CI watch new' ORDER BY id DESC LIMIT 1")
+
+    def _keys(tid, ev):
+        return {r["admin_id"] for r in run_q("SELECT admin_id FROM staff_notifications WHERE dedupe LIKE %s", ("tk:%d:%s:%%" % (tid, ev),))}
+    _k_new = _keys(_wn["id"], "new") if _wn else set()
+    run("UPDATE tickets SET assigned_to = %s, to_office = 0 WHERE id = %s", (_rt["id"], _wn["id"]))
+    _rtc.post("/jobs/%d/start" % _wn["id"], data={"_csrf": "ci"})
+    _rtc.post("/jobs/%d/arrived" % _wn["id"], data={"_csrf": "ci"})
+    _rtc.post("/jobs/%d/update" % _wn["id"], data={"_csrf": "ci", "state": "parts", "note": "ci need a new adapter"})
+    _rtc.post("/jobs/%d/done" % _wn["id"], data={"_csrf": "ci", "note": "ci adapter changed", "skip_otp": ""})
+    _k_st, _k_ar, _k_dn = _keys(_wn["id"], "started"), _keys(_wn["id"], "arrived"), _keys(_wn["id"], "done")
+    _k_up = {r["admin_id"] for r in run_q("SELECT admin_id FROM staff_notifications WHERE dedupe LIKE %s", ("tk:%d:update%%" % _wn["id"],))}
+    _upd_row = one("SELECT body FROM staff_notifications WHERE dedupe LIKE %s AND admin_id = %s",
+                   ("tk:%d:update%%" % _wn["id"], ids["admin"]))
+    # an office customer's ticket: the administrators only
+    run("INSERT INTO tickets (subscriber_id, username, subject, category, priority, status, assigned_to, created_by, seller, to_office) "
+        "VALUES (%s, %s, 'CI watch office', 'slow', 'normal', 'open', %s, 'ci', '', 1)", (_asub["id"], _asub["username"], _tech_row["id"]))
+    _wo = one("SELECT id FROM tickets WHERE subject = 'CI watch office' ORDER BY id DESC LIMIT 1")["id"]
+    _tc.post("/jobs/%d/start" % _wo, data={"_csrf": "ci"})
+    _k_off = _keys(_wo, "started")
+    _ral = _rc2.get("/me/alerts")
+    setv("ticket_portal_route", "office")
+    check(_wn and {ids["admin"], ids["reseller"]} <= _k_new and _rt["id"] not in _k_new
+          and {ids["admin"], ids["reseller"]} <= _k_st and _rt["id"] not in _k_st
+          and {ids["admin"], ids["reseller"]} <= _k_ar and {ids["admin"], ids["reseller"]} <= _k_up and _upd_row
+          and "adapter" in _upd_row["body"] and "Res Tech" in _upd_row["body"]
+          and ids["admin"] in _k_off and ids["reseller"] not in _k_off and _tech_row["id"] not in _k_off
+          and _ral.status_code == 200 and "your customers only" in _ral.get_data(as_text=True)
+          and 'href="/me/alerts"' in _rc2.get("/").get_data(as_text=True),
+          "ticket news: a customer's complaint and the technician's start / arrival / progress / done ring the administrators and "
+          "the customer's reseller (resellers can now turn on alerts); an office customer's ticket goes to the administrators only")
     return bad
 
 

@@ -2,7 +2,7 @@
 {% from "_macros.html" import icon %}
 {% block title %}Job alerts{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Job alerts</h1><p class="sub">A notification on this phone for every job given to you, even when the app is closed.</p></div></div>
+<div class="page-head"><div><h1>Job alerts</h1><p class="sub">{% if me.role == 'technician' %}A notification on this phone for every job given to you, even when the app is closed.{% else %}A notification on this phone when a customer opens a complaint and when the technician starts, arrives, updates or finishes the work{% if me.role in ('reseller', 'subreseller', 'retailer') %} (your customers only){% endif %}, even when the app is closed.{% endif %}</p></div></div>
 <div style="max-width:760px" class="stack">
   <div class="sp-card" data-staff-push hidden></div>
   <section class="panel"><div class="panel-body stack">
