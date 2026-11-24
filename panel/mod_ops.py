@@ -48,6 +48,8 @@ def _month():
 
 def _statement_rows(first, nxt):
     """One row per reseller / sub-reseller / retailer the signed-in person may see, for the month [first, nxt)."""
+    if core.seller_boss():                   # a reseller's technician: never their reseller's money
+        abort(403)
     names = core.my_downline()
     if names is None:
         # office: the Accounting menu (or the Users > View tick, as before)

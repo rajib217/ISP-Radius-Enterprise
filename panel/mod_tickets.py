@@ -36,7 +36,8 @@ ALL_CATEGORIES = dict(CATEGORIES + SELLER_CATEGORIES)
 
 # ===================================================================== who may do what
 def seller():
-    return g.me["role"] in core.SELLER_ROLES
+    """A reseller / sub-reseller / retailer, or a reseller's own technician: limited to that downline's tickets."""
+    return g.me["role"] in core.SELLER_ROLES or core.seller_boss() is not None
 
 
 def manager():
@@ -53,8 +54,20 @@ def _scope(alias="t"):
 
 def _staff():
     """People a ticket can be given to (office only)."""
-    return q("SELECT id, username, full_name, role, phone FROM panel_admins WHERE is_active = 1 AND role NOT IN "
-             "('reseller', 'subreseller', 'retailer') ORDER BY role = 'technician' DESC, username")
+    return q("SELECT a.id, a.username, a.full_name, a.role, a.phone FROM panel_admins a LEFT JOIN panel_admins p ON p.id = a.parent_id "
+             "WHERE a.is_active = 1 AND a.role NOT IN ('reseller', 'subreseller', 'retailer') "
+             "AND (p.id IS NULL OR p.role NOT IN ('reseller', 'subreseller', 'retailer')) "   # not a reseller's own technician
+             "ORDER BY a.role = 'technician' DESC, a.username")
+
+
+def own_techs():
+    """Who a reseller may give a ticket they fix themselves to: their (downline's) own technicians."""
+    return core.seller_techs() if seller() else []
+
+
+def own_tech_id(raw):
+    """The technician id from a form, if it is one of the reseller's own technicians (else None)."""
+    return int(raw) if str(raw or "").isdigit() and int(raw) in {r["id"] for r in own_techs()} else None
 
 
 def seller_of_sub(sub):
@@ -375,8 +388,7 @@ NEAR_FRESH_MIN = 120        # ...and how recent the technician's position must b
 @route("/tickets/nearby-techs", module="tickets")
 def ticket_nearby_techs():
     """New ticket > Find Technicians: technicians whose phone was last seen within 500 m of the customer's map location."""
-    if seller():
-        abort(403)
+    allowed = {r["id"] for r in (own_techs() if seller() else _staff())}   # a reseller finds only their own technicians
     sub = resolve_customer(request.args.get("customer", ""))
     if not sub:
         return jsonify({"ok": False, "why": "Pick the customer first."})
@@ -406,6 +418,8 @@ def ticket_nearby_techs():
                "(SELECT COUNT(*) FROM tickets t WHERE t.assigned_to = a.id AND t.status IN ('open', 'pending')) AS jobs "
                "FROM staff_locations l JOIN panel_admins a ON a.id = l.admin_id WHERE a.role = 'technician' AND a.is_active = 1 "
                "AND l.updated_at >= NOW() - INTERVAL %s MINUTE", (NEAR_FRESH_MIN,)):
+        if r["id"] not in allowed:
+            continue
         d = ticketlib.distance_m(row["lat"], row["lng"], r["lat"], r["lng"])
         if d <= NEAR_METRES:
             mins = int((datetime.now() - r["updated_at"]).total_seconds() // 60)
@@ -452,7 +466,8 @@ def ticket_new():
         if not errors:
             if is_seller:
                 to_office = kind == "seller" or form["handler"] != "me"
-                dept = who = None
+                dept = None
+                who = None if to_office else own_tech_id(form["assigned_to"])   # "I will fix it": my own technician
                 solved = False
             else:
                 to_office = True
@@ -463,12 +478,14 @@ def ticket_new():
                          source="seller" if is_seller else "office", kind=kind, to_office=to_office, assign=who,
                          dept=dept, solved=solved)
             audit("ticket_created", "#%d" % tid, form["subject"])
+            if who and is_seller:
+                assigned(load(tid), who)          # ring the reseller's technician, tell the customer who is coming
             commit()
             flash(("Ticket #%d saved as solved." if solved else "Ticket #%d created.") % tid, "success")
             return redirect(url_for("ticket_view", tid=tid))
         flash("Please fix the highlighted fields.", "error")
     return render_template("ticket_new.html", form=form, errors=errors, depts=q("SELECT id, name FROM departments ORDER BY name"),
-                           staff=[] if is_seller else _staff(), categories=CATEGORIES, seller_categories=SELLER_CATEGORIES,
+                           staff=own_techs() if is_seller else _staff(), categories=CATEGORIES, seller_categories=SELLER_CATEGORIES,
                            priorities=PRIORITIES, is_seller=is_seller)
 
 
@@ -491,7 +508,7 @@ def ticket_view(tid):
         outs = ticketlib.active_outages(cur, t["sub_area"] or "") if t["sid"] else []
     canned = q("SELECT id, title, body FROM ticket_canned ORDER BY title") if core.can("tickets", "edit") else []
     return render_template("ticket_view.html", t=t, replies=replies, depts=q("SELECT id, name FROM departments ORDER BY name"),
-                           staff=[] if is_seller else _staff(), categories=CATEGORIES, all_cats=ALL_CATEGORIES,
+                           staff=own_techs() if is_seller else _staff(), categories=CATEGORIES, all_cats=ALL_CATEGORIES,
                            priorities=PRIORITIES, statuses=STATUSES, is_seller=is_seller, left=time_left(t),
                            left_text=left_text, mats=mats, dist=dist, outages=outs, canned=canned,
                            can_status=(not is_seller) or not t["to_office"])
@@ -561,6 +578,28 @@ def ticket_update(tid):
     return redirect(url_for("ticket_view", tid=tid))
 
 
+@route("/tickets/<int:tid>/assign-own", module="tickets", methods=["POST"])
+def ticket_assign_own(tid):
+    """A ticket the reseller fixes themselves: give it to (or take it from) one of their own technicians."""
+    if not seller():
+        abort(403)
+    t = load(tid)
+    if t["to_office"] or t["status"] not in ("open", "pending"):
+        flash("Only an open ticket you handle yourself can be given to your technician.", "warn")
+        return redirect(url_for("ticket_view", tid=tid))
+    raw = request.form.get("assigned_to", "")
+    who = own_tech_id(raw)
+    if raw and not who:
+        abort(403)
+    x("UPDATE tickets SET assigned_to = %s, updated_at = NOW() WHERE id = %s", (who, tid))
+    if who and who != t["assigned_to"]:
+        assigned(t, who)
+    audit("ticket_assigned", "#%d" % tid, str(who or "nobody"))
+    commit()
+    flash("Ticket #%d given to your technician." % tid if who else "Ticket #%d has no technician now." % tid, "success")
+    return redirect(url_for("ticket_view", tid=tid))
+
+
 @route("/tickets/<int:tid>/to-office", module="tickets", methods=["POST"])
 def ticket_to_office(tid):
     """A reseller cannot fix it: the office takes over (time limit and technician start now)."""
@@ -570,6 +609,10 @@ def ticket_to_office(tid):
         return redirect(url_for("ticket_view", tid=tid))
     s = core.cfg()
     who = None
+    if t["assigned_to"] and t["assigned_to"] in {r["id"] for r in own_techs()}:
+        # the reseller's own technician does not work office tickets: the office picks its own person
+        x("UPDATE tickets SET assigned_to = NULL WHERE id = %s", (tid,))
+        t["assigned_to"] = None
     if t["sid"] and s.get("ticket_auto_assign") == "1" and not t["assigned_to"]:
         with get_db().cursor() as cur:
             who = ticketlib.pick_tech(cur, t["sub_area"])
@@ -766,8 +809,7 @@ def ticket_settings():
                 flash("Ready reply deleted.", "success")
         commit()
         return redirect(url_for("ticket_settings") + "#" + ("canned" if act.startswith("canned") else act))
-    techs = q("SELECT id, username, full_name, role FROM panel_admins WHERE is_active = 1 AND role IN ('technician', 'support', "
-              "'manager') ORDER BY role = 'technician' DESC, username")
+    techs = [s for s in _staff() if s["role"] in ("technician", "support", "manager")]
     mapping = {}
     for r in q("SELECT area, admin_id FROM ticket_area_techs"):
         mapping.setdefault(r["area"], set()).add(r["admin_id"])

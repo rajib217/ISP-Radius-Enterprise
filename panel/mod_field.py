@@ -255,9 +255,21 @@ def _job(tid):
     if t["assigned_to"] and t["assigned_to"] != g.me["id"] and g.me["role"] not in ("admin", "manager"):
         abort(403)                       # someone else's job: only an administrator or manager acts on it
     names = core.my_downline()
-    if names is not None and t["sid"] and t["owner"] not in names:
-        abort(403)
+    if names is not None and (t["seller"] not in names or (t["to_office"] and t["assigned_to"] != g.me["id"])):
+        abort(403)                       # a reseller's technician: only that reseller's own tickets, not the office's
+    if names is None and g.me["role"] == "technician" and not t["to_office"] and t["assigned_to"] != g.me["id"]:
+        abort(403)                       # an office technician does not take a ticket the reseller fixes themselves
     return t
+
+
+def _free_sql(alias="t"):
+    """(sql, params) for jobs nobody has yet that this user may take: the office's tickets for office staff,
+    the reseller's self-handled tickets for a reseller's technician."""
+    names = core.my_downline()
+    if names is None:
+        return "%s.assigned_to IS NULL AND %s.to_office = 1" % (alias, alias), []
+    return ("%s.assigned_to IS NULL AND %s.to_office = 0 AND %s.seller IN (%s)"
+            % (alias, alias, alias, ",".join(["%s"] * len(names)))), list(names)
 
 
 def job_rows(where, params, order="FIELD(t.priority, 'urgent', 'high', 'normal', 'low'), t.created_at", limit=200):
@@ -265,7 +277,7 @@ def job_rows(where, params, order="FIELD(t.priority, 'urgent', 'high', 'normal',
     where, params = list(where), list(params)
     names = core.my_downline()
     if names is not None:
-        where.append("(t.subscriber_id IS NULL OR s.created_by IN (%s))" % ",".join(["%s"] * len(names)))
+        where.append("t.seller IN (%s)" % ",".join(["%s"] * len(names)))
         params += list(names)
     return q("SELECT t.*, s.id AS sid, s.full_name AS sub_name, s.phone AS sub_phone, s.address AS sub_address, "
              "s.area AS sub_area, s.lat, s.lng, "
@@ -286,7 +298,9 @@ def jobs():
     where = ["t.status IN ('open', 'pending')"]
     params = []
     if show == "free":
-        where.append("t.assigned_to IS NULL")
+        sql, fp = _free_sql()
+        where.append(sql)
+        params += fp
     elif show == "done":
         where = ["t.status IN ('resolved', 'closed')", "t.assigned_to = %s", "t.closed_at >= NOW() - INTERVAL 7 DAY"]
         params.append(g.me["id"])
@@ -296,8 +310,9 @@ def jobs():
         params.append(g.me["id"])
     rows = job_rows(where, params)
     import mod_tickets
-    counts = q("SELECT SUM(status IN ('open', 'pending') AND assigned_to = %s) AS mine, "
-               "SUM(status IN ('open', 'pending') AND assigned_to IS NULL) AS free FROM tickets", (g.me["id"],), one=True)
+    sql, fp = _free_sql()
+    counts = q("SELECT SUM(t.status IN ('open', 'pending') AND t.assigned_to = %s) AS mine, "
+               "SUM(t.status IN ('open', 'pending') AND " + sql + ") AS free FROM tickets t", [g.me["id"]] + fp, one=True)
     return render_template("jobs.html", rows=rows, show=show, categories=mod_tickets.ALL_CATEGORIES, stock=stock_items(),
                            otp_on=core.cfg().get("ticket_otp_on") == "1",
                            priorities=dict(mod_tickets.PRIORITIES),
@@ -541,7 +556,8 @@ def tech_home(notices=None):
     mine = job_rows(["t.status IN ('open', 'pending')", "t.assigned_to = %s"], [me])
     done_today = job_rows(["t.status IN ('resolved', 'closed')", "t.assigned_to = %s", "t.closed_at >= CURDATE()"], [me],
                           order="t.closed_at DESC", limit=20)
-    free = q("SELECT COUNT(*) AS c FROM tickets WHERE status IN ('open', 'pending') AND assigned_to IS NULL", one=True)["c"]
+    sql, fp = _free_sql()
+    free = q("SELECT COUNT(*) AS c FROM tickets t WHERE t.status IN ('open', 'pending') AND " + sql, fp, one=True)["c"]
     week = q("SELECT COUNT(*) AS c FROM tickets WHERE assigned_to = %s AND status IN ('resolved', 'closed') "
              "AND closed_at >= CURDATE() - INTERVAL 6 DAY", (me,), one=True)["c"]
     today = date.today()

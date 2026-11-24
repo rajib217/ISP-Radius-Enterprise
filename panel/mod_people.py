@@ -175,8 +175,8 @@ def user_transfer():
     if g.me["role"] not in core.SELLER_ROLES:
         abort(403)
     uid = request.form.get("user_id", "")
-    row = q("SELECT id, username, balance FROM panel_admins WHERE id = %s AND parent_id = %s", (int(uid), g.me["id"]), one=True) \
-        if uid.isdigit() else None
+    row = q("SELECT id, username, balance FROM panel_admins WHERE id = %s AND parent_id = %s AND role <> 'technician'",
+            (int(uid), g.me["id"]), one=True) if uid.isdigit() else None
     if not row:
         abort(404)
     if request.form.get("method", "") not in dict(BALANCE_METHODS):
@@ -239,6 +239,33 @@ def _my_child(aid):
     return q("SELECT * FROM panel_admins WHERE id = %s AND parent_id = %s", (aid, g.me["id"]), one=True) or abort(404)
 
 
+def _my_tech_create(f, name, phone, email, identity, address, username, password):
+    """A reseller / sub-reseller / retailer adds their own technician (My Users > Add technician): a Technician account
+    under them that sees and fixes only their customers (core.seller_boss / my_downline)."""
+    back = url_for("my_users")
+    if not core.can_fn("usr.tech"):
+        abort(403)
+    if not name or not phone or not PHONE_RE.match(phone):
+        flash("Full name and a phone number are required for a technician.", "error")
+        return redirect(back)
+    if email and (not EMAIL_RE.match(email) or len(email) > 128):
+        flash("Check the email address.", "error")
+        return redirect(back)
+    if not USERNAME_RE.match(username) or len(password) < 8:
+        flash("Username (3-64 characters) and a password of at least 8 characters are required.", "error")
+        return redirect(back)
+    if q("SELECT 1 AS x FROM panel_admins WHERE username = %s", (username,), one=True):
+        flash("That username is taken.", "error")
+        return redirect(back)
+    insert("INSERT INTO panel_admins (username, full_name, password_hash, role, phone, email, parent_id, created_by, "
+           "is_active, sms_on, email_on, identity, address) VALUES (%s, %s, %s, 'technician', %s, %s, %s, %s, 1, 1, 1, %s, %s)",
+           (username, name, generate_password_hash(password), phone, email, g.me["id"], g.me["username"], identity, address))
+    audit("technician_created", username, "by %s" % g.me["username"])
+    commit()
+    flash("Technician %s added. They sign in with this username and see only your customers." % username, "success")
+    return redirect(back)
+
+
 @route("/my-users/save", methods=["POST"])
 def my_user_save():
     """A seller creates or edits someone directly below them (the next tier only). The admin must tick Add / Edit."""
@@ -250,6 +277,9 @@ def my_user_save():
     name, phone, email = f.get("full_name", "").strip()[:128], f.get("phone", "").strip(), f.get("email", "").strip()
     identity, address = f.get("identity", "").strip()[:64], f.get("address", "").strip()[:255]
     password, username = f.get("password", ""), f.get("username", "").strip()
+    tech = f.get("kind") == "technician"
+    if tech and not aid:
+        return _my_tech_create(f, name, phone, email, identity, address, username, password)
     if not PHONE_RE.match(phone) or (email and (not EMAIL_RE.match(email) or len(email) > 128)):
         flash("Check the phone number and email address.", "error")
         return redirect(back)
@@ -258,9 +288,9 @@ def my_user_save():
         flash("Another user already has this phone number.", "error")
         return redirect(back)
     if aid:
-        if not core.can_fn("usr.edit"):
-            abort(403)
         row = _my_child(aid)
+        if not core.can_fn("usr.tech" if row["role"] == "technician" else "usr.edit"):
+            abort(403)
         if password and len(password) < 8:
             flash("Password must be at least 8 characters.", "error")
             return redirect(back)
@@ -317,6 +347,8 @@ def my_user_save():
 @route("/my-users/<int:aid>/toggle", methods=["POST"])
 def my_user_toggle(aid):
     row = _my_child(aid)
+    if not core.can_fn("usr.tech" if row["role"] == "technician" else "usr.edit"):   # own technicians: Add Technicians tick
+        abort(403)
     x("UPDATE panel_admins SET is_active = 1 - is_active WHERE id = %s", (aid,))
     audit("admin_disabled" if row["is_active"] else "admin_enabled", row["username"], "by %s" % g.me["username"])
     commit()
@@ -327,6 +359,8 @@ def my_user_toggle(aid):
 @route("/my-users/<int:aid>/password", methods=["POST"])
 def my_user_password(aid):
     row = _my_child(aid)
+    if not core.can_fn("usr.tech" if row["role"] == "technician" else "usr.password"):   # own technicians: Add Technicians tick
+        abort(403)
     new = request.form.get("password", "")
     if len(new) < 8:
         flash("Password must be at least 8 characters.", "error")
@@ -365,6 +399,8 @@ def my_user_delete(aid):
 def my_user_packages(aid):
     """What each person below pays for a package. Only the packages the seller may use, never below the seller's own price."""
     row = _my_child(aid)
+    if row["role"] == "technician":           # a technician sells nothing
+        abort(404)
     u = dict(id=row["id"], username=row["username"], full_name=row["full_name"], role=row["role"], parent_id=g.me["id"])
     mine = core.allowed_plan_ids()
     return _packages_page(u, "my_user_packages", allowed=mine if mine is not None else None, back=url_for("my_users"),

@@ -2896,12 +2896,12 @@ def check_rules(flask_app, ids):
     run("UPDATE subscribers SET address = 'House 5 https://www.google.com/maps/@23.800000,90.400000,17z' WHERE id = %s", (_asub["id"],))
     _from_addr = json.loads(adm.get("/tickets/nearby-techs?customer=%s" % _asub["username"]).get_data(as_text=True))
     _kept = one("SELECT lat, lng FROM subscribers WHERE id = %s", (_asub["id"],))
-    _near_res = _rc2.get("/tickets/nearby-techs?customer=%s" % _rsub["username"]).status_code
+    _near_res = json.loads(_rc2.get("/tickets/nearby-techs?customer=%s" % _rsub["username"]).get_data(as_text=True))
     _tn_page = adm.get("/tickets/new").get_data(as_text=True)
     check(_near["ok"] and [x["id"] for x in _near["techs"]] == [_tech_row["id"]] and 200 <= _near["techs"][0]["m"] <= 245
           and _far["ok"] and _far["techs"] == [] and not _noloc["ok"] and "no saved map location" in _noloc["why"]
           and _from_addr["ok"] and [x["id"] for x in _from_addr["techs"]] == [_tech_row["id"]] and _kept["lat"] is not None
-          and _near_res == 403 and "Find Technicians" in _tn_page,
+          and _tech_row["id"] not in [x["id"] for x in _near_res.get("techs", [])] and "Find Technicians" in _tn_page,
           "New ticket > Find Technicians: lists technicians seen within 500 m of the customer (none farther away); without a "
           "customer location it says so and the list is used by hand")
     # customer portal: "Contact Support" opens the support page, which has "new complaint" and "Call support"
@@ -2937,6 +2937,65 @@ def check_rules(flask_app, ids):
           and _left == {ids["reseller"]} and _as_res == 403,
           "Packages list: toolbar (rows, search, print / copy / PDF / Excel / CSV / view), the new columns and an Actions menu; "
           "Copy starts a new package from one; Assign gives one package to many users (kept where their customers use it)")
+    # a reseller adds their own technician from My Users; that technician sees only the reseller's customers
+    rf("reseller", usr__tech=1)
+    run("DELETE FROM panel_admins WHERE username = 'ci_rtech'")
+    _my = _rc2.get("/my-users").get_data(as_text=True)
+    _rt_save = _rc2.post("/my-users/save", data={"_csrf": "ci", "kind": "technician", "full_name": "Res Tech", "username": "ci_rtech",
+                                                 "password": "Secret123!", "phone": "01711000222"}).status_code
+    _rt = one("SELECT id, role, parent_id FROM panel_admins WHERE username = 'ci_rtech'")
+    _rtc = client(_rt["id"])
+    _rt_own = _rtc.get("/subscribers/%d" % _rsub["id"]).status_code
+    _rt_other = _rtc.get("/subscribers/%d" % _asub["id"]).status_code
+    _office_new = adm.get("/tickets/new").get_data(as_text=True)
+    check("Add technician" in _my and _rt_save == 302 and _rt["role"] == "technician" and _rt["parent_id"] == ids["reseller"]
+          and _rt_own == 200 and _rt_other in (403, 404) and "Res Tech" not in _office_new,
+          "My Users > Add technician: a reseller adds their own technician, who sees only that reseller's customers; the office "
+          "does not get that technician in its lists")
+    # "I will fix it": the reseller gives the ticket to their own technician; "Send to the office" works as before
+    _tn_res = _rc2.get("/tickets/new").get_data(as_text=True)
+    _r_ok = _rc2.post("/tickets/new", data={"_csrf": "ci", "kind": "customer", "customer": _rsub["username"], "subject": "CI own tech job",
+                                            "category": "connection", "priority": "normal", "handler": "me",
+                                            "assigned_to": str(_rt["id"])})
+    _own_t = one("SELECT id, to_office, assigned_to FROM tickets WHERE subject = 'CI own tech job' ORDER BY id DESC LIMIT 1")
+    _alert = one("SELECT COUNT(*) AS c FROM staff_notifications WHERE admin_id = %s AND dedupe = %s",
+                 (_rt["id"], "job:%d:%d" % (_own_t["id"], _rt["id"])))["c"]
+    _rc2.post("/tickets/new", data={"_csrf": "ci", "kind": "customer", "customer": _rsub["username"], "subject": "CI stranger tech",
+                                    "category": "connection", "priority": "normal", "handler": "me", "assigned_to": str(_tech_row["id"])})
+    _bad_t = one("SELECT assigned_to FROM tickets WHERE subject = 'CI stranger tech' ORDER BY id DESC LIMIT 1")
+    _rc2.post("/tickets/new", data={"_csrf": "ci", "kind": "customer", "customer": _rsub["username"], "subject": "CI office job",
+                                    "category": "connection", "priority": "normal", "handler": "office", "assigned_to": str(_rt["id"])})
+    _off_t = one("SELECT to_office, assigned_to FROM tickets WHERE subject = 'CI office job' ORDER BY id DESC LIMIT 1")
+    _rjobs = _rtc.get("/jobs").get_data(as_text=True)
+    _tjobs_free = _tc.get("/jobs?show=free").get_data(as_text=True)
+    # change the technician from the ticket page, then send it to the office: the reseller's technician lets go
+    _view = _rc2.get("/tickets/%d" % _own_t["id"]).get_data(as_text=True)
+    _un = _rc2.post("/tickets/%d/assign-own" % _own_t["id"], data={"_csrf": "ci", "assigned_to": ""}).status_code
+    _un_row = one("SELECT assigned_to FROM tickets WHERE id = %s", (_own_t["id"],))
+    _bad_as = _rc2.post("/tickets/%d/assign-own" % _own_t["id"], data={"_csrf": "ci", "assigned_to": str(_tech_row["id"])}).status_code
+    _rc2.post("/tickets/%d/assign-own" % _own_t["id"], data={"_csrf": "ci", "assigned_to": str(_rt["id"])})
+    _rc2.post("/tickets/%d/to-office" % _own_t["id"], data={"_csrf": "ci"})
+    _sent = one("SELECT to_office, assigned_to FROM tickets WHERE id = %s", (_own_t["id"],))
+    _adm_as = adm.post("/tickets/%d/assign-own" % _own_t["id"], data={"_csrf": "ci", "assigned_to": ""}).status_code
+    _rt_after = _rtc.post("/jobs/%d/start" % _own_t["id"], data={"_csrf": "ci"}).status_code
+    # Find Technicians for a reseller: only their own technicians
+    run("UPDATE subscribers SET lat = 23.800000, lng = 90.400000 WHERE id = %s", (_rsub["id"],))
+    for _who in (_rt["id"], _tech_row["id"]):
+        run("INSERT INTO staff_locations (admin_id, lat, lng, accuracy, updated_at) VALUES (%s, 23.801000, 90.400000, 10, NOW()) "
+            "ON DUPLICATE KEY UPDATE lat = 23.801000, lng = 90.400000, updated_at = NOW()", (_who,))
+    _rnear = json.loads(_rc2.get("/tickets/nearby-techs?customer=%s" % _rsub["username"]).get_data(as_text=True))
+    _anear = json.loads(adm.get("/tickets/nearby-techs?customer=%s" % _rsub["username"]).get_data(as_text=True))
+    check("Assign to my technician" in _tn_res and "Res Tech" in _tn_res and "Find Technicians" in _tn_res
+          and _r_ok.status_code == 302 and _own_t["to_office"] == 0 and _own_t["assigned_to"] == _rt["id"] and _alert == 1
+          and _bad_t["assigned_to"] is None and _off_t["to_office"] == 1 and _off_t["assigned_to"] != _rt["id"]
+          and "CI own tech job" in _rjobs and "CI own tech job" not in _tjobs_free
+          and "Change technician" in _view and _un == 302 and _un_row["assigned_to"] is None and _bad_as == 403
+          and _sent["to_office"] == 1 and _sent["assigned_to"] != _rt["id"] and _adm_as == 403 and _rt_after == 403
+          and _rnear["ok"] and [x["id"] for x in _rnear["techs"]] == [_rt["id"]]
+          and _anear["ok"] and _rt["id"] not in [x["id"] for x in _anear["techs"]],
+          "I will fix it: the reseller picks their own technician (or Find Technicians, their own only), who gets the job alert "
+          "and sees it in My jobs; office technicians do not; Send to the office goes to the office ticket list as before")
+    run("DELETE FROM staff_locations WHERE admin_id = %s", (_rt["id"],))
     return bad
 
 

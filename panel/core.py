@@ -198,13 +198,41 @@ def date_range(default_days=29):
     return start, end
 
 
-def my_downline():
-    """Usernames whose customers this user may see: themselves and everyone below them. None = no limit."""
-    if g.me["role"] not in SELLER_ROLES:
+def seller_boss():
+    """The reseller / sub-reseller / retailer a technician belongs to (they added them under My Users), or None for the
+    office's own staff. Such a technician sees and fixes only that reseller's customers."""
+    me = getattr(g, "me", None)
+    if not me or me["role"] in SELLER_ROLES or not me.get("parent_id"):
         return None
+    if "boss" not in g:
+        g.boss = q("SELECT id, username, full_name, role FROM panel_admins WHERE id = %s AND role IN ('reseller', 'subreseller', "
+                   "'retailer')", (me["parent_id"],), one=True)
+    return g.boss
+
+
+def my_downline():
+    """Usernames whose customers this user may see: themselves and everyone below them. None = no limit.
+    A reseller's own technician sees their reseller's downline."""
+    if g.me["role"] not in SELLER_ROLES:
+        boss = seller_boss()
+        if not boss:
+            return None
+        if "downline" not in g:
+            g.downline = downline_of(boss["id"], boss["username"])
+        return g.downline
     if "downline" not in g:
         g.downline = downline_of(g.me["id"], g.me["username"])
     return g.downline
+
+
+def seller_techs(names=None):
+    """Technicians a reseller (or their technician) may give jobs to: those added under anyone in the downline."""
+    names = names if names is not None else my_downline()
+    if not names:
+        return []
+    return q("SELECT a.id, a.username, a.full_name, a.phone, a.role FROM panel_admins a JOIN panel_admins p ON p.id = a.parent_id "
+             "WHERE a.role = 'technician' AND a.is_active = 1 AND p.username IN (%s) ORDER BY a.username"
+             % ",".join(["%s"] * len(names)), list(names))
 
 
 def downline_of(uid, username):

@@ -329,7 +329,7 @@ def gate():
     if not uid:
         nxt = request.full_path.rstrip("?") if request.method == "GET" else None
         return redirect(url_for("login", next=nxt))
-    me = q("SELECT id, username, full_name, role, is_active, balance, photo FROM panel_admins WHERE id = %s",
+    me = q("SELECT id, username, full_name, role, is_active, balance, photo, parent_id FROM panel_admins WHERE id = %s",
            (uid,), one=True)
     if not me or not me["is_active"] or core.user_blocked(me["id"]):
         session.clear()
@@ -876,9 +876,11 @@ def subscriber_new():
             flash("That PPPoE request is gone or the username is already a customer.", "warn")
     if request.method == "POST":
         form, errors = read_sub_form(request.form, creating=True)
-        if g.me["role"] in core.SELLER_ROLES:          # Subscriber Limitation (panel_admins.max_subs)
+        # a customer a reseller's technician adds belongs to that reseller
+        owner = core.seller_boss()["username"] if core.seller_boss() else g.me["username"]
+        if g.me["role"] in core.SELLER_ROLES or core.seller_boss():   # Subscriber Limitation (panel_admins.max_subs)
             import mod_extras
-            full = mod_extras.room_for(g.me["username"])
+            full = mod_extras.room_for(owner)
             if full:
                 errors["username"] = "No room for a new customer: " + full
         if not errors.get("username") and (
@@ -893,7 +895,7 @@ def subscriber_new():
                 "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
                 (form["username"], form["full_name"], form["phone"], form["email"], form["address"],
                  form["area"], plan["id"] if plan else None, form["status"], form["expiry"],
-                 form["static_ip"] or None, form["notes"], g.me["username"], form["identity"], core.next_serial()))
+                 form["static_ip"] or None, form["notes"], owner, form["identity"], core.next_serial()))
             with get_db().cursor() as cur:
                 radius.sync_subscriber(cur, form["username"], plan, form["status"], form["expiry"],
                                        form["static_ip"] or None, password=form["password"])

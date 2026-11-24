@@ -40,6 +40,13 @@
       <div class="chips" role="radiogroup">
         <label class="chip"><input type="radio" name="handler" value="office" {{ 'checked' if form.handler != 'me' }}> Send to the office now</label>
         <label class="chip"><input type="radio" name="handler" value="me" {{ 'checked' if form.handler == 'me' }}> I will fix it (send it to the office later if needed)</label>
+      </div>
+      <div class="field" data-own-tech {{ 'hidden' if form.handler != 'me' }} style="margin-top:10px">
+        <label class="lbl" for="f-assign">Assign to my technician</label>
+        {% if staff %}<select id="f-assign" name="assigned_to"><option value="">Nobody yet (I go myself)</option>{% for s in staff %}<option value="{{ s.id }}" {{ 'selected' if form.assigned_to == s.id|string }}>{{ s.full_name or s.username }}{% if s.phone %} · {{ s.phone }}{% endif %}</option>{% endfor %}</select>
+        <button type="button" class="btn sm tk-findtech" data-find-tech="{{ url_for('ticket_nearby_techs') }}">{{ icon('pin') }}Find Technicians</button>
+        <div class="tk-near" data-near-out hidden aria-live="polite"></div>
+        {% else %}<div class="help">You have no technician yet. Add one from My Users &gt; Add technician{% if not can_fn('usr.tech') %} (ask the office to allow it){% endif %}.</div>{% endif %}
       </div></div>
     {% else %}
     <label class="check tk-solved"><input type="checkbox" name="solved" value="1" {{ 'checked' if form.solved == '1' }}> <span><b>Solved on the phone</b> — save it as resolved now, no technician needed</span></label>
@@ -81,6 +88,12 @@
     if (cc) cc.disabled = seller; if (cs) cs.disabled = !seller;
     var sel = document.getElementById("f-category"); var first = sel.querySelector("optgroup:not([disabled]) option"); if (first) sel.value = first.value;
     document.querySelectorAll("[data-kind]").forEach(function (x) { x.parentNode.classList.toggle("on", x.checked); });
+  }); });
+  /* "I will fix it" shows the reseller's own technicians; "Send to the office" hides them (the office picks) */
+  document.querySelectorAll("input[name=handler]").forEach(function (r) { r.addEventListener("change", function () {
+    var own = document.querySelector("[data-own-tech]"); if (!own || !r.checked) return;
+    own.hidden = r.value !== "me";
+    if (own.hidden) { var s = document.getElementById("f-assign"); if (s) s.value = ""; }
   }); });
 })();
 /* Find Technicians: who was last seen within 500 m of the chosen customer; press a name to assign it */

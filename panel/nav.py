@@ -12,9 +12,10 @@ def _i(label, endpoint, match=None, args=None, none_of=None, module=None, admin=
             "none_of": none_of or [], "module": module}
 
 
-def _g(key, label, icon, items=None, endpoint=None, match=None, module=None, admin=False, sellers=False, fn=None, office=False):
+def _g(key, label, icon, items=None, endpoint=None, match=None, module=None, admin=False, sellers=False, fn=None, office=False,
+       techs=False):
     # office: never shown to resellers / sub-resellers / retailers (administrators and office staff, by the items' ticks)
-    return {"office": office, "sellers": sellers, "fn": fn, "key": key, "label": label, "icon": icon, "items": items, "endpoint": endpoint,
+    return {"office": office, "techs": techs, "sellers": sellers, "fn": fn, "key": key, "label": label, "icon": icon, "items": items, "endpoint": endpoint,
             "match": match or ([endpoint] if endpoint else []), "module": module, "admin": admin}
 
 
@@ -102,7 +103,7 @@ STRUCTURE = [
         _i("All tickets", "tickets", ["tickets", "ticket_view"], none_of=["status", "mine", "view"]),
         _i("Open", "tickets", args={"status": "open"}),
         _i("Board", "ticket_board", ["ticket_board"], office=True),
-        _i("My jobs", "jobs", ["jobs"], office=True),
+        _i("My jobs", "jobs", ["jobs"], allow="jobs"),
         _i("My tickets", "tickets", args={"mine": "1"}, office=True),
         _i("New ticket", "ticket_new"),
         _i("Outages", "outages", ["outages"], office=True),
@@ -110,7 +111,7 @@ STRUCTURE = [
         _i("Settings", "ticket_settings", ["ticket_settings"], allow="ticket_admin"),
         _i("Technician map", "tech_map", ["tech_map"], allow="ticket_admin"),
     ]),
-    _g("alerts", "Job alerts", "bell", endpoint="staff_alerts", match=["staff_alerts"], office=True),
+    _g("alerts", "Job alerts", "bell", endpoint="staff_alerts", match=["staff_alerts"], techs=True),
     _g("email", "Email", "mail", module="email", items=[
         _i("Compose", "email_compose"),
         _i("Templates", "templates_page", args={"kind": "email"}),
@@ -166,19 +167,24 @@ def _allowed(key):
         return mod_coa.allowed()
     if key == "ticket_admin":
         return g.me["role"] in ("admin", "manager")
+    if key == "jobs":                     # office staff and any technician (a reseller's own too), never resellers
+        return g.me["role"] not in core.SELLER_ROLES and core.can("tickets")
     return False
 
 
 def build():
     endpoint = request.endpoint or ""
     is_admin = g.me["role"] == "admin"
-    seller = g.me["role"] in core.SELLER_ROLES
+    # office-only menu items are hidden from resellers and from a reseller's own technician
+    seller = g.me["role"] in core.SELLER_ROLES or core.seller_boss() is not None
     out = []
     for grp in STRUCTURE:
         if grp["admin"] and not is_admin:
             continue
         if grp.get("office") and seller:
             continue
+        if grp.get("techs") and g.me["role"] in core.SELLER_ROLES:
+            continue                      # office staff and technicians (a reseller's own too), never resellers
         if grp["fn"] and not grp["sellers"] and not any(core.can_fn(k) for k in (
                 (grp["fn"],) if isinstance(grp["fn"], str) else grp["fn"])):
             continue
