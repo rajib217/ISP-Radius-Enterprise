@@ -570,6 +570,8 @@ def offline_onus():
 
 @app.route("/")
 def dashboard():
+    if g.me["role"] == "collector":              # a bill collector's day starts at the due list
+        return redirect(url_for("collect"))
     if g.me["role"] == "technician":             # their own day: jobs, calls, quick tools; no ISP numbers or graphs
         import mod_field
         return mod_field.tech_home(_notices())
@@ -1776,6 +1778,7 @@ import mod_ops  # noqa: E402,F401
 import mod_support  # noqa: E402,F401
 import mod_staffpush  # noqa: E402,F401
 import mod_extras  # noqa: E402,F401
+import mod_collect  # noqa: E402,F401
 
 core.attach(app)
 

@@ -112,6 +112,11 @@ STRUCTURE = [
         _i("Technician map", "tech_map", ["tech_map"], allow="ticket_admin"),
         _i("Work & ratings", "tech_work", ["tech_work"], allow="techwork"),
     ]),
+    _g("collect", "Bill Collection", "wallet", items=[
+        _i("Due list", "collect", ["collect", "collect_one", "collect_receipt"], allow="collector"),
+        _i("My collections", "collect_report", ["collect_report"], allow="collector"),
+        _i("Collectors", "collections", ["collections"], allow="collections"),
+    ]),
     _g("alerts", "Job alerts", "bell", endpoint="staff_alerts", match=["staff_alerts"]),   # resellers too: ticket news
     _g("email", "Email", "mail", module="email", items=[
         _i("Compose", "email_compose"),
@@ -172,7 +177,11 @@ def _allowed(key):
     if key == "techwork":                 # technicians (their own), admin / manager, resellers (the technicians they added)
         return g.me["role"] in ("technician", "admin", "manager") + tuple(core.SELLER_ROLES)
     if key == "jobs":                     # office staff and any technician (a reseller's own too), never resellers
-        return g.me["role"] not in core.SELLER_ROLES and core.can("tickets")
+        return g.me["role"] not in core.SELLER_ROLES and g.me["role"] != "collector" and core.can("tickets")
+    if key == "collector":                # the bill collector's own pages
+        return g.me["role"] == "collector" and core.can_fn("col.module")
+    if key == "collections":              # whoever hires collectors: administrators, resellers / sub-resellers / retailers
+        return g.me["role"] == "admin" or g.me["role"] in core.SELLER_ROLES
     return False
 
 

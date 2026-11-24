@@ -55,7 +55,7 @@ def _scope(alias="t"):
 def _staff():
     """People a ticket can be given to (office only)."""
     return q("SELECT a.id, a.username, a.full_name, a.role, a.phone FROM panel_admins a LEFT JOIN panel_admins p ON p.id = a.parent_id "
-             "WHERE a.is_active = 1 AND a.role NOT IN ('reseller', 'subreseller', 'retailer') "
+             "WHERE a.is_active = 1 AND a.role NOT IN ('reseller', 'subreseller', 'retailer', 'collector') "
              "AND (p.id IS NULL OR p.role NOT IN ('reseller', 'subreseller', 'retailer')) "   # not a reseller's own technician
              "ORDER BY a.role = 'technician' DESC, a.username")
 

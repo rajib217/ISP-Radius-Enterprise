@@ -1886,7 +1886,8 @@ def check_rules(flask_app, ids):
         _g = [x["key"] for c in _grp["cols"] for x in c if "g" in x["flags"]]
         _gate[_it["key"]] = _g[0] if _g else None
     _deps = {"net.live": ["sub.module"], "cfc.module": ["cf.module"], "cfc.add": ["cf.module"], "cfc.edit": ["cf.module"], "cfc.delete": ["cf.module"]}
-    _seller_only = {"my_users", "my_user_packages", "add_balance"}
+    _seller_only = {"my_users", "my_user_packages", "add_balance",
+                    "collect", "collect_one", "collect_report"}      # sellers only / a Bill Collector only
     st = client(ids["staff"])
     _get_rules = {r.endpoint: r for r in flask_app.url_map.iter_rules() if "GET" in r.methods}
     _closed, _shut = [], []
@@ -3088,6 +3089,118 @@ def check_rules(flask_app, ids):
           and 'href="/me/alerts"' in _rc2.get("/").get_data(as_text=True),
           "ticket news: a customer's complaint and the technician's start / arrival / progress / done ring the administrators and "
           "the customer's reseller (resellers can now turn on alerts); an office customer's ticket goes to the administrators only")
+    # ===== Bill Collector: added by a reseller, sees only that reseller's customers, takes payments, deposits cash
+    rf("reseller", usr__collector=1)
+    run("DELETE FROM panel_admins WHERE username IN ('ci_col', 'ci_col2')")
+    _cs = _rc2.post("/my-users/save", data={"_csrf": "ci", "kind": "collector", "full_name": "CI Collector", "username": "ci_col",
+                                            "password": "Secret123!", "phone": "01711000333"}).status_code
+    _col = one("SELECT id, role, parent_id FROM panel_admins WHERE username = 'ci_col'")
+    run("INSERT INTO panel_admins (username, full_name, password_hash, role) VALUES ('ci_col2', 'Office Collector', 'x', 'collector')")
+    _col2 = one("SELECT id FROM panel_admins WHERE username = 'ci_col2'")["id"]
+    _cc, _cc2 = client(_col["id"]), client(_col2)
+    run("UPDATE panel_admins SET balance = 100000 WHERE id = %s", (ids["reseller"],))
+    run("DELETE FROM sub_charges WHERE subscriber_id = %s", (_rsub["id"],))
+    run("UPDATE subscribers SET status = 'active', balance = 0, expiry_date = CURDATE() - INTERVAL 3 DAY WHERE id = %s", (_rsub["id"],))
+    _home_c = _cc.get("/")
+    _list = _cc.get("/collect").get_data(as_text=True)
+    _other = _cc.get("/collect/%d" % _asub["id"]).status_code
+    _form = _cc.get("/collect/%d" % _rsub["id"]).get_data(as_text=True)
+
+    def _tok(html):
+        m = re.search(r'name="form_token" value="([^"]+)"', html)
+        return m.group(1) if m else ""
+
+    def _due(html):
+        m = re.search(r'name="amount" type="number" inputmode="decimal" step="0.01" min="0.01" max="([0-9.]+)"', html)
+        return float(m.group(1)) if m else 0.0
+    _d = _due(_form)
+    _n0 = one("SELECT COUNT(*) AS c FROM collections")["c"]
+    _cc.post("/collect/%d" % _rsub["id"], data={"_csrf": "ci", "form_token": _tok(_form), "method": "cash", "amount": str(_d + 50)})
+    _n_over = one("SELECT COUNT(*) AS c FROM collections")["c"]
+    _tk = _tok(_form)
+    _ok = _cc.post("/collect/%d" % _rsub["id"], data={"_csrf": "ci", "form_token": _tk, "method": "cash", "amount": "%.2f" % _d})
+    _c1 = one("SELECT * FROM collections WHERE form_token = %s", (_tk,))
+    _renewed = one("SELECT expiry_date >= CURDATE() AS ok FROM subscribers WHERE id = %s", (_rsub["id"],))["ok"]
+    _again = _cc.post("/collect/%d" % _rsub["id"], data={"_csrf": "ci", "form_token": _tk, "method": "cash", "amount": "%.2f" % _d})
+    _n_again = one("SELECT COUNT(*) AS c FROM collections")["c"]
+    try:
+        run("INSERT INTO collections (receipt_no, subscriber_id, collector_id, amount) VALUES (%s, %s, %s, 1)",
+            (_c1["receipt_no"] if _c1 else "x", _rsub["id"], _col["id"]))
+        _dup_receipt_blocked = False
+    except Exception:
+        _dup_receipt_blocked = True
+    _rcpt = _cc.get("/collect/receipt/%d" % _c1["id"]).get_data(as_text=True) if _c1 else ""
+    _rcpt_other = _cc2.get("/collect/receipt/%d" % _c1["id"]).status_code if _c1 else 0
+    # bKash: a TrxID is used once; POS: never a card number; the same amount twice within 10 minutes asks first
+    run("INSERT INTO sub_charges (subscriber_id, name, amount) VALUES (%s, 'CI cable', 300)", (_rsub["id"],))
+    _f2 = _cc.get("/collect/%d" % _rsub["id"]).get_data(as_text=True)
+    _cc.post("/collect/%d" % _rsub["id"], data={"_csrf": "ci", "form_token": _tok(_f2), "method": "bkash", "amount": "100", "trx_id": "CI8TRX01"})
+    _f3 = _cc.get("/collect/%d" % _rsub["id"]).get_data(as_text=True)
+    _cc.post("/collect/%d" % _rsub["id"], data={"_csrf": "ci", "form_token": _tok(_f3), "method": "bkash", "amount": "50", "trx_id": "CI8TRX01"})
+    _trx_n = one("SELECT COUNT(*) AS c FROM collections WHERE trx_id = 'CI8TRX01'")["c"]
+    _cc.post("/collect/%d" % _rsub["id"], data={"_csrf": "ci", "form_token": _tok(_f3), "method": "pos", "amount": "50",
+                                               "approval": "4111111111111111", "last4": "1111"})
+    _card = one("SELECT COUNT(*) AS c FROM collections WHERE pos_ref LIKE %s", ("%4111111111%",))["c"] + \
+        one("SELECT COUNT(*) AS c FROM collections WHERE form_token = %s", (_tok(_f3),))["c"]
+    _f4 = _cc.get("/collect/%d" % _rsub["id"]).get_data(as_text=True)
+    _rep1 = _cc.post("/collect/%d" % _rsub["id"], data={"_csrf": "ci", "form_token": _tok(_f4), "method": "cash", "amount": "100"}).get_data(as_text=True)
+    _rep_n = one("SELECT COUNT(*) AS c FROM collections WHERE subscriber_id = %s AND amount = 100", (_rsub["id"],))["c"]
+    _cc.post("/collect/%d" % _rsub["id"], data={"_csrf": "ci", "form_token": _tok(_f4), "method": "cash", "amount": "100", "repeat_ok": "1"})
+    _rep_n2 = one("SELECT COUNT(*) AS c FROM collections WHERE subscriber_id = %s AND amount = 100", (_rsub["id"],))["c"]
+    # 200 of the 300 charge is paid (it waits in the balance): 100 is still due; paying it settles the charge
+    _due_left = _due(_cc.get("/collect/%d" % _rsub["id"]).get_data(as_text=True))
+    _f6 = _cc.get("/collect/%d" % _rsub["id"]).get_data(as_text=True)
+    _cc.post("/collect/%d" % _rsub["id"], data={"_csrf": "ci", "form_token": _tok(_f6), "method": "bkash", "amount": "100", "trx_id": "CI8TRX02",
+                                               "repeat_ok": "1"})
+    _paid_fee = one("SELECT paid FROM sub_charges WHERE subscriber_id = %s AND name = 'CI cable'", (_rsub["id"],))["paid"]
+    _bal_left = float(one("SELECT balance FROM subscribers WHERE id = %s", (_rsub["id"],))["balance"])
+    # limits: one collection above the per-collection cap is refused
+    setv("col_max_txn", "1")
+    run("INSERT INTO sub_charges (subscriber_id, name, amount) VALUES (%s, 'CI cap', 40)", (_rsub["id"],))
+    _f5 = _cc.get("/collect/%d" % _rsub["id"]).get_data(as_text=True)
+    _cc.post("/collect/%d" % _rsub["id"], data={"_csrf": "ci", "form_token": _tok(_f5), "method": "cash", "amount": "40"})
+    _cap_n = one("SELECT COUNT(*) AS c FROM collections WHERE form_token = %s", (_tok(_f5),))["c"]
+    setv("col_max_txn", "10000")
+    # pages a collector never opens
+    _no = {u: _cc.get(u).status_code for u in ("/settings", "/admins", "/roles", "/payments", "/cashflow", "/reports", "/logs",
+                                               "/plans", "/my-users", "/subscribers/export.csv", "/collections", "/tech-work")}
+    _void_c = _cc.post("/collections/%d/void" % _c1["id"], data={"_csrf": "ci", "reason": "ci test"}).status_code
+    _bal_c = _cc.post("/subscribers/%d/balance" % _rsub["id"], data={"_csrf": "ci", "amount": "10"}).status_code
+    # deposit + confirm: cash in hand back to zero
+    _hand = float(one("SELECT COALESCE(SUM(amount), 0) AS t FROM collections WHERE collector_id = %s AND method = 'cash' AND status = 'posted'",
+                      (_col["id"],))["t"])
+    _cc.post("/collect/deposit", data={"_csrf": "ci", "amount": "%.2f" % _hand})
+    _dep = one("SELECT * FROM collection_deposits WHERE collector_id = %s ORDER BY id DESC LIMIT 1", (_col["id"],))
+    _too_much = _cc.post("/collect/deposit", data={"_csrf": "ci", "amount": "5"}) and \
+        one("SELECT COUNT(*) AS c FROM collection_deposits WHERE collector_id = %s", (_col["id"],))["c"]
+    _wrong_boss = client(ids["subreseller"]).post("/collect/deposit/confirm", data={"_csrf": "ci", "deposit_id": str(_dep["id"])}).status_code
+    _rc2.post("/collect/deposit/confirm", data={"_csrf": "ci", "deposit_id": str(_dep["id"]), "act": "confirm"})
+    _rep_page = _cc.get("/collect/report").get_data(as_text=True)
+    _res_page = _rc2.get("/collections").get_data(as_text=True)
+    _after = one("SELECT status FROM collection_deposits WHERE id = %s", (_dep["id"],))["status"]
+    import mod_collect as _mc
+    with flask_app.test_request_context():
+        _left_hand = _mc.cash_in_hand(_col["id"])
+    # an administrator voids (with a reason); the collector's report still lists it as void
+    _void_a = adm.post("/collections/%d/void" % _c1["id"], data={"_csrf": "ci", "reason": "ci wrong customer"}).status_code
+    _void_row = one("SELECT status, void_by FROM collections WHERE id = %s", (_c1["id"],))
+    _menu_c = _cc.get("/collect").get_data(as_text=True)
+    check(_cs == 302 and _col["role"] == "collector" and _col["parent_id"] == ids["reseller"]
+          and _home_c.status_code == 302 and "/collect" in _home_c.headers.get("Location", "")
+          and _rsub["username"] in _list and _other == 403 and _d > 0
+          and _n_over == _n0 and _ok.status_code == 302 and _c1 and _c1["status"] == "posted" and _c1["receipt_no"].startswith("CR-")
+          and _renewed == 1 and _n_again == _n0 + 1 and _dup_receipt_blocked and _c1["receipt_no"] in _rcpt and _rcpt_other == 403
+          and _trx_n == 1 and _card == 0 and _rep_n == 1 and "second payment" in _rep1 and _rep_n2 == 2 and _due_left == 100 and _paid_fee == 1 and _bal_left == 0 and _cap_n == 0
+          and all(v in (403, 404) for v in _no.values()) and _void_c == 403 and _bal_c == 403
+          and _dep["status"] == "pending" and float(_dep["amount"]) == round(_hand, 2) and _hand > 0 and _too_much == 1
+          and _wrong_boss == 403 and _after == "confirmed" and _left_hand["hand"] == 0 and _left_hand["pending"] == 0
+          and "CI Collector" in _res_page and "Got it" not in _res_page and "Deposit cash" not in _rep_page
+          and _void_a == 302 and _void_row["status"] == "void" and _void_row["void_by"] == "admin"
+          and 'href="/collect/report"' in _menu_c and 'href="/my-users"' not in _menu_c,
+          "Bill Collector: a reseller adds one; they see only that reseller's customers who owe, take cash / bKash / POS "
+          "(never above the due or the cap, never a card number, a TrxID or a form only once, a quick repeat asks first), an "
+          "expired package renews, a receipt prints; settings, users, accounting, reports, logs and exports stay closed; "
+          "deposit + the reseller's confirmation bring cash in hand to zero; only an administrator voids " + repr(_no))
     return bad
 
 

@@ -1,0 +1,33 @@
+{% extends "bare.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Receipt {{ c.receipt_no }}{% endblock %}
+{% block content %}
+<style>
+  body { background: #fff; color: #111; }
+  .rc { max-width: 420px; margin: 24px auto; padding: 24px; border: 1px solid #ccc; border-radius: 8px; font-family: var(--font); }
+  .rc h1 { font-size: 20px; margin: 0; } .rc .muted { color: #666; font-size: 13px; }
+  .rc table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+  .rc td { padding: 6px 0; border-bottom: 1px dashed #ccc; vertical-align: top; }
+  .rc td:last-child { text-align: right; } .rc .total td { font-size: 18px; font-weight: 700; border-bottom: 0; }
+  .rc .void { color: #b00; font-weight: 700; font-size: 18px; text-align: center; border: 2px solid #b00; padding: 6px; margin-top: 10px; }
+  .rc-actions { max-width: 420px; margin: 16px auto 0; display: flex; gap: 8px; }
+  @media print { .rc-actions { display: none; } .rc { border: 0; margin: 0 auto; } }
+</style>
+<div class="rc-actions"><button class="btn primary" data-print>{{ icon('printer') }}Print</button><a class="btn" href="{{ url_for('collect') if me.role == 'collector' else url_for('collections') }}">Back</a></div>
+<div class="rc">
+  <h1>{{ inv.inv_name or isp_name }}</h1>{% if inv.inv_address %}<div class="muted">{{ inv.inv_address }}</div>{% endif %}{% if inv.inv_phone %}<div class="muted">{{ inv.inv_phone }}</div>{% endif %}
+  <div class="muted">Money receipt · টাকা প্রাপ্তির রসিদ <b>{{ c.receipt_no }}</b></div>
+  <table>
+    <tr><td>Date</td><td>{{ c.created_at|dt }}</td></tr>
+    <tr><td>Customer</td><td>{{ c.full_name or c.username }}<br><span class="muted mono">{{ code }} · {{ c.username }}</span></td></tr>
+    {% if c.phone %}<tr><td>Phone</td><td>{{ c.phone }}</td></tr>{% endif %}
+    <tr><td>Method</td><td>{{ method }}{% if c.pos_ref %}<br><span class="muted mono">{{ c.pos_ref }}</span>{% endif %}{% if c.trx_id %}<br><span class="muted mono">TrxID {{ c.trx_id }}</span>{% endif %}</td></tr>
+    {% if c.result %}<tr><td>Applied</td><td>{{ c.result }}</td></tr>{% endif %}
+    <tr><td>Collected by</td><td>{{ c.collector_name or c.collector_user }}</td></tr>
+    <tr class="total"><td>Amount</td><td>{{ currency }} {{ c.amount|money }}</td></tr>
+  </table>
+  {% if c.status == 'void' %}<div class="void">VOID · বাতিল</div><div class="muted">{{ c.void_reason }} ({{ c.void_by }}, {{ c.void_at|dt }})</div>{% endif %}
+  <div class="muted">{{ inv.inv_footer or 'Thank you for your payment.' }}</div>
+</div>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% endblock %}
