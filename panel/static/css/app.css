@@ -2369,6 +2369,22 @@ a.th-stat:hover { text-decoration: none; border-color: var(--accent); }
 .tk-bar i { display: block; height: 100%; border-radius: 2px; background: var(--accent); }
 .tk-map th, .tk-map td { text-align: center; } .tk-map td:first-child, .tk-map th:first-child { text-align: left; }
 @media (max-width: 960px) { .tk-rep { grid-template-columns: minmax(0, 1fr); } }
+/* Ticket report / Work & ratings: date filter bar, even spacing, icon + title headings */
+.rep-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 0 0 16px; padding: 12px 16px;
+  border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); }
+.rep-filter .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; }
+.rep-dates { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; }
+.rep-dates .lbl { margin: 0; }
+.rep-dates input[type=date] { width: auto; min-width: 150px; }
+.tk-report .th-stats { gap: 12px; margin-bottom: 16px; }
+.tk-report .th-k small { white-space: nowrap; }
+.tk-report .tk-rep { gap: 16px; align-items: start; }
+.tk-report .panel-head h2 { display: flex; align-items: center; gap: 8px; margin: 0; }
+.tk-report .panel-head h2 .i { width: 16px; height: 16px; flex: none; color: var(--text-muted); }
+.tk-report .panel-head.sub-head { border-top: 1px solid var(--border); }
+.tk-report .empty { padding: 28px 16px; }
+.tk-report .tk-past { margin-top: 16px; }
+@media (max-width: 640px) { .rep-dates { margin-left: 0; width: 100%; } .rep-dates input[type=date] { flex: 1 1 130px; min-width: 0; } }
 /* board */
 .kb { display: grid; grid-template-columns: repeat(4, minmax(240px, 1fr)); gap: 12px; overflow-x: auto; padding-bottom: 8px; align-items: start; }
 .kb-col { background: var(--surface-2); border-radius: var(--r-lg); padding: 10px; min-height: 160px; transition: box-shadow var(--dur-fast); }

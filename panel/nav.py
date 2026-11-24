@@ -144,7 +144,8 @@ STRUCTURE = [
 
 
 # pages under the Subscribers menu outside its own items (a subscriber's profile and its sub-pages)
-WIDE_EXTRA = ("subscriber_edit", "subscriber_new", "subscriber_activation", "subscriber_view", "diagnose_page")
+WIDE_EXTRA = ("subscriber_edit", "subscriber_new", "subscriber_activation", "subscriber_view", "diagnose_page",
+              "ticket_report", "tech_work")   # wide tables: use the whole width
 
 
 def full_width():

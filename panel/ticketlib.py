@@ -192,18 +192,20 @@ _STAT_SQL = ("COUNT(*) AS n, "
 
 
 def save_work(cur, where, params=()):
-    """Copy the work of every ticket matching `where` (alias t) that has a technician into staff_work_log, so their
-    completed jobs and ratings stay after the ticket is deleted. Call it right before deleting tickets."""
+    """Copy every ticket matching `where` (alias t) into staff_work_log before it is deleted, so the technician's
+    completed jobs and ratings and the Ticket report's numbers stay (admin_id 0 = nobody had it)."""
     try:
         cur.execute("INSERT INTO staff_work_log (ticket_id, admin_id, subscriber_id, username, customer, subject, category, status, "
-                    "created_at, closed_at, due_at, arrived_at, rating, rating_note) "
-                    "SELECT t.id, t.assigned_to, t.subscriber_id, COALESCE(t.username, ''), "
+                    "created_at, closed_at, due_at, arrived_at, rating, rating_note, area, first_reply_at, source, to_office, raw_due_at) "
+                    "SELECT t.id, COALESCE(t.assigned_to, 0), t.subscriber_id, COALESCE(t.username, ''), "
                     "LEFT(COALESCE(NULLIF(s.full_name, ''), t.username, ''), 128), LEFT(t.subject, 200), t.category, t.status, "
                     "t.created_at, t.closed_at, CASE WHEN t.to_office = 1 THEN t.due_at END, t.arrived_at, t.rating, "
-                    "LEFT(t.rating_note, 500) FROM tickets t LEFT JOIN subscribers s ON s.id = t.subscriber_id "
-                    "WHERE t.assigned_to IS NOT NULL AND (" + where + ") "
+                    "LEFT(t.rating_note, 500), LEFT(COALESCE(s.area, ''), 64), t.first_reply_at, t.source, t.to_office, t.due_at "
+                    "FROM tickets t LEFT JOIN subscribers s ON s.id = t.subscriber_id WHERE (" + where + ") "
                     "ON DUPLICATE KEY UPDATE status = VALUES(status), closed_at = VALUES(closed_at), rating = VALUES(rating), "
-                    "rating_note = VALUES(rating_note), arrived_at = VALUES(arrived_at), saved_at = NOW()", tuple(params))
+                    "rating_note = VALUES(rating_note), arrived_at = VALUES(arrived_at), area = VALUES(area), "
+                    "first_reply_at = VALUES(first_reply_at), source = VALUES(source), to_office = VALUES(to_office), "
+                    "raw_due_at = VALUES(raw_due_at), saved_at = NOW()", tuple(params))
         return cur.rowcount
     except Exception:                  # the table appears after update.sh: never block a delete for it
         return 0
@@ -254,7 +256,7 @@ def purge_closed(conn, cur, s, data_dir, today=None):
                     "t.status IN ('resolved', 'closed') AND COALESCE(t.closed_at, t.updated_at) < %s", (cutoff,))
         photos = [r["photo"] for r in cur.fetchall()]
         save_work(cur, "t.status IN ('resolved', 'closed') AND COALESCE(t.closed_at, t.updated_at) < %s", (cutoff,))
-        for sub in ("ticket_replies r", "ticket_materials r"):
+        for sub in ("ticket_replies r",):          # materials used stay (the report counts them)
             cur.execute("DELETE r FROM " + sub + " JOIN tickets t ON t.id = r.ticket_id WHERE t.status IN ('resolved', 'closed') "
                         "AND COALESCE(t.closed_at, t.updated_at) < %s", (cutoff,))
         cur.execute("DELETE t " + old, (cutoff,))

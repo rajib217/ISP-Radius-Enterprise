@@ -12,12 +12,19 @@
 </div>
 {% endmacro %}
 {% block content %}
+<div class="tk-report">
 <div class="page-head">
   <div><h1>{% if tech %}{{ 'My work & ratings' if solo else (tech.full_name or tech.username) }}{% else %}Work & ratings{% endif %}</h1>
-    <p class="sub">{% if tech and solo %}Your jobs and what customers said. Only you{% else %}Each technician's jobs and customer ratings. Only they, the office and the reseller who added them{% endif %} can see this. Records stay even when a ticket is deleted.</p></div>
-  {% if tech and not solo %}<div class="head-actions"><a class="btn" href="{{ url_for('tech_work', days=days) }}">{{ icon('arrow-left') }}All technicians</a></div>{% endif %}
+    <p class="sub">{% if tech and solo %}Your jobs and what customers said. Only you{% else %}Each technician's jobs and customer ratings. Only they, the office and the reseller who added them{% endif %} can see this. Records stay even when a ticket is deleted. {{ 'All time.' if every else 'From %s to %s.' % (start|d, end|d) }}</p></div>
+  {% if tech and not solo %}<div class="head-actions"><a class="btn" href="{{ url_for('tech_work', **keep) }}">{{ icon('arrow-left') }}All technicians</a></div>{% endif %}
 </div>
-<div class="chips">{% for d in day_opts %}<a class="chip {{ 'on' if days == d }}" href="{{ url_for('tech_work', days=d, tech=tech.id if tech and not solo else none) }}">{{ 'All time' if not d else 'Last %d days' % d }}</a>{% endfor %}</div>
+{% set tid = tech.id if tech and not solo else none %}
+<form class="rep-filter" method="get" action="{{ url_for('tech_work') }}">
+  <div class="chips">{% for label, args in presets %}<a class="chip {{ 'on' if args == keep }}" href="{{ url_for('tech_work', tech=tid, **args) }}">{{ label }}</a>{% endfor %}</div>
+  <div class="rep-dates">{% if tid %}<input type="hidden" name="tech" value="{{ tid }}">{% endif %}
+    <label class="lbl" for="wf-from">From</label><input id="wf-from" type="date" name="from" value="{{ start.isoformat() }}">
+    <label class="lbl" for="wf-to">To</label><input id="wf-to" type="date" name="to" value="{{ end.isoformat() }}"><button class="btn primary" type="submit">Show</button></div>
+</form>
 {{ summary(total) }}
 {% if tech %}
 <section class="panel">
@@ -41,7 +48,7 @@
   {% if table %}<div class="tbl-wrap"><table class="tbl">
     <thead><tr><th>Technician</th>{% if me.role in ('admin', 'manager') %}<th>Added by</th>{% endif %}<th class="num">Done</th><th class="num">Given</th><th class="num">Open</th><th class="num">In time</th><th>Rating</th><th class="num">Visits</th></tr></thead>
     <tbody>{% for t in table %}<tr>
-      <td class="who-cell"><a href="{{ url_for('tech_work', tech=t.id, days=days) }}"><b>{{ t.full_name or t.username }}</b></a><small class="mono">{{ t.username }}{% if not t.is_active %} · disabled{% endif %}</small></td>
+      <td class="who-cell"><a href="{{ url_for('tech_work', tech=t.id, **keep) }}"><b>{{ t.full_name or t.username }}</b></a><small class="mono">{{ t.username }}{% if not t.is_active %} · disabled{% endif %}</small></td>
       {% if me.role in ('admin', 'manager') %}<td>{{ t.boss or 'Office' }}</td>{% endif %}
       <td class="num">{{ t.done }}</td><td class="num">{{ t.jobs }}</td><td class="num">{{ t.open }}</td>
       <td class="num">{{ ('%d%%' % t.in_time) if t.in_time is not none else '—' }}</td>
@@ -51,4 +58,5 @@
   </table></div>{% else %}<div class="empty"><p>No technicians yet.</p></div>{% endif %}
 </section>
 {% endif %}
+</div>
 {% endblock %}

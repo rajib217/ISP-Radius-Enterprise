@@ -591,7 +591,7 @@ def ticket_photo(name):
 
 
 # ===================================================================== work & ratings (kept after a ticket is deleted)
-WORK_DAYS = (30, 90, 365, 0)          # 0 = all time
+WORK_PRESETS = ((29, "30 days"), (89, "90 days"), (364, "1 year"))
 
 
 def work_techs():
@@ -610,8 +610,9 @@ def work_techs():
     return None
 
 
-def work_rows(ids, since=None):
-    """Every job of these technicians: live tickets plus the saved records of tickets that were deleted. Newest first."""
+def work_rows(ids, since=None, until=None):
+    """Every job of these technicians (finished, or given, from `since` to before `until`): live tickets plus the saved
+    records of tickets that were deleted. Newest first."""
     if not ids:
         return []
     mark = ",".join(["%s"] * len(ids))
@@ -626,7 +627,8 @@ def work_rows(ids, since=None):
                  list(ids))
     except Exception:
         gone = []
-    rows = [r for r in list(live) + list(gone) if not since or (r["closed_at"] or r["created_at"]) >= since]
+    rows = [r for r in list(live) + list(gone)
+            if (not since or (r["closed_at"] or r["created_at"]) >= since) and (not until or (r["closed_at"] or r["created_at"]) < until)]
     rows.sort(key=lambda r: r["closed_at"] or r["created_at"] or datetime.min, reverse=True)
     return rows
 
@@ -647,22 +649,28 @@ def tech_work():
     techs = work_techs()
     if techs is None:
         abort(403)
-    days = request.args.get("days", 90, type=int)
-    days = days if days in WORK_DAYS else 90
-    since = (datetime.now() - timedelta(days=days)) if days else None
+    every = request.args.get("all") == "1"                 # all time
+    start, end = core.date_range(89)
+    since = None if every else datetime.combine(start, datetime.min.time())
+    until = None if every else datetime.combine(end + timedelta(days=1), datetime.min.time())
+    today = date.today()
+    keep = {"all": "1"} if every else {"from": start.isoformat(), "to": end.isoformat()}
+    presets = [(label, {"from": (today - timedelta(days=d)).isoformat(), "to": today.isoformat()}) for d, label in WORK_PRESETS]
+    presets.append(("All time", {"all": "1"}))
+    view = dict(start=start, end=end, every=every, keep=keep, presets=presets)
     by_id = {t["id"]: t for t in techs}
     pick = request.args.get("tech", type=int)
     if g.me["role"] == "technician":
         pick = g.me["id"]
     if pick is not None and pick not in by_id:
         abort(403)
-    rows = work_rows([pick] if pick else list(by_id), since)
+    rows = work_rows([pick] if pick else list(by_id), since, until)
     if pick:
-        return render_template("tech_work.html", tech=by_id[pick], rows=rows[:500], total=work_sum(rows), techs=techs, days=days,
-                               day_opts=WORK_DAYS, categories=mod_tickets.ALL_CATEGORIES, solo=g.me["role"] == "technician")
+        return render_template("tech_work.html", tech=by_id[pick], rows=rows[:500], total=work_sum(rows), techs=techs,
+                               categories=mod_tickets.ALL_CATEGORIES, solo=g.me["role"] == "technician", **view)
     per = {}
     for r in rows:
         per.setdefault(r["admin_id"], []).append(r)
     table = [dict(t, **work_sum(per.get(t["id"], []))) for t in techs]
     table.sort(key=lambda t: (-t["done"], -t["jobs"], t["username"]))
-    return render_template("tech_work.html", tech=None, table=table, total=work_sum(rows), days=days, day_opts=WORK_DAYS)
+    return render_template("tech_work.html", tech=None, table=table, total=work_sum(rows), solo=False, **view)

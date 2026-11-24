@@ -17,7 +17,7 @@ Pages
   /tickets/settings     time limits, area technicians, ready replies, customer messages         Tickets > Settings
   /outages              "work on the line in this area": portal notice and optional SMS         Tickets > Outages
 """
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from flask import abort, flash, g, jsonify, redirect, render_template, request, url_for
 
@@ -636,7 +636,6 @@ def ticket_delete(tid):
     with get_db().cursor() as cur:
         ticketlib.save_work(cur, "t.id = %s", (tid,))     # the technician's work and rating stay in their record
     x("DELETE FROM ticket_replies WHERE ticket_id = %s", (tid,))
-    x("DELETE FROM ticket_materials WHERE ticket_id = %s", (tid,))
     x("DELETE FROM tickets WHERE id = %s", (tid,))
     audit("ticket_deleted", "#%d" % tid)
     commit()
@@ -717,47 +716,88 @@ def ticket_move(tid):
 
 
 # ===================================================================== report
+# Every ticket the report counts: the live ones plus the removed ones kept in staff_work_log (deleted by hand or by
+# the monthly clean-up), so the numbers do not change when tickets are removed.
+def _u(col):
+    """One collation for a text column on both sides of the UNION (tickets and staff_work_log may differ)."""
+    return "CONVERT(%s USING utf8mb4) COLLATE utf8mb4_unicode_ci" % col
+
+
+REPORT_SRC = (
+    "(SELECT t.id, t.subscriber_id, " + _u("t.category") + " AS category, " + _u("t.status") + " AS status, t.created_at, "
+    "t.closed_at, t.first_reply_at, t.due_at, t.rating, " + _u("t.source") + " AS source, t.to_office, t.assigned_to, t.arrived_at, "
+    + _u("COALESCE(NULLIF(s.area, ''), '(no area)')") + " AS area FROM tickets t LEFT JOIN subscribers s ON s.id = t.subscriber_id "
+    "UNION ALL SELECT w.ticket_id, w.subscriber_id, " + _u("w.category") + ", " + _u("w.status") + ", w.created_at, w.closed_at, "
+    "w.first_reply_at, COALESCE(w.raw_due_at, w.due_at), w.rating, " + _u("w.source") + ", w.to_office, NULLIF(w.admin_id, 0), "
+    "w.arrived_at, " + _u("COALESCE(NULLIF(w.area, ''), '(no area)')") + " FROM staff_work_log w "
+    "WHERE NOT EXISTS (SELECT 1 FROM tickets x WHERE x.id = w.ticket_id)) r")
+REPORT_PRESETS = ((0, "Today"), (6, "7 days"), (29, "30 days"), (89, "90 days"))
+
+
 @route("/tickets/report", module="tickets")
 def ticket_report():
     if seller():
         abort(403)
-    days = request.args.get("days", 30, type=int)
-    days = days if days in (7, 30) else 30
-    since = datetime.now() - timedelta(days=days)
-    tot = q("SELECT COUNT(*) AS opened, SUM(status IN ('resolved', 'closed')) AS closed, "
-            "SUM(status IN ('open', 'pending')) AS still_open, "
-            "AVG(CASE WHEN closed_at IS NOT NULL THEN TIMESTAMPDIFF(MINUTE, created_at, closed_at) END) AS fix_min, "
-            "AVG(CASE WHEN first_reply_at IS NOT NULL THEN TIMESTAMPDIFF(MINUTE, created_at, first_reply_at) END) AS reply_min, "
-            "SUM(due_at IS NOT NULL AND closed_at IS NOT NULL AND closed_at <= due_at) AS sla_met, "
-            "SUM(due_at IS NOT NULL AND ((closed_at IS NOT NULL AND closed_at > due_at) OR (closed_at IS NULL AND due_at < NOW()))) AS sla_missed, "
-            "AVG(rating) AS rating, COUNT(rating) AS rated, SUM(source = 'portal') AS portal "
-            "FROM tickets WHERE created_at >= %s AND to_office = 1", (since,), one=True)
-    techs = q("SELECT a.id, a.username, a.full_name, a.role, COUNT(t.id) AS jobs, SUM(t.status IN ('resolved', 'closed')) AS done, "
-              "SUM(t.status IN ('open', 'pending')) AS open_now, "
-              "AVG(CASE WHEN t.closed_at IS NOT NULL THEN TIMESTAMPDIFF(MINUTE, t.created_at, t.closed_at) END) AS fix_min, "
-              "SUM(t.due_at IS NOT NULL AND t.closed_at IS NOT NULL AND t.closed_at <= t.due_at) AS met, "
-              "SUM(t.due_at IS NOT NULL AND t.closed_at IS NOT NULL) AS timed, AVG(t.rating) AS rating, "
-              "SUM(t.arrived_at IS NOT NULL) AS visits FROM tickets t JOIN panel_admins a ON a.id = t.assigned_to "
-              "WHERE t.created_at >= %s GROUP BY a.id ORDER BY done DESC, jobs DESC", (since,))
-    areas = q("SELECT COALESCE(NULLIF(s.area, ''), '(no area)') AS area, COUNT(*) AS n, SUM(t.status IN ('open', 'pending')) AS open_now, "
-              "SUM(t.category = 'connection') AS no_conn FROM tickets t JOIN subscribers s ON s.id = t.subscriber_id "
-              "WHERE t.created_at >= %s GROUP BY COALESCE(NULLIF(s.area, ''), '(no area)') ORDER BY n DESC LIMIT 15", (since,))
-    cats = q("SELECT category, COUNT(*) AS n, AVG(CASE WHEN closed_at IS NOT NULL THEN TIMESTAMPDIFF(MINUTE, created_at, closed_at) END) "
-             "AS fix_min FROM tickets WHERE created_at >= %s GROUP BY category ORDER BY n DESC", (since,))
-    repeat = q("SELECT s.id, s.username, s.full_name, s.area, COUNT(*) AS n, MAX(t.created_at) AS last FROM tickets t "
-               "JOIN subscribers s ON s.id = t.subscriber_id WHERE t.created_at >= %s AND t.subscriber_id IN (SELECT p.subscriber_id "
-               "FROM tickets p JOIN tickets r ON r.subscriber_id = p.subscriber_id AND r.id > p.id "
-               "AND r.created_at <= p.created_at + INTERVAL 7 DAY WHERE p.created_at >= %s) "
-               "GROUP BY s.id ORDER BY n DESC, last DESC LIMIT 15", (since, since - timedelta(days=7)))
+    start, end = core.date_range(29)
+    if request.args.get("days", type=int) in (7, 30) and not request.args.get("from"):     # old links
+        start = end - timedelta(days=request.args.get("days", type=int) - 1)
+    lo, hi = datetime.combine(start, datetime.min.time()), datetime.combine(end + timedelta(days=1), datetime.min.time())
+    rng = (lo, hi)
+    try:
+        q("SELECT 1 FROM staff_work_log LIMIT 1")
+        src = REPORT_SRC
+    except Exception:                    # before update.sh added the table: live tickets only
+        src = REPORT_SRC.split(" UNION ALL ")[0] + ") r"
+    tot = q("SELECT COUNT(*) AS opened, SUM(r.status IN ('resolved', 'closed')) AS closed, "
+            "SUM(r.status IN ('open', 'pending')) AS still_open, "
+            "AVG(CASE WHEN r.closed_at IS NOT NULL THEN TIMESTAMPDIFF(MINUTE, r.created_at, r.closed_at) END) AS fix_min, "
+            "AVG(CASE WHEN r.first_reply_at IS NOT NULL THEN TIMESTAMPDIFF(MINUTE, r.created_at, r.first_reply_at) END) AS reply_min, "
+            "SUM(r.due_at IS NOT NULL AND r.closed_at IS NOT NULL AND r.closed_at <= r.due_at) AS sla_met, "
+            "SUM(r.due_at IS NOT NULL AND ((r.closed_at IS NOT NULL AND r.closed_at > r.due_at) OR (r.closed_at IS NULL AND r.due_at < NOW()))) AS sla_missed, "
+            "AVG(r.rating) AS rating, COUNT(r.rating) AS rated, SUM(r.source = 'portal') AS portal "
+            "FROM " + src + " WHERE r.created_at >= %s AND r.created_at < %s AND r.to_office = 1", rng, one=True)
+    techs = q("SELECT a.id, a.username, a.full_name, a.role, COUNT(r.id) AS jobs, SUM(r.status IN ('resolved', 'closed')) AS done, "
+              "SUM(r.status IN ('open', 'pending')) AS open_now, "
+              "AVG(CASE WHEN r.closed_at IS NOT NULL THEN TIMESTAMPDIFF(MINUTE, r.created_at, r.closed_at) END) AS fix_min, "
+              "SUM(r.due_at IS NOT NULL AND r.closed_at IS NOT NULL AND r.closed_at <= r.due_at) AS met, "
+              "SUM(r.due_at IS NOT NULL AND r.closed_at IS NOT NULL) AS timed, AVG(r.rating) AS rating, "
+              "SUM(r.arrived_at IS NOT NULL) AS visits FROM " + src + " JOIN panel_admins a ON a.id = r.assigned_to "
+              "WHERE r.created_at >= %s AND r.created_at < %s GROUP BY a.id ORDER BY done DESC, jobs DESC", rng)
+    areas = q("SELECT r.area, COUNT(*) AS n, SUM(r.status IN ('open', 'pending')) AS open_now, "
+              "SUM(r.category = 'connection') AS no_conn FROM " + src + " WHERE r.subscriber_id IS NOT NULL "
+              "AND r.created_at >= %s AND r.created_at < %s GROUP BY r.area ORDER BY n DESC LIMIT 15", rng)
+    cats = q("SELECT r.category, COUNT(*) AS n, AVG(CASE WHEN r.closed_at IS NOT NULL THEN TIMESTAMPDIFF(MINUTE, r.created_at, r.closed_at) END) "
+             "AS fix_min FROM " + src + " WHERE r.created_at >= %s AND r.created_at < %s GROUP BY r.category ORDER BY n DESC", rng)
+    # customers who came back with a new problem within 7 days of an earlier one, in this period
+    seen = q("SELECT r.subscriber_id, r.created_at FROM " + src + " WHERE r.subscriber_id IS NOT NULL AND r.created_at >= %s "
+             "AND r.created_at < %s ORDER BY r.subscriber_id, r.created_at", (lo - timedelta(days=7), hi))
+    hits, prev = {}, {}
+    for s in seen:
+        p = prev.get(s["subscriber_id"])
+        if p and s["created_at"] <= p + timedelta(days=7) and s["created_at"] >= lo:
+            h = hits.setdefault(s["subscriber_id"], {"n": 1, "last": s["created_at"]})
+            h["n"] += 1
+            h["last"] = max(h["last"], s["created_at"])
+        prev[s["subscriber_id"]] = s["created_at"]
+    repeat = []
+    if hits:
+        ids = sorted(hits, key=lambda k: (-hits[k]["n"], -hits[k]["last"].timestamp()))[:15]
+        subs = {s["id"]: s for s in q("SELECT id, username, full_name, area FROM subscribers WHERE id IN (%s)" %
+                                      ",".join(["%s"] * len(ids)), ids)}
+        repeat = [dict(subs[i], n=hits[i]["n"], last=hits[i]["last"]) for i in ids if i in subs]
     try:
         mats = q("SELECT i.name, i.unit, SUM(m.qty) AS qty, COUNT(DISTINCT m.ticket_id) AS jobs FROM ticket_materials m "
-                 "JOIN inventory_items i ON i.id = m.item_id WHERE m.created_at >= %s GROUP BY i.id ORDER BY qty DESC LIMIT 10", (since,))
+                 "JOIN inventory_items i ON i.id = m.item_id WHERE m.created_at >= %s AND m.created_at < %s "
+                 "GROUP BY i.id ORDER BY qty DESC LIMIT 10", rng)
     except Exception:
         mats = []
     with get_db().cursor() as cur:
         months = ticketlib.month_stats(cur)
-    return render_template("ticket_report.html", days=days, tot=tot, techs=techs, areas=areas, cats=cats, repeat=repeat,
-                           mats=mats, all_cats=ALL_CATEGORIES, hours_text=hours_text, months=months,
+    today = date.today()
+    presets = [(label, (today - timedelta(days=d)).isoformat(), today.isoformat()) for d, label in REPORT_PRESETS]
+    presets.append(("This month", today.replace(day=1).isoformat(), today.isoformat()))
+    return render_template("ticket_report.html", start=start, end=end, presets=presets, tot=tot, techs=techs, areas=areas,
+                           cats=cats, repeat=repeat, mats=mats, all_cats=ALL_CATEGORIES, hours_text=hours_text, months=months,
                            purge_on=core.cfg().get("ticket_purge_on") == "1")
 
 

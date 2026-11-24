@@ -3013,10 +3013,10 @@ def check_rules(flask_app, ids):
     _gone = one("SELECT COUNT(*) AS c FROM tickets WHERE id = %s", (_wid,))["c"]
     _w_own = _rtc.get("/tech-work").get_data(as_text=True)
     _w_other = _tc.get("/tech-work").get_data(as_text=True)
-    _w_peek = _tc.get("/tech-work?tech=%d&days=0" % _rt["id"]).get_data(as_text=True)   # their own page, never another's
+    _w_peek = _tc.get("/tech-work?tech=%d&all=1" % _rt["id"]).get_data(as_text=True)   # their own page, never another's
     _w_res = _rc2.get("/tech-work").get_data(as_text=True)
     _w_res_peek = _rc2.get("/tech-work?tech=%d" % _tech_row["id"]).status_code
-    _w_res_one = _rc2.get("/tech-work?tech=%d&days=0" % _rt["id"]).get_data(as_text=True)
+    _w_res_one = _rc2.get("/tech-work?tech=%d&all=1" % _rt["id"]).get_data(as_text=True)
     _w_adm = adm.get("/tech-work").get_data(as_text=True)
     _w_sup = st.get("/tech-work").status_code
     check(_del == 302 and _gone == 0 and "CI rated job" in _w_own and "deleted" in _w_own and "Very quick" in _w_own
@@ -3025,6 +3025,30 @@ def check_rules(flask_app, ids):
           and "Res Tech" in _w_adm and "CI Tech" in _w_adm and _w_sup == 403 and 'href="/tech-work"' in _rtc.get("/").get_data(as_text=True),
           "Work & ratings: a technician's jobs and ratings stay after the ticket is deleted; each technician sees only their own, "
           "a reseller sees the technicians they added, the administrator sees all")
+    # Ticket report: a removed ticket still counts; From / To dates on the report and on Work & ratings
+    run("INSERT INTO tickets (subscriber_id, username, subject, category, priority, status, assigned_to, created_by, to_office, "
+        "created_at, closed_at, first_reply_at, due_at, rating, source) VALUES (%s, %s, 'CI report kept', 'slow', 'normal', 'resolved', %s, "
+        "'ci', 1, '2021-05-10 10:00:00', '2021-05-10 12:00:00', '2021-05-10 10:30:00', '2021-05-10 14:00:00', 4, 'portal')",
+        (_asub["id"], _asub["username"], _tech_row["id"]))
+    _kid = one("SELECT id FROM tickets WHERE subject = 'CI report kept'")["id"]
+
+    def _opened(html):
+        m = re.search(r'<span class="th-v">(\d+)</span><span class="th-k">Opened', html)
+        return int(m.group(1)) if m else -1
+    _may = "/tickets/report?from=2021-05-01&to=2021-05-31"
+    _rb = adm.get(_may).get_data(as_text=True)
+    adm.post("/tickets/%d/delete" % _kid, data={"_csrf": "ci"})
+    _ra = adm.get(_may).get_data(as_text=True)
+    _rjune = adm.get("/tickets/report?from=2021-06-01&to=2021-06-30").get_data(as_text=True)
+    _w_may = adm.get("/tech-work?tech=%d&from=2021-05-01&to=2021-05-31" % _tech_row["id"]).get_data(as_text=True)
+    _w_jan = adm.get("/tech-work?tech=%d&from=2021-01-01&to=2021-01-31" % _tech_row["id"]).get_data(as_text=True)
+    _w_all = _rtc.get("/tech-work?all=1").get_data(as_text=True)
+    check(_opened(_rb) == 1 and _opened(_ra) == 1 and "4.0" in _ra and "CI Tech" in _ra and "100%" in _ra
+          and _opened(_rjune) == 0 and 'name="from" value="2021-05-01"' in _ra and "rep-filter" in _ra
+          and "CI report kept" in _w_may and "deleted" in _w_may and "CI report kept" not in _w_jan
+          and 'name="to" value="2021-01-31"' in _w_jan and "CI rated job" in _w_all,
+          "Ticket report: a deleted ticket still counts (opened, rating, in time, per person); From / To dates on the report "
+          "and on Work & ratings")
     return bad
 
 

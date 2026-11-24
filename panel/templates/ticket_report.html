@@ -3,10 +3,15 @@
 {% block title %}Ticket report{% endblock %}
 {% block content %}
 {% set timed = (tot.sla_met or 0) + (tot.sla_missed or 0) %}
+<div class="tk-report">
 <div class="page-head">
-  <div><h1>Ticket report</h1><p class="sub">The office's tickets opened in the last {{ days }} days: how fast they are fixed, who fixes them and where problems repeat.{% if purge_on %} Closed tickets are removed on the 1st of each month; earlier months are under <a href="#past">Past months</a>.{% endif %}</p></div>
-  <div class="chips">{% for d in (7, 30) %}<a class="chip {{ 'on' if days == d }}" href="{{ url_for('ticket_report', days=d) }}">{{ d }} days</a>{% endfor %}</div>
+  <div><h1>Ticket report</h1><p class="sub">The office's tickets opened from {{ start|d }} to {{ end|d }}: how fast they are fixed, who fixes them and where problems repeat. Removed tickets still count here.</p></div>
 </div>
+<form class="rep-filter" method="get" action="{{ url_for('ticket_report') }}">
+  <div class="chips">{% for label, f, t in presets %}<a class="chip {{ 'on' if f == start.isoformat() and t == end.isoformat() }}" href="{{ url_for('ticket_report', **{'from': f, 'to': t}) }}">{{ label }}</a>{% endfor %}</div>
+  <div class="rep-dates"><label class="lbl" for="rf-from">From</label><input id="rf-from" type="date" name="from" value="{{ start.isoformat() }}">
+    <label class="lbl" for="rf-to">To</label><input id="rf-to" type="date" name="to" value="{{ end.isoformat() }}"><button class="btn primary" type="submit">Show</button></div>
+</form>
 <div class="th-stats tk-kpis">
   <div class="th-stat"><span class="th-v">{{ tot.opened or 0 }}</span><span class="th-k">Opened <small>· {{ tot.portal or 0 }} from the portal</small></span></div>
   <div class="th-stat"><span class="th-v">{{ hours_text(tot.fix_min) }}</span><span class="th-k">Average time to fix</span></div>
@@ -29,13 +34,13 @@
     {% else %}<div class="panel-body muted">No customer came back with a new problem within a week. Good work.</div>{% endif %}</section>
   <section class="panel"><div class="panel-head"><h2>{{ icon('layers') }}By category</h2></div>
     {% if cats %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Category</th><th class="num">Tickets</th><th class="num">Avg fix</th></tr></thead><tbody>
-    {% for c in cats %}<tr><td>{{ all_cats.get(c.category, c.category) }}</td><td class="num">{{ c.n }}</td><td class="num">{{ hours_text(c.fix_min) }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
-    {% if mats %}<div class="panel-head"><h2>{{ icon('package') }}Materials used</h2></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Item</th><th class="num">Used</th><th class="num">Jobs</th></tr></thead><tbody>
+    {% for c in cats %}<tr><td>{{ all_cats.get(c.category, c.category) }}</td><td class="num">{{ c.n }}</td><td class="num">{{ hours_text(c.fix_min) }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><p>No tickets in this period.</p></div>{% endif %}
+    {% if mats %}<div class="panel-head sub-head"><h2>{{ icon('package') }}Materials used</h2></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Item</th><th class="num">Used</th><th class="num">Jobs</th></tr></thead><tbody>
     {% for m in mats %}<tr><td>{{ m.name }}</td><td class="num">{{ m.qty }} {{ m.unit }}</td><td class="num">{{ m.jobs }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
   </section>
 </div>
-<section class="panel" id="past" style="margin-top:16px"><div class="panel-head"><h2>{{ icon('archive') }}Past months</h2><span class="aside">kept when the closed tickets are removed</span></div>
-  {% if months %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Month</th><th class="num">Closed</th><th class="num">Avg fix</th><th class="num">First answer</th><th class="num">In time</th><th class="num">Rating</th><th class="num hide-sm">Portal</th><th class="num hide-sm">Visits</th></tr></thead>
+{% if months %}<section class="panel tk-past" id="past"><div class="panel-head"><h2>{{ icon('archive') }}Past months</h2><span class="aside">monthly totals saved by the clean-up</span></div>
+  <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Month</th><th class="num">Closed</th><th class="num">Avg fix</th><th class="num">First answer</th><th class="num">In time</th><th class="num">Rating</th><th class="num hide-sm">Portal</th><th class="num hide-sm">Visits</th></tr></thead>
     <tbody>{% for m in months %}{% set a = m.all %}<tr>
       <td><b>{{ m.month }}</b>
         {% if m.tech or m.area %}<details class="tk-month"><summary>Details</summary>
@@ -47,6 +52,6 @@
       <td class="num">{{ ('%d%%' % a.in_time) if a.in_time is not none else '—' }}</td><td class="num">{{ ('%.1f ★' % a.rating) if a.rating else '—' }}</td>
       <td class="num hide-sm">{{ a.portal }}</td><td class="num hide-sm">{{ a.visits }}</td>{% else %}<td colspan="7"></td>{% endif %}
     </tr>{% endfor %}</tbody></table></div>
-  {% else %}<div class="panel-body muted">Nothing yet. On the 1st of each month, the numbers of the tickets closed before it are saved here before those tickets are removed.</div>{% endif %}
-</section>
+</section>{% endif %}
+</div>
 {% endblock %}

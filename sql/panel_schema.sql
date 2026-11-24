@@ -1024,3 +1024,10 @@ CREATE TABLE IF NOT EXISTS staff_work_log (
   PRIMARY KEY (ticket_id, admin_id),
   KEY idx_admin (admin_id, closed_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- ...every removed ticket is kept there (admin_id 0 = nobody had it), with what the Ticket report needs
+ALTER TABLE staff_work_log ADD COLUMN IF NOT EXISTS area VARCHAR(64) NOT NULL DEFAULT '';
+ALTER TABLE staff_work_log ADD COLUMN IF NOT EXISTS first_reply_at DATETIME NULL;
+ALTER TABLE staff_work_log ADD COLUMN IF NOT EXISTS source VARCHAR(16) NOT NULL DEFAULT 'office';
+ALTER TABLE staff_work_log ADD COLUMN IF NOT EXISTS to_office TINYINT NOT NULL DEFAULT 1;
+ALTER TABLE staff_work_log ADD COLUMN IF NOT EXISTS raw_due_at DATETIME NULL;
+ALTER TABLE staff_work_log ADD INDEX IF NOT EXISTS idx_created (created_at);
