@@ -2200,7 +2200,7 @@ def check_rules(flask_app, ids):
         _tc.post("/subscribers/%d/delete" % _rsub["id"], data={"_csrf": "ci"}).status_code,
         _tc.post("/subscribers/%d/balance" % _rsub["id"], data={"_csrf": "ci", "amount": "100"}).status_code,
         _tc.post("/subscribers/%d/renew" % _rsub["id"], data={"_csrf": "ci"}).status_code]
-    _tok = [_tc.get(u).status_code for u in ("/online", "/map", "/jobs", "/follow-ups", "/subscribers/new")]
+    _tok = [_tc.get(u).status_code for u in ("/online", "/map", "/jobs", "/subscribers/new")]
     _tn = _tc.post("/subscribers/new", data={"_csrf": "ci", "username": "ci.tech.new", "password": "pass1234", "full_name": "Tech New",
                                              "phone": "01711000777", "identity": "19901234567", "plan_id": "1", "status": "active",
                                              "expiry_date": "2099-01-01", "where": "https://www.google.com/maps/place/Home/@23.7,90.3,17z/data=!3d23.712345!4d90.398765"})
@@ -2451,7 +2451,7 @@ def check_rules(flask_app, ids):
     check(_pk_ok and _psub == 200 and _pbad == 400 and _sn and _sn["urgent"] == 1 and _sn["link"] == "/jobs"
           and "URGENT" in _sn["title"] and _self == 0 and _bulk_n == 1 and _ptest.get("ok") and _np >= 3 and _left == 0
           and _job_push and _job_push["staff"] == 1 and _job_push["url"] == "/jobs" and _job_push["urgent"] == 1 and _gone == 0
-          and "data-staff-push" in _th and "js/staff-push.js" in _th and "js/staff-push.js" not in _rhome
+          and "data-staff-push" in _tc.get("/me/alerts").get_data(as_text=True) and "js/staff-push.js" in _th and "js/staff-push.js" not in _rhome
           and "staff-push" in _sw and "requireInteraction" in _sw,
           "staff app: a technician turns on job alerts; every job given to them (new, bulk, board...) rings their phone "
           "(urgent stays on screen), not when they take it themselves; a gone phone is forgotten")
@@ -2856,6 +2856,31 @@ def check_rules(flask_app, ids):
           and "Package Tax/Fee</a>" in _ap,
           "customer page tabs: Done codes and login links are hidden in SMS lists; Online Payments lists bKash payments; "
           "Login Log says why a login was refused; Package Tax/Fee tab")
+    # technician: add customers (no activation), see who is online, fix address / location / MAC, disconnect, map;
+    # the Subscribers menu shows only what they may use; impossible ticks greyed out on their role page
+    _tmenu = _tc.get("/").get_data(as_text=True)
+    _trole = adm.get("/roles/technician/permissions").get_data(as_text=True)
+    _act_box = re.search(r'name="sub\.activation" value="1"[^>]*>', _trole)
+    _tacts = [_tc.get(u).status_code for u in ("/subscribers/activation", "/follow-ups", "/subscribers?status=online",
+                                                "/subscribers?status=offline", "/map")]
+    check('href="/subscribers?status=online"' in _tmenu and 'href="/subscribers?status=offline"' in _tmenu
+          and 'href="/subscribers?status=exp1"' not in _tmenu and 'href="/follow-ups"' not in _tmenu
+          and 'href="/import"' not in _tmenu and "Import / Export" not in _tmenu and 'href="/me/alerts"' in _tmenu
+          and _act_box and "disabled" in _act_box.group(0) and _tacts == [403, 403, 200, 200, 200],
+          "technician: adds customers but cannot activate; sees online / offline, map; the Subscribers menu hides what they "
+          "may not use; ticks a technician can never have are greyed out; Job alerts is in the menu")
+    # technician live location -> the administrator's technician map
+    _lp = _tc.post("/me/location", json={"lat": 23.7801, "lng": 90.4002, "acc": 12}, headers={"X-CSRF-Token": "ci"}).status_code
+    _lbad = _tc.post("/me/location", json={"lat": "x"}, headers={"X-CSRF-Token": "ci"}).status_code
+    _lres = _rc2.post("/me/location", json={"lat": 23.7, "lng": 90.4}, headers={"X-CSRF-Token": "ci"}).status_code
+    _tmd = json.loads(adm.get("/map/technicians/data").get_data(as_text=True))
+    _tmp = adm.get("/map/technicians").get_data(as_text=True)
+    _tm_no = [st.get("/map/technicians/data").status_code, _rc2.get("/map/technicians").status_code]
+    _hom_t = _tc.get("/").get_data(as_text=True)
+    check(_lp == 200 and _lbad == 400 and _lres == 403 and any(p["u"] == "ci_tech" and p["s"] == "online" and abs(p["lat"] - 23.7801) < 1e-6 for p in _tmd)
+          and 'data-refresh="60"' in _tmp and _tm_no == [403, 403] and "js/staff-location.js" in _hom_t,
+          "technician location: their phone sends its position while the app is open; administrators and managers see it "
+          "live on the technician map; nobody else")
     # Packages list: toolbar, the reference columns, Actions (Assign / Edit / Copy / Delete)
     _pk = adm.get("/plans").get_data(as_text=True)
     _pk_plan = one("SELECT * FROM plans WHERE id = %s", (_ppid,))

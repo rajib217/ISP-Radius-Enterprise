@@ -15,7 +15,6 @@
   </form>
 </div>
 
-<div class="sp-card" data-staff-push hidden></div>
 {% for n in notices or [] %}
 <div class="notice {{ n.kind }}" role="status">{{ icon('alert') }}<div><strong>{{ n.title }}</strong>{% if n.body %}<p>{{ n.body }}</p>{% endif %}</div></div>
 {% endfor %}
@@ -32,7 +31,7 @@
   {% if can('subscribers') %}<a class="th-q" href="{{ url_for('customer_map') }}">{{ icon('pin') }}<span>Customer map</span></a>{% endif %}
   {% if can('online') %}<a class="th-q" href="{{ url_for('online') }}">{{ icon('activity') }}<span>Who is online</span></a>{% endif %}
   {% if can('tickets', 'edit') %}<a class="th-q" href="{{ url_for('ticket_new') }}">{{ icon('ticket') }}<span>New ticket</span></a>{% endif %}
-  {% if can('subscribers') %}<a class="th-q" href="{{ url_for('follow_ups', mine=1) }}">{{ icon('phone') }}<span>Follow-ups{% if counts.fu %} <b class="th-badge">{{ counts.fu }}</b>{% endif %}</span></a>{% endif %}
+  {% if can_fn('sub.note') %}<a class="th-q" href="{{ url_for('follow_ups', mine=1) }}">{{ icon('phone') }}<span>Follow-ups{% if counts.fu %} <b class="th-badge">{{ counts.fu }}</b>{% endif %}</span></a>{% endif %}
 </div>
 
 <div class="th-cols">
@@ -52,7 +51,7 @@
   </section>
 
   <aside class="th-side">
-    <section class="panel">
+    {% if can_fn('sub.note') %}<section class="panel">
       <div class="panel-head"><h2>{{ icon('phone') }}Call today</h2>{% if follow %}<span class="aside">{{ follow|length }}</span>{% endif %}</div>
       {% if follow %}<ul class="th-list">
         {% for r in follow %}<li>
@@ -61,7 +60,7 @@
           {% if r.phone %}<a class="btn sm" href="tel:{{ r.phone }}">{{ icon('phone') }}Call</a>{% endif %}
         </li>{% endfor %}
       </ul>{% else %}<div class="panel-body muted">No calls to make. Notes with a <b>Call again</b> date show here on that day.</div>{% endif %}
-    </section>
+    </section>{% endif %}
     <section class="panel">
       <div class="panel-head"><h2>{{ icon('check') }}Done today</h2>{% if done_today %}<span class="aside">{{ done_today|length }}</span>{% endif %}</div>
       {% if done_today %}<ul class="th-list">

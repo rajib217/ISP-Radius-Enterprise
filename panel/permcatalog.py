@@ -224,6 +224,7 @@ ENDPOINT_FN = {
     "inventory_save": ("itm.add", "itm.edit"), "inventory_move": "itm.move", "inventory_delete": "itm.delete",
     "ticket_new": "tk.add", "ticket_reply": "tk.reply", "ticket_update": "tk.update", "ticket_delete": "tk.delete",
     "subscriber_login_link": "sub.login_link", "subscriber_revert": "sub.revert",
+    "follow_ups": "sub.note", "call_add": "sub.note", "call_done": "sub.note",
     "ticket_lookup": "tk.add", "tickets_bulk": "tk.update", "ticket_move": "tk.update", "ticket_to_office": "tk.reply",
     "note_save": "note.add", "note_delete": "note.delete",
     "document_upload": "doc.add", "document_delete": "doc.delete",
@@ -264,12 +265,11 @@ NOW_CLEARED = ("rep.btrc",)
 
 
 # Built-in roles whose subscriber ticks do not simply follow the module level: on these key prefixes only the listed
-# keys start ticked (Users > Roles can still change them). Technician: look up, add and fix customers in the field
-# (address, location, MAC, disconnect), but no password change, money, expiry, package or delete.
+# keys start ticked (Users > Roles can still change them). Technician: see customers, add new ones (they start
+# expired: no activation), fix the address / map location, reset the MAC, disconnect, see who is online.
 ROLE_KEYS = {
     "technician": (("sub.", "svc.", "onl."), frozenset((
-        "sub.module", "sub.view", "sub.add", "sub.edit", "sub.photo", "sub.toggle_pw", "sub.note",
-        "sub.document", "sub.disconnect", "sub.reset_mac", "sub.attr_view",
+        "sub.module", "sub.view", "sub.add", "sub.edit", "sub.disconnect", "sub.reset_mac",
         "onl.module", "onl.disconnect"))),
 }
 # ...and ticks such a role never gets, even when ticked on Users > Roles
@@ -281,6 +281,15 @@ ROLE_NEVER = {
         "sub.fee_add", "sub.fee_edit", "sub.fee_delete", "sub.fee_module", "sub.fee_view", "svc.packages",
         "home.acc", "home.pred", "home.usage", "home.g_sales", "home.g_pay", "pkg.module")),
 }
+
+
+def role_locked_keys(role, locked_modules=()):
+    """Ticks this role can never have (ROLE_NEVER, and every key of a module locked for it): shown greyed out."""
+    out = set(ROLE_NEVER.get(role, ()))
+    for k, (mod, _flags) in KEY_INFO.items():
+        if mod and mod in locked_modules:
+            out.add(k)
+    return out
 
 
 def default_on(key, perms, role_is_seller, role=None):

@@ -44,25 +44,26 @@ STRUCTURE = [
         _i("Online", "subscribers", args={"status": "online"}),
         _i("Stale", "subscribers", args={"status": "stale"}),
         _i("Offline", "subscribers", args={"status": "offline"}),
-        _i("Expired", "subscribers", args={"status": "expired"}),
-        _i("Expired Online", "subscribers", args={"status": "expired_online"}),
-        _i("Profile Disabled Online", "subscribers", args={"status": "profile_disabled_online"}),
-        _i("Internet Disabled Online", "subscribers", args={"status": "internet_disabled_online"}),
-        _i("Internet Disabled", "subscribers", args={"status": "internet_disabled"}),
-        _i("Expiring 1 Day", "subscribers", args={"status": "exp1"}),
-        _i("Expiring 3 Days", "subscribers", args={"status": "exp3"}),
-        _i("Expiring 1 Week", "subscribers", args={"status": "exp7"}),
-        _i("Expiring 2 Weeks", "subscribers", args={"status": "exp14"}),
-        _i("Expiring 4 Weeks", "subscribers", args={"status": "exp28"}),
-        _i("MAC Binded", "subscribers", args={"status": "mac"}),
-        _i("Grace Period On", "subscribers", args={"status": "grace"}),
-        _i("Recent Auto Renew", "subscribers", args={"status": "renewed"}),
+        # a list only shows to someone with the permission its customers are there for (renew, enable, MAC ...)
+        _i("Expired", "subscribers", args={"status": "expired"}, fn=("sub.activation", "sub.mass_activation")),
+        _i("Expired Online", "subscribers", args={"status": "expired_online"}, fn=("sub.activation", "sub.mass_activation")),
+        _i("Profile Disabled Online", "subscribers", args={"status": "profile_disabled_online"}, fn=("sub.profile_on", "sub.profile_off")),
+        _i("Internet Disabled Online", "subscribers", args={"status": "internet_disabled_online"}, fn=("sub.net_on", "sub.net_off")),
+        _i("Internet Disabled", "subscribers", args={"status": "internet_disabled"}, fn=("sub.net_on", "sub.net_off")),
+        _i("Expiring 1 Day", "subscribers", args={"status": "exp1"}, fn=("sub.activation", "sub.mass_activation")),
+        _i("Expiring 3 Days", "subscribers", args={"status": "exp3"}, fn=("sub.activation", "sub.mass_activation")),
+        _i("Expiring 1 Week", "subscribers", args={"status": "exp7"}, fn=("sub.activation", "sub.mass_activation")),
+        _i("Expiring 2 Weeks", "subscribers", args={"status": "exp14"}, fn=("sub.activation", "sub.mass_activation")),
+        _i("Expiring 4 Weeks", "subscribers", args={"status": "exp28"}, fn=("sub.activation", "sub.mass_activation")),
+        _i("MAC Binded", "subscribers", args={"status": "mac"}, fn="sub.reset_mac"),
+        _i("Grace Period On", "subscribers", args={"status": "grace"}, fn="sub.grace"),
+        _i("Recent Auto Renew", "subscribers", args={"status": "renewed"}, fn=("sub.activation", "sub.mass_activation")),
         _i("Extra Service Fees", "charges", ["charges", "charge_save", "charge_paid", "charge_delete"], fn="sub.fee_module"),
-        _i("Suspended", "subscribers", args={"status": "suspended"}),
-        _i("Follow-ups", "follow_ups", ["follow_ups"]),
+        _i("Suspended", "subscribers", args={"status": "suspended"}, fn=("sub.profile_on", "sub.profile_off")),
+        _i("Follow-ups", "follow_ups", ["follow_ups"], fn="sub.note"),
         _i("Map", "customer_map", ["customer_map"]),
         _i("Online sessions", "online", module="online"),
-        _i("Import / Export", "import_csv", ["import_csv"]),
+        _i("Import / Export", "import_csv", ["import_csv"], fn=("sub.import", "sub.export")),
     ]),
     _g("acct", "Accounting", "dollar", module="accounting", items=[
         _i("Payments", "payments", ["payments", "receipt", "payment_add"]),
@@ -107,7 +108,9 @@ STRUCTURE = [
         _i("Outages", "outages", ["outages"], office=True),
         _i("Report", "ticket_report", ["ticket_report"], office=True),
         _i("Settings", "ticket_settings", ["ticket_settings"], allow="ticket_admin"),
+        _i("Technician map", "tech_map", ["tech_map"], allow="ticket_admin"),
     ]),
+    _g("alerts", "Job alerts", "bell", endpoint="staff_alerts", match=["staff_alerts"], office=True),
     _g("email", "Email", "mail", module="email", items=[
         _i("Compose", "email_compose"),
         _i("Templates", "templates_page", args={"kind": "email"}),
@@ -209,7 +212,7 @@ def build():
                     continue
                 if it["module"] and not core.can(it["module"]):
                     continue
-                if it["fn"] and not core.can_fn(it["fn"]):
+                if it["fn"] and not any(core.can_fn(k) for k in ((it["fn"],) if isinstance(it["fn"], str) else it["fn"])):
                     continue
                 if it["admin"] and not is_admin:
                     continue

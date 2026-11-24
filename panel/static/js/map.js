@@ -165,4 +165,12 @@
   fetch(el.dataset.src, { credentials: "same-origin" }).then(function (r) { return r.json(); }).then(function (rows) {
     all = rows || []; filter(true);
   }).catch(function () { draw(); });
+  // a live map (data-refresh="seconds") fetches the points again without moving the view
+  var every = parseInt(el.dataset.refresh, 10);
+  if (every > 0) setInterval(function () {
+    if (document.hidden) return;
+    fetch(el.dataset.src, { credentials: "same-origin" }).then(function (r) { return r.json(); }).then(function (rows) {
+      all = rows || []; filter(false);
+    }).catch(function () {});
+  }, every * 1000);
 })();

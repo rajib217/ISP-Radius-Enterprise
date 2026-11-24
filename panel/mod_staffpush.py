@@ -6,7 +6,7 @@
   /me/push/test          queue a test notification to my own phones"""
 import hashlib
 
-from flask import g, jsonify, request
+from flask import g, jsonify, request, url_for
 
 import core
 import staffpush
@@ -62,3 +62,78 @@ def staff_push_test():
                             "/")
     commit()
     return jsonify({"ok": bool(n), "phones": n})
+
+
+# ===================================================================== job alerts page and technician location
+@route("/me/alerts")
+def staff_alerts():
+    """Menu > Job alerts: switch this phone's job notifications on or off (and, for a technician, location sharing)."""
+    if g.me["role"] in core.SELLER_ROLES:
+        from flask import abort
+        abort(403)
+    from flask import render_template
+    with get_db().cursor() as cur:
+        phones = staffpush.subscribed(cur, g.me["id"])
+    loc = core.q("SELECT updated_at FROM staff_locations WHERE admin_id = %s", (g.me["id"],), one=True)
+    return render_template("staff_alerts.html", phones=phones, loc=loc)
+
+
+@route("/me/location", methods=["POST"])
+def staff_location():
+    """A technician's phone sends where it is (while the panel app is open): the office sees it on the technician map."""
+    if g.me["role"] != "technician":
+        return jsonify({"ok": False}), 403
+    d = request.get_json(silent=True) or {}
+    try:
+        lat, lng = float(d.get("lat")), float(d.get("lng"))
+        acc = int(float(d.get("acc") or 0)) or None
+    except (TypeError, ValueError):
+        return jsonify({"ok": False}), 400
+    if not (-90 <= lat <= 90 and -180 <= lng <= 180) or (lat == 0 and lng == 0):
+        return jsonify({"ok": False}), 400
+    x("INSERT INTO staff_locations (admin_id, lat, lng, accuracy, updated_at) VALUES (%s, %s, %s, %s, NOW()) "
+      "ON DUPLICATE KEY UPDATE lat = VALUES(lat), lng = VALUES(lng), accuracy = VALUES(accuracy), updated_at = NOW()",
+      (g.me["id"], round(lat, 6), round(lng, 6), min(acc, 100000) if acc else None))
+    commit()
+    return jsonify({"ok": True})
+
+
+LIVE_MINUTES = 10           # a position newer than this shows the technician as live
+
+
+def _can_see_techs():
+    return g.me["role"] in ("admin", "manager")
+
+
+@route("/map/technicians")
+def tech_map():
+    from flask import abort, render_template
+    if not _can_see_techs():
+        abort(403)
+    n = core.q("SELECT COUNT(*) AS c FROM panel_admins WHERE role = 'technician' AND is_active = 1", one=True)["c"]
+    placed = core.q("SELECT COUNT(*) AS c FROM staff_locations l JOIN panel_admins a ON a.id = l.admin_id "
+                    "WHERE a.role = 'technician' AND a.is_active = 1", one=True)["c"]
+    s = core.cfg()
+    centre = [float(s.get("latitude") or 23.8103), float(s.get("longitude") or 90.4125)]
+    return render_template("tech_map.html", total=n, placed=placed, centre=centre, live_minutes=LIVE_MINUTES)
+
+
+@route("/map/technicians/data")
+def tech_map_data():
+    from flask import abort
+    if not _can_see_techs():
+        abort(403)
+    from datetime import datetime
+    out = []
+    for r in core.q("SELECT a.id, a.username, a.full_name, a.phone, l.lat, l.lng, l.accuracy, l.updated_at, "
+                    "(SELECT COUNT(*) FROM tickets t WHERE t.assigned_to = a.id AND t.status IN ('open', 'pending')) AS jobs "
+                    "FROM staff_locations l JOIN panel_admins a ON a.id = l.admin_id WHERE a.role = 'technician' AND a.is_active = 1"):
+        mins = int((datetime.now() - r["updated_at"]).total_seconds() // 60)
+        ago = "just now" if mins < 1 else ("%d min ago" % mins if mins < 60 else ("%d h ago" % (mins // 60) if mins < 1440 else "%d days ago" % (mins // 1440)))
+        out.append({"id": r["id"], "code": "%d open job%s" % (r["jobs"], "" if r["jobs"] == 1 else "s"), "u": r["username"],
+                    "n": r["full_name"] or r["username"], "ph": r["phone"] or "", "p": "Seen " + ago,
+                    "a": ("±%d m" % r["accuracy"]) if r["accuracy"] else "", "s": "online" if mins < LIVE_MINUTES else "offline",
+                    "lat": float(r["lat"]), "lng": float(r["lng"]), "url": url_for("admin_view", aid=r["id"])})
+    resp = jsonify(out)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp

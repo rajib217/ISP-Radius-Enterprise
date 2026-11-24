@@ -1192,7 +1192,8 @@ def role_permissions(role):
                   for g in t["groups"]]
         tabs.append(dict(t, title=("My Profile (%s)" % ptype) if t["title"] == "My Profile" else t["title"], groups=groups))
     return render_template("role_permissions.html", role=role, label=labels[role], tabs=tabs, ticked=ticked,
-                           tab=request.args.get("tab", ""), locked=set(permcatalog.KEYS) - mine,
+                           tab=request.args.get("tab", ""),
+                           locked=(set(permcatalog.KEYS) - mine) | permcatalog.role_locked_keys(role, core.ROLE_LOCKS.get(role, ())),
                            can_save=not _staff() or (core.can_fn("usr.role_edit") and not own_role), own_role=own_role)
 
 

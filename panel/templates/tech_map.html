@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Technician map{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Technician map</h1><p class="sub">Where each technician's phone was last seen. {{ placed }} of {{ total }} technician{{ '' if total == 1 else 's' }} shared a location. Green = seen in the last {{ live_minutes }} minutes; the map updates every minute.</p></div>
+</div>
+<section class="panel cmap-panel">
+  <div class="filters panel-body cmap-bar">
+    <div class="search">{{ icon('search') }}<input type="search" data-cmap-q placeholder="Technician name or username" aria-label="Find a technician"></div>
+    <div class="cmap-legend" role="group" aria-label="Show">
+      <label class="check"><input type="checkbox" data-cmap-s="online" checked><i class="dot s-online"></i>Live <b data-cmap-n="online">0</b></label>
+      <label class="check"><input type="checkbox" data-cmap-s="offline" checked><i class="dot s-offline"></i>Older <b data-cmap-n="offline">0</b></label>
+    </div>
+  </div>
+  <div class="cmap" id="cmap" data-src="{{ url_for('tech_map_data') }}" data-refresh="60" data-centre="{{ centre|tojson }}" tabindex="0" aria-label="Map of technicians">
+    <div class="cmap-zoom"><button type="button" class="btn icon" data-cmap-zoom="1" aria-label="Zoom in" title="Zoom in">+</button><button type="button" class="btn icon" data-cmap-zoom="-1" aria-label="Zoom out" title="Zoom out">&minus;</button><button type="button" class="btn icon" data-cmap-fit aria-label="Show all" title="Show all">{{ icon('grid') }}</button></div>
+    <div class="cmap-attr">&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</div>
+  </div>
+  <div class="panel-body muted">A technician's phone sends its position only while the panel app is open on it (phones do not let a website follow them in the background). They see this on their Job alerts page.</div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ asset('js/map.js') }}"></script>{% endblock %}

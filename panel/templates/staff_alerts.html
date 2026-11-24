@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Job alerts{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Job alerts</h1><p class="sub">A notification on this phone for every job given to you, even when the app is closed.</p></div></div>
+<div style="max-width:760px" class="stack">
+  <div class="sp-card" data-staff-push hidden></div>
+  <section class="panel"><div class="panel-body stack">
+    <div><b>Phones switched on:</b> {{ phones }}</div>
+    <p class="muted" style="margin:0">Switch alerts on separately on each phone or computer you use. Turning them off here affects only this device.</p>
+  </div></section>
+  {% if me.role == 'technician' %}
+  <section class="panel"><div class="panel-head"><h2>{{ icon('pin') }}Location sharing</h2></div><div class="panel-body stack">
+    <p style="margin:0">While the panel is open on your phone, its position is sent to the office every few minutes, so jobs can go to whoever is closest. Nothing is sent when the app is closed.</p>
+    <div class="row-gap"><span data-loc-status class="muted">{% if loc %}Last sent {{ loc.updated_at|ago }}.{% else %}Not sent yet.{% endif %}</span></div>
+    <p class="muted" style="margin:0">If your phone asks, choose <b>Allow</b>. Blocked by mistake? Touch and hold the app icon &gt; App info &gt; Permissions &gt; Location &gt; Allow.</p>
+  </div></section>
+  {% endif %}
+</div>
+{% endblock %}

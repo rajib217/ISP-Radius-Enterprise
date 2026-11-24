@@ -67,7 +67,7 @@
   </div>
   <nav class="sv-tabs" aria-label="Sections">
     {% for key, label, ic in [('profile','Profile','user'),('reports','Reports','chart'),('ledgers','Ledgers','file'),('invoices','Invoices','file'),('payments','Payments','card'),('online','Online Payments','wallet'),('messages','SMS Deliveries','phone'),('notifications','App Notifications','bell'),('services','Services','sliders'),('fees','Package Tax/Fee','dollar'),('attributes','Attributes','grid'),('mac','MAC Address','server'),('documents','Documents','folder'),('logins','Login Log','shield'),('sessions','Session Log','activity'),('coa','CoA Logs','power'),('calls','Call Log','phone'),('activity','Activities','chart'),('tickets','Tickets','ticket')] %}
-    {% if (key != 'documents' or (can('documents') and can_fn('sub.document'))) and (key != 'fees' or can_fn('sub.fee_view')) and (key != 'attributes' or can_fn('sub.attr_view')) %}{% if (key != 'tickets' or can('tickets')) and not (no_money and key in ('ledgers', 'invoices', 'payments', 'online')) %}<a href="#{{ key }}" data-tab="{{ key }}">{{ icon(ic) }}{{ label }}</a>{% endif %}{% endif %}
+    {% if (key != 'documents' or (can('documents') and can_fn('sub.document'))) and (key != 'fees' or can_fn('sub.fee_view')) and (key != 'attributes' or can_fn('sub.attr_view')) and (key != 'calls' or can_fn('sub.note')) %}{% if (key != 'tickets' or can('tickets')) and not (no_money and key in ('ledgers', 'invoices', 'payments', 'online')) %}<a href="#{{ key }}" data-tab="{{ key }}">{{ icon(ic) }}{{ label }}</a>{% endif %}{% endif %}
     {% endfor %}
   </nav>
 </section>

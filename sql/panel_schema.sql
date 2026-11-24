@@ -992,3 +992,12 @@ CREATE TABLE IF NOT EXISTS portal_login_links (
 
 -- Subscriber Limitation: the most customers a reseller / sub-reseller / retailer may have (NULL = no limit)
 ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS max_subs INT UNSIGNED NULL;
+
+-- Technician live location: the newest position each technician's phone sent (only while the panel app is open)
+CREATE TABLE IF NOT EXISTS staff_locations (
+  admin_id   INT UNSIGNED NOT NULL PRIMARY KEY,
+  lat        DECIMAL(9,6) NOT NULL,
+  lng        DECIMAL(9,6) NOT NULL,
+  accuracy   INT UNSIGNED NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
