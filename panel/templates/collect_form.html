@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Collect · {{ sub.username }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Collect payment <small class="muted">· টাকা গ্রহণ</small></h1><p class="sub">{{ sub.full_name or sub.username }} <span class="mono muted">{{ code }} · {{ sub.username }}</span>{% if sub.phone %} · {{ sub.phone }}{% endif %}{% if sub.area %} · {{ sub.area }}{% endif %}</p></div>
+  <div class="head-actions"><a class="btn" href="{{ url_for('collect') }}">{{ icon('arrow-left') }}Due list</a></div></div>
+<div class="grid2 tk-rep" style="max-width:980px">
+  <section class="panel"><div class="panel-head"><h2>What is owed</h2></div>
+    <div class="panel-body stack">
+      {% if due.package %}<div>Expired package <b>{{ due.plan.label or due.plan.name }}</b> ({{ due.days }} days): {{ currency }} {{ due.price|money }}{% if sub.balance|float > 0 %}, less {{ (sub.balance|float)|money }} already in the balance{% endif %} = <b>{{ due.package|money }}</b></div>{% endif %}
+      {% if due.charges %}<div>Unpaid charges: <b>{{ due.charges|money }}</b></div>{% endif %}
+      <div class="th-v">{{ currency }} {{ due.total|money }}</div>
+      <p class="muted" style="margin:0">Paying the whole package amount renews it at once. Less than that goes into the customer's balance. You can never take more than the due.</p>
+    </div></section>
+  <section class="panel"><div class="panel-head"><h2>Payment</h2></div>
+    {% if due.total > 0 and methods %}
+    <form class="panel-body stack" method="post" autocomplete="off">{{ csrf_input() }}<input type="hidden" name="form_token" value="{{ token }}">
+      <div class="field"><label class="lbl" for="cf-amt">Amount received <b class="req">*</b></label><input id="cf-amt" name="amount" type="number" inputmode="decimal" step="0.01" min="0.01" max="{{ due.total }}" value="{{ f.amount or due.total }}" required><div class="help">Up to {{ due.total|money }} (one collection at most {{ cap|money }}).</div></div>
+      <div class="field"><span class="lbl">Method</span><div class="chips" role="radiogroup">{% for k, label in methods %}<label class="chip"><input type="radio" name="method" value="{{ k }}" data-cf-method {{ 'checked' if (f.method or methods[0][0]) == k }}> {{ label }}</label>{% endfor %}</div></div>
+      <div class="grid-2" data-cf-for="pos" hidden>
+        <div class="field"><label class="lbl" for="cf-appr">Approval code (from the POS slip)</label><input id="cf-appr" name="approval" value="{{ f.approval or '' }}" maxlength="12" spellcheck="false"></div>
+        <div class="field"><label class="lbl" for="cf-l4">Card's last 4 digits</label><input id="cf-l4" name="last4" value="{{ f.last4 or '' }}" inputmode="numeric" maxlength="4" pattern="\d{4}"></div>
+        <p class="help" style="grid-column:1/-1;margin:0">Never type the whole card number. The bank's machine takes the card; the panel keeps only these two.</p>
+      </div>
+      <div class="field" data-cf-for="bkash" hidden><label class="lbl" for="cf-trx">bKash TrxID</label><input id="cf-trx" name="trx_id" value="{{ f.trx_id or '' }}" maxlength="12" spellcheck="false" style="text-transform:uppercase"></div>
+      {% if f.repeat %}<label class="check"><input type="checkbox" name="repeat_ok" value="1"> <span><b>Yes, this is a second payment</b> of the same amount within {{ 10 }} minutes</span></label>{% endif %}
+      <div class="row-gap"><button class="btn primary" type="submit">{{ icon('check') }}Save and make receipt</button></div>
+    </form>
+    {% elif due.total <= 0 %}<div class="empty"><p>{{ sub.username }} owes nothing now.</p></div>
+    {% else %}<div class="empty"><p>You are not allowed to take payments. Ask whoever added you.</p></div>{% endif %}
+    {% if can_fn('col.remind_sms') and due.total > 0 %}<form class="panel-body" method="post" action="{{ url_for('collect_remind', sid=sub.id) }}" style="border-top:1px solid var(--border)">{{ csrf_input() }}<button class="btn sm" type="submit">{{ icon('send') }}Send due reminder SMS</button></form>{% endif %}
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}<script>
+(function () {   /* show the POS / bKash fields for the chosen method */
+  function sync() {
+    var m = (document.querySelector("[data-cf-method]:checked") || {}).value;
+    document.querySelectorAll("[data-cf-for]").forEach(function (b) { b.hidden = b.dataset.cfFor !== m; });
+    document.querySelectorAll("[data-cf-method]").forEach(function (r) { r.parentNode.classList.toggle("on", r.checked); });
+  }
+  document.querySelectorAll("[data-cf-method]").forEach(function (r) { r.addEventListener("change", sync); });
+  sync();
+})();
+</script>{% endblock %}

@@ -404,9 +404,9 @@ MODULES = [
     ("zones", "Department / Zone"), ("notices", "Notices"),
 ]
 ROLES = [("admin", "Administrator"), ("manager", "Manager"), ("support", "Support"),
-         ("accountant", "Accountant"), ("technician", "Technician"), ("reseller", "Reseller"),
+         ("accountant", "Accountant"), ("technician", "Technician"), ("collector", "Bill Collector"), ("reseller", "Reseller"),
          ("subreseller", "Sub-reseller"), ("retailer", "Retailer")]
-STAFF_ROLES = ("manager", "support", "accountant", "technician")
+STAFF_ROLES = ("manager", "support", "accountant", "technician", "collector")
 SELLER_ROLES = ("reseller", "subreseller", "retailer")   # see only their own customers and those of their downline
 LEVELS = ("none", "view", "edit")
 RANK = {"none": 0, "view": 1, "edit": 2}
@@ -436,10 +436,17 @@ DEFAULT_PERMS = {
     "technician": dict(subscribers="edit", online="edit", plans="none", accounting="none", inventory="none",
                        network="none", area="view", tickets="edit", email="none", sms="none", logs="view",
                        notes="edit", reports="none", documents="view", zones="none"),
+    # Bill Collector: sees customers and their dues, takes payments (Collection pages), tickets and notes. Their own
+    # collections, report and deposits are on the Collection pages; never the office's accounting, reports or logs.
+    "collector": dict(subscribers="view", online="none", plans="none", accounting="none", inventory="none",
+                      network="none", area="view", tickets="edit", email="none", sms="none", logs="none",
+                      notes="edit", reports="none", documents="none", zones="none", notices="view"),
 }
 # Areas a built-in role never gets, whatever Users > Roles says (the role's job has nothing to do there).
 # Technician: no network devices, money, packages (or My Packages), stock, zones or ISP reports.
-ROLE_LOCKS = {"technician": ("network", "accounting", "plans", "inventory", "zones", "reports")}
+ROLE_LOCKS = {"technician": ("network", "accounting", "plans", "inventory", "zones", "reports"),
+              "collector": ("online", "network", "accounting", "plans", "inventory", "zones", "reports", "email", "sms",
+                            "logs", "documents")}
 
 
 def load_perms(role):

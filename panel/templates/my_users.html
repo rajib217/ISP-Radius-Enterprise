@@ -5,18 +5,19 @@
 <div class="page-head"><div><h1>My Users</h1><p class="sub">People directly under you. Balance you give them is taken from your own balance ({{ currency }} {{ '{:,.2f}'.format(me.balance|float) }}).</p></div>
 <div class="head-actions">
   {% if can_fn('usr.tech') %}<button class="btn" data-open="tech-dlg" data-new>{{ icon('tool') }}Add technician</button>{% endif %}
+  {% if can_fn('usr.collector') %}<button class="btn" data-open="col-dlg" data-new>{{ icon('wallet') }}Add bill collector</button>{% endif %}
   {% if can_fn('usr.add') and child_label %}<button class="btn primary" data-open="usr-dlg" data-new>{{ icon('plus') }}Add {{ child_label|lower }}</button>{% endif %}
 </div></div>
 <section class="panel">
   {% if rows %}
   <div class="tbl-wrap"><table class="tbl">
-    <thead><tr><th>User</th><th>Type</th><th class="num">Balance</th><th class="num">Users below</th><th class="num">Subscribers</th><th>Status</th>{% if can_fn('usr.balance') or can_fn('usr.edit') or can_fn('usr.password') or can_fn('usr.pkg_assign') or can_fn('usr.delete') %}<th></th>{% endif %}</tr></thead>
-    <tbody>{% for r in rows %}{% set is_tech = r.role == 'technician' %}
+    <thead><tr><th>User</th><th>Type</th><th class="num">Balance</th><th class="num">Users below</th><th class="num">Subscribers</th><th>Status</th>{% if can_fn('usr.balance') or can_fn('usr.edit') or can_fn('usr.password') or can_fn('usr.pkg_assign') or can_fn('usr.delete') or can_fn('usr.tech') or can_fn('usr.collector') %}<th></th>{% endif %}</tr></thead>
+    <tbody>{% for r in rows %}{% set is_tech = r.role in ('technician', 'collector') %}{% set okey = 'usr.tech' if r.role == 'technician' else 'usr.collector' %}{% set odlg = 'tech-dlg' if r.role == 'technician' else 'col-dlg' %}
       <tr><td class="who-cell"><b>{{ r.full_name or r.username }}</b><small class="mono">{{ r.username }}{% if is_tech and r.phone %} · {{ r.phone }}{% endif %}</small></td><td>{{ r.role_label }}</td>
         <td class="num">{% if is_tech %}<span class="muted">—</span>{% else %}{{ currency }} {{ '{:,.2f}'.format(r.balance|float) }}{% endif %}</td><td class="num">{{ r.kids }}{% if r.max_children is not none %} / {{ r.max_children }}{% endif %}</td><td class="num">{{ '{:,}'.format(r.subs) }}</td>
         <td><span class="badge {{ 'ok' if r.is_active else 'bad' }}">{{ 'Active' if r.is_active else 'Disabled' }}</span></td>
-        {% if can_fn('usr.balance') or can_fn('usr.edit') or can_fn('usr.password') or can_fn('usr.pkg_assign') or can_fn('usr.delete') %}<td class="nowrap row-gap">
-          {% if is_tech %}{% if can_fn('usr.tech') %}<button type="button" class="btn sm" data-open="tech-dlg" data-edit='{{ {"id": r.id, "username": r.username, "full_name": r.full_name, "phone": r.phone, "email": r.email, "address": r.address}|tojson }}'>Edit</button>
+        {% if can_fn('usr.balance') or can_fn('usr.edit') or can_fn('usr.password') or can_fn('usr.pkg_assign') or can_fn('usr.delete') or can_fn('usr.tech') or can_fn('usr.collector') %}<td class="nowrap row-gap">
+          {% if is_tech %}{% if can_fn(okey) %}<button type="button" class="btn sm" data-open="{{ odlg }}" data-edit='{{ {"id": r.id, "username": r.username, "full_name": r.full_name, "phone": r.phone, "email": r.email, "address": r.address}|tojson }}'>Edit</button>
             <form method="post" action="{{ url_for('my_user_toggle', aid=r.id) }}" style="display:inline" data-confirm="{{ 'Disable' if r.is_active else 'Enable' }} {{ r.username }}?">{{ csrf_input() }}<button class="btn sm">{{ 'Disable' if r.is_active else 'Enable' }}</button></form>
             <button type="button" class="btn sm" data-open="pw-dlg" data-fill='{{ {"action": url_for("my_user_password", aid=r.id), "pw_user": r.username}|tojson }}' data-pw="{{ url_for('my_user_password', aid=r.id) }}">Password</button>{% endif %}
           {% else %}
@@ -50,6 +51,26 @@
   </form>
 </dialog>
 {% endif %}
+{% if can_fn('usr.collector') %}
+<dialog class="modal" id="col-dlg" aria-labelledby="col-title">
+  <form method="post" action="{{ url_for('my_user_save') }}" autocomplete="off">
+    {{ csrf_input() }}<input type="hidden" name="id"><input type="hidden" name="kind" value="collector">
+    <div class="modal-head"><h2 id="col-title" data-title data-title-new="Add bill collector" data-title-edit="Edit bill collector">Add bill collector</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <p class="muted" style="margin:0">Your bill collector (বিল কালেক্টর) signs in with this username. They see only your customers and what they owe, take payments (cash, POS or bKash) and give receipts. Cash they take stays "in hand" until they deposit it to you and you confirm it under Bill Collection &gt; Collectors.</p>
+      <div class="grid-2">
+        <div class="field"><label class="lbl" for="c-name">Full Name <b class="req">*</b></label><input id="c-name" name="full_name" required maxlength="128"></div>
+        <div class="field"><label class="lbl" for="c-user">Username <b class="req">*</b></label><input id="c-user" name="username" data-lock-on-edit required spellcheck="false"></div>
+        <div class="field"><label class="lbl" for="c-pass">Password <b class="req" data-new-only>*</b></label><input id="c-pass" name="password" type="password" minlength="8" autocomplete="new-password"><div class="help">At least 8 characters. When editing, leave empty to keep it.</div></div>
+        <div class="field"><label class="lbl" for="c-phone">Phone <b class="req">*</b></label><input id="c-phone" name="phone" type="tel" autocomplete="tel" required></div>
+        <div class="field"><label class="lbl" for="c-mail">Email</label><input id="c-mail" name="email" type="email" autocomplete="email"></div>
+        <div class="field"><label class="lbl" for="c-addr">Address</label><input id="c-addr" name="address" maxlength="255"></div>
+      </div>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Close</button><button class="btn primary" type="submit">Save</button></div>
+  </form>
+</dialog>
+{% endif %}
 {% if can_fn('usr.add') or can_fn('usr.edit') %}
 <dialog class="modal" id="usr-dlg" aria-labelledby="usr-title">
   <form method="post" action="{{ url_for('my_user_save') }}" autocomplete="off">
@@ -69,7 +90,7 @@
   </form>
 </dialog>
 {% endif %}
-{% if can_fn('usr.password') %}
+{% if can_fn('usr.password') or can_fn('usr.tech') or can_fn('usr.collector') %}
 <dialog class="modal" id="pw-dlg" aria-labelledby="pw-title">
   <form method="post" action="" id="pw-form" autocomplete="off">
     {{ csrf_input() }}<input type="hidden" name="action">

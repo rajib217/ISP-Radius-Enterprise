@@ -175,7 +175,7 @@ def user_transfer():
     if g.me["role"] not in core.SELLER_ROLES:
         abort(403)
     uid = request.form.get("user_id", "")
-    row = q("SELECT id, username, balance FROM panel_admins WHERE id = %s AND parent_id = %s AND role <> 'technician'",
+    row = q("SELECT id, username, balance FROM panel_admins WHERE id = %s AND parent_id = %s AND role NOT IN ('technician', 'collector')",
             (int(uid), g.me["id"]), one=True) if uid.isdigit() else None
     if not row:
         abort(404)
@@ -239,14 +239,24 @@ def _my_child(aid):
     return q("SELECT * FROM panel_admins WHERE id = %s AND parent_id = %s", (aid, g.me["id"]), one=True) or abort(404)
 
 
-def _my_tech_create(f, name, phone, email, identity, address, username, password):
-    """A reseller / sub-reseller / retailer adds their own technician (My Users > Add technician): a Technician account
-    under them that sees and fixes only their customers (core.seller_boss / my_downline)."""
+# own people a reseller tier adds under My Users: role -> (tick needed, label)
+OWN_STAFF = {"technician": ("usr.tech", "technician"), "collector": ("usr.collector", "bill collector")}
+
+
+def own_key(role):
+    """The tick a reseller tier needs to manage this person below them (their own technician / bill collector)."""
+    return OWN_STAFF[role][0] if role in OWN_STAFF else None
+
+
+def _my_tech_create(f, name, phone, email, identity, address, username, password, role="technician"):
+    """A reseller / sub-reseller / retailer adds their own technician or bill collector (My Users): an account under
+    them that sees and works on only their customers (core.seller_boss / my_downline)."""
     back = url_for("my_users")
-    if not core.can_fn("usr.tech"):
+    key, label = OWN_STAFF[role]
+    if not core.can_fn(key):
         abort(403)
     if not name or not phone or not PHONE_RE.match(phone):
-        flash("Full name and a phone number are required for a technician.", "error")
+        flash("Full name and a phone number are required for a %s." % label, "error")
         return redirect(back)
     if email and (not EMAIL_RE.match(email) or len(email) > 128):
         flash("Check the email address.", "error")
@@ -258,11 +268,11 @@ def _my_tech_create(f, name, phone, email, identity, address, username, password
         flash("That username is taken.", "error")
         return redirect(back)
     insert("INSERT INTO panel_admins (username, full_name, password_hash, role, phone, email, parent_id, created_by, "
-           "is_active, sms_on, email_on, identity, address) VALUES (%s, %s, %s, 'technician', %s, %s, %s, %s, 1, 1, 1, %s, %s)",
-           (username, name, generate_password_hash(password), phone, email, g.me["id"], g.me["username"], identity, address))
-    audit("technician_created", username, "by %s" % g.me["username"])
+           "is_active, sms_on, email_on, identity, address) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 1, 1, 1, %s, %s)",
+           (username, name, generate_password_hash(password), role, phone, email, g.me["id"], g.me["username"], identity, address))
+    audit(role + "_created", username, "by %s" % g.me["username"])
     commit()
-    flash("Technician %s added. They sign in with this username and see only your customers." % username, "success")
+    flash("%s %s added. They sign in with this username and see only your customers." % (label.capitalize(), username), "success")
     return redirect(back)
 
 
@@ -277,9 +287,9 @@ def my_user_save():
     name, phone, email = f.get("full_name", "").strip()[:128], f.get("phone", "").strip(), f.get("email", "").strip()
     identity, address = f.get("identity", "").strip()[:64], f.get("address", "").strip()[:255]
     password, username = f.get("password", ""), f.get("username", "").strip()
-    tech = f.get("kind") == "technician"
-    if tech and not aid:
-        return _my_tech_create(f, name, phone, email, identity, address, username, password)
+    kind = f.get("kind")
+    if kind in OWN_STAFF and not aid:
+        return _my_tech_create(f, name, phone, email, identity, address, username, password, role=kind)
     if not PHONE_RE.match(phone) or (email and (not EMAIL_RE.match(email) or len(email) > 128)):
         flash("Check the phone number and email address.", "error")
         return redirect(back)
@@ -289,7 +299,7 @@ def my_user_save():
         return redirect(back)
     if aid:
         row = _my_child(aid)
-        if not core.can_fn("usr.tech" if row["role"] == "technician" else "usr.edit"):
+        if not core.can_fn(own_key(row["role"]) or "usr.edit"):
             abort(403)
         if password and len(password) < 8:
             flash("Password must be at least 8 characters.", "error")
@@ -347,7 +357,7 @@ def my_user_save():
 @route("/my-users/<int:aid>/toggle", methods=["POST"])
 def my_user_toggle(aid):
     row = _my_child(aid)
-    if not core.can_fn("usr.tech" if row["role"] == "technician" else "usr.edit"):   # own technicians: Add Technicians tick
+    if not core.can_fn(own_key(row["role"]) or "usr.edit"):   # own technicians / collectors: their Add tick
         abort(403)
     x("UPDATE panel_admins SET is_active = 1 - is_active WHERE id = %s", (aid,))
     audit("admin_disabled" if row["is_active"] else "admin_enabled", row["username"], "by %s" % g.me["username"])
@@ -359,7 +369,7 @@ def my_user_toggle(aid):
 @route("/my-users/<int:aid>/password", methods=["POST"])
 def my_user_password(aid):
     row = _my_child(aid)
-    if not core.can_fn("usr.tech" if row["role"] == "technician" else "usr.password"):   # own technicians: Add Technicians tick
+    if not core.can_fn(own_key(row["role"]) or "usr.password"):   # own technicians / collectors: their Add tick
         abort(403)
     new = request.form.get("password", "")
     if len(new) < 8:
@@ -399,7 +409,7 @@ def my_user_delete(aid):
 def my_user_packages(aid):
     """What each person below pays for a package. Only the packages the seller may use, never below the seller's own price."""
     row = _my_child(aid)
-    if row["role"] == "technician":           # a technician sells nothing
+    if row["role"] in OWN_STAFF:              # a technician / bill collector sells nothing
         abort(404)
     u = dict(id=row["id"], username=row["username"], full_name=row["full_name"], role=row["role"], parent_id=g.me["id"])
     mine = core.allowed_plan_ids()
@@ -1079,7 +1089,7 @@ PERM_GROUPS = [  # (tab, icon, modules, note shown when the tab has nothing to s
     ("Package", "layers", ("plans",), ""),
     ("SMS & Email", "mail", ("sms", "email"), ""),
 ]
-ROLE_PARENT = {"admin": "", "manager": "admin", "support": "admin", "accountant": "admin", "technician": "admin",
+ROLE_PARENT = {"admin": "", "manager": "admin", "support": "admin", "accountant": "admin", "technician": "admin", "collector": "admin",
                "reseller": "admin", "subreseller": "reseller", "retailer": "subreseller"}
 
 

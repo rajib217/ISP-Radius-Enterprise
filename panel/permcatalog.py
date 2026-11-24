@@ -49,7 +49,8 @@ TABS = [
         G("Reseller Staff", None, [I("usr.staff", "Module", "Resellers Can Create Their Own Staff", "vn")]),
         G("User Profile", None,
           [I("usr.module", "Module", "", "vn"), I("usr.add", "Add", "Resellers / sub-resellers: create the next tier below them", "no"),
-           I("usr.tech", "Add Technicians", "Resellers / sub-resellers / retailers: add their own technicians, who see and fix only their customers", "n"), I("usr.view", "View", "", "vn"), I("usr.edit", "Edit", "Resellers / sub-resellers: edit, enable and disable the people directly below them", "no"),
+           I("usr.tech", "Add Technicians", "Resellers / sub-resellers / retailers: add their own technicians, who see and fix only their customers", "n"),
+           I("usr.collector", "Add Bill Collectors", "Resellers / sub-resellers / retailers: add their own bill collectors, who take payments from their customers only", "no"), I("usr.view", "View", "", "vn"), I("usr.edit", "Edit", "Resellers / sub-resellers: edit, enable and disable the people directly below them", "no"),
            I("usr.delete", "Delete", "Resellers / sub-resellers: delete someone directly below them who has no users, subscribers or balance", "no"), I("usr.export", "Export", "", "n"), I("usr.photo", "Change Photo", "", "n"),
            I("usr.password", "Change Password", "", "no"), I("usr.role", "Change Role", "", "n"), I("usr.note", "Add Note", "", "n")],
           [I("usr.settings", "Profile Settings", "", "n"),
@@ -178,6 +179,16 @@ TABS = [
         G("Documents", "documents", [I("doc.module", "Module", "", "vg"), I("doc.add", "Add"), I("doc.edit", "Edit", "", "n"),
                                      I("doc.delete", "Delete"), I("doc.export", "Export", "", "vn")]),
     ]},
+    {"title": "Collection", "icon": "wallet", "groups": [
+        G("Bill Collection", None,
+          [I("col.module", "Module", "Bill Collector: the due list and their own collections (বিল কালেকশন)", "vno"),
+           I("col.collect_cash", "Collect Cash / bKash", "Take cash, or a bKash payment typed by hand with its TrxID", "no"),
+           I("col.collect_pos", "Collect by POS", "The bank's own card machine: only the approval code and the last 4 digits are kept", "no"),
+           I("col.receipt", "Print Receipt", "", "vno")],
+          [I("col.deposit", "Deposit Cash", "Hand the cash in hand over to whoever hired them", "no"),
+           I("col.own_report", "Own Report", "Their own daily collections only", "vno"),
+           I("col.remind_sms", "Due Reminder SMS", "Send a customer an SMS about their due", "no")]),
+    ]},
     {"title": "SMS & Email", "icon": "mail", "groups": [
         G("SMS", "sms", [I("sms.module", "Module", "", "vg"), I("sms.send", "Send")]),
         G("Email", "email", [I("mail.module", "Module", "", "vg"), I("mail.send", "Send")]),
@@ -212,8 +223,10 @@ ENDPOINT_FN = {
     "subscribers_bulk": ("sub.mass_settings", "sub.mass_delete", "sub.mass_activation"),
     "subscribers_mass_activate": "sub.mass_activation", "subscribers_mass_payment": "sub.mass_payment",
     "my_users": "usr.module", "user_transfer": "usr.balance",
-    "my_user_save": ("usr.add", "usr.edit", "usr.tech"), "my_user_toggle": ("usr.edit", "usr.tech"),
-    "my_user_password": ("usr.password", "usr.tech"),
+    "my_user_save": ("usr.add", "usr.edit", "usr.tech", "usr.collector"), "my_user_toggle": ("usr.edit", "usr.tech", "usr.collector"),
+    "my_user_password": ("usr.password", "usr.tech", "usr.collector"),
+    "collect": "col.module", "collect_one": ("col.collect_cash", "col.collect_pos"), "collect_remind": "col.remind_sms",
+    "collect_report": "col.own_report", "collect_deposit": "col.deposit",
     "my_user_packages": "usr.pkg_assign", "my_user_delete": "usr.delete",
     "online_disconnect": "onl.disconnect",
     "payments_add": "inv.add", "payment_delete": "inv.reverse", "payments_export": "inv.export",
@@ -274,8 +287,17 @@ ROLE_KEYS = {
         "sub.module", "sub.view", "sub.add", "sub.edit", "sub.disconnect", "sub.reset_mac",
         "onl.module", "onl.disconnect"))),
 }
+# Bill Collector: only these ticks can ever be theirs (see customers and their dues, take payments, tickets and notes);
+# never users, balances, packages, accounting, exports, logs or deleting anything. ROLE_ON: ticked from the start.
+COLLECTOR_KEYS = frozenset((
+    "sub.module", "sub.view", "sub.note", "tk.module", "tk.add", "tk.reply", "tk.update", "note.module", "note.add",
+    "home.notices", "prof.module", "prof.password", "prof.photo",
+    "col.module", "col.collect_cash", "col.collect_pos", "col.receipt", "col.deposit", "col.own_report", "col.remind_sms"))
+ROLE_ON = {"collector": frozenset(("col.module", "col.collect_cash", "col.collect_pos", "col.receipt", "col.deposit",
+                                   "col.own_report"))}
 # ...and ticks such a role never gets, even when ticked on Users > Roles
 ROLE_NEVER = {
+    "collector": frozenset(k for k in KEYS if k not in COLLECTOR_KEYS),
     "technician": frozenset((
         "sub.password", "svc.conn_pw", "sub.username", "sub.delete", "sub.mass_delete", "sub.import", "sub.export",
         "sub.mass_settings", "sub.activation", "sub.mass_activation", "sub.migration", "sub.custom_expiry", "sub.expiry", "sub.grace",
@@ -297,6 +319,8 @@ def role_locked_keys(role, locked_modules=()):
 def default_on(key, perms, role_is_seller, role=None):
     """Whether a key is ticked for a role that has nothing saved yet, from the older per-module levels."""
     mod, flags = KEY_INFO[key]
+    if key in ROLE_ON.get(role, ()):
+        return True
     special = ROLE_KEYS.get(role)
     if (special and key.startswith(special[0]) and key not in special[1]) or key in ROLE_NEVER.get(role, ()):
         return False
