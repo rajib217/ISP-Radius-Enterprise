@@ -2,7 +2,8 @@
 {% from "_macros.html" import icon, simple_pager %}
 {% block title %}Sessions{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Logs</h1><p class="sub">Every PPPoE session RADIUS has recorded, newest first.</p></div></div>
+<div class="page-head"><div><h1>Logs</h1><p class="sub">Every PPPoE session RADIUS has recorded, newest first.</p></div>
+  {% if can_fn('log.sess_x') %}<div class="actions"><a class="btn" href="{{ url_for('logs_sessions_export', q=request.args.get('q') or None) }}">{{ icon('download') }}CSV</a></div>{% endif %}</div>
 <section class="panel">
   {% include "_logs_tabs.html" %}
   <form class="filters" method="get">

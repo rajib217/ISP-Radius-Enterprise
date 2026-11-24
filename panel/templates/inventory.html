@@ -4,9 +4,10 @@
 {% block content %}
 <div class="page-head">
   <div><h1>{{ 'Low stock' if low else 'Inventory' }}</h1><p class="sub">{{ '{:,}'.format(tot.c) }} item{{ '' if tot.c == 1 else 's' }} · stock worth {{ currency }} {{ tot.stock_value|money }}{% if tot.low and not low %} · <a href="{{ url_for('inventory', low=1) }}">{{ tot.low }} low</a>{% endif %}</p></div>
-  {% if can('inventory', 'edit') %}<div class="actions">
-    <button class="btn" data-open="move-dlg" data-new>{{ icon('refresh') }}Move stock</button>
-    <button class="btn primary" data-open="item-dlg" data-new>{{ icon('plus') }}New item</button></div>{% endif %}
+  <div class="actions">
+    {% if can_fn('itm.export') %}<a class="btn" href="{{ url_for('inventory_export') }}">{{ icon('download') }}CSV</a>{% endif %}
+    {% if can('inventory', 'edit') %}<button class="btn" data-open="move-dlg" data-new>{{ icon('refresh') }}Move stock</button>
+    <button class="btn primary" data-open="item-dlg" data-new>{{ icon('plus') }}New item</button>{% endif %}</div>
 </div>
 <section class="panel">
   <form class="filters panel-body" method="get" style="padding-bottom:0">

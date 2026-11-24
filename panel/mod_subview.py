@@ -76,6 +76,8 @@ def context(sub, sessions):
                                                 (user,))]
     out["last_activation"] = q("SELECT paid_at FROM payments WHERE subscriber_id = %s AND days_added > 0 "
                                "ORDER BY id DESC LIMIT 1", (sid,), one=True)
+    import mod_extras
+    out["revert"] = mod_extras.revertable(sid) if core.can_fn("sub.revert") else None
     out["isp_name"] = core.cfg()["isp_name"]
     out["interim_min"] = round(int(core.cfg()["interim_interval"] or 0) / 60, 2)
     return out

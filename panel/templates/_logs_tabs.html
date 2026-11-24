@@ -1,6 +1,7 @@
 <div class="tabs">
-  <a class="{{ 'on' if endpoint == 'logs' and request.args.get('tab') != 'activity' }}" href="{{ url_for('logs') }}">Login attempts</a>
-  <a class="{{ 'on' if endpoint == 'logs' and request.args.get('tab') == 'activity' }}" href="{{ url_for('logs', tab='activity') }}">Panel activity</a>
-  <a class="{{ 'on' if endpoint == 'logs_sessions' }}" href="{{ url_for('logs_sessions') }}">Sessions</a>
+  {% if can_fn('log.login') %}<a class="{{ 'on' if endpoint == 'logs' and request.args.get('tab') != 'activity' }}" href="{{ url_for('logs') }}">Login attempts</a>{% endif %}
+  {% if can_fn('log.act') %}<a class="{{ 'on' if endpoint == 'logs' and request.args.get('tab') == 'activity' }}" href="{{ url_for('logs', tab='activity') }}">Panel activity</a>{% endif %}
+  {% if can_fn('log.sess') %}<a class="{{ 'on' if endpoint == 'logs_sessions' }}" href="{{ url_for('logs_sessions') }}">Sessions</a>{% endif %}
+  {% if can_fn('log.pgw') and me.role not in ('reseller', 'subreseller', 'retailer') %}<a class="{{ 'on' if endpoint == 'pgw_log' }}" href="{{ url_for('pgw_log') }}">Payment gateway</a>{% endif %}
   {% if can(('sms', 'email')) %}<a href="{{ url_for('messages') }}">Messages</a>{% endif %}
 </div>

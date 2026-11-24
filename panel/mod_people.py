@@ -367,7 +367,8 @@ def my_user_packages(aid):
     row = _my_child(aid)
     u = dict(id=row["id"], username=row["username"], full_name=row["full_name"], role=row["role"], parent_id=g.me["id"])
     mine = core.allowed_plan_ids()
-    return _packages_page(u, "my_user_packages", allowed=mine if mine is not None else None, back=url_for("my_users"))
+    return _packages_page(u, "my_user_packages", allowed=mine if mine is not None else None, back=url_for("my_users"),
+                          profit_ok=core.can_fn("pkg.profit"))
 
 
 # ===================================================================== Users
@@ -584,7 +585,7 @@ def _money_in(text):
     return v if 0 <= v < 10 ** 8 else None
 
 
-def _packages_page(u, endpoint, allowed=None, back=None):
+def _packages_page(u, endpoint, allowed=None, back=None, profit_ok=True):
     """Price list for one user (shared by the admin page and by a seller pricing their own downline)."""
     aid = u["id"]
     plans = q("SELECT id, label, name, price FROM plans ORDER BY download_mbps, label")
@@ -604,8 +605,12 @@ def _packages_page(u, endpoint, allowed=None, back=None):
             if raw == "":
                 continue
             price = _money_in(raw)
-            sp = _money_in(request.form.get("sp_%d" % p["id"], "0") or "0")
-            rp = _money_in(request.form.get("rp_%d" % p["id"], "0") or "0")
+            if profit_ok:
+                sp = _money_in(request.form.get("sp_%d" % p["id"], "0") or "0")
+                rp = _money_in(request.form.get("rp_%d" % p["id"], "0") or "0")
+            else:                    # My Packages > Manage Profit not ticked: the profits stay as they are
+                old = mine.get(p["id"]) or {}
+                sp, rp = float(old.get("sub_profit") or 0), float(old.get("subreseller_profit") or 0)
             if price is None or sp is None or rp is None or (p["min"] is not None and price < p["min"]):
                 bad.append(p["title"])
                 continue
@@ -634,7 +639,7 @@ def _packages_page(u, endpoint, allowed=None, back=None):
         p["v_sp"] = "0" if not r else "%g" % float(r["sub_profit"] or 0)
         p["v_rp"] = "0" if not r else "%g" % float(r["subreseller_profit"] or 0)
     return render_template("admin_packages.html", u=u, plans=plans, ptype=_ptype(u["role"]), back_url=back,
-                           label=dict(core.role_list()).get(u["role"], u["role"]))
+                           label=dict(core.role_list()).get(u["role"], u["role"]), profit_ok=profit_ok)
 
 
 @route("/admins/<int:aid>/packages", methods=["GET", "POST"])
@@ -807,6 +812,10 @@ def admin_save():
                      (username, name or username, generate_password_hash(password), role, phone, email, dept, zone,
                       parent, g.me["username"], is_active, sms_on, email_on, identity, country, province, city, address, cap))
         audit("admin_created", username)
+    if "max_subs" in f and core.can_fn("usr.sublimit"):       # Subscriber Limitation
+        subs_cap, subs_ok = _limit_in(f.get("max_subs"))
+        if subs_ok:
+            x("UPDATE panel_admins SET max_subs = %s WHERE id = %s", (subs_cap if role in core.SELLER_ROLES else None, aid))
     if role == "admin":
         x("DELETE FROM user_plans WHERE user_id = %s", (aid,))
     commit()
@@ -948,7 +957,7 @@ def profile_photo():
 @route("/profile/photo/save", methods=["POST"])
 def profile_photo_save():
     """Everyone (admin, staff, reseller, sub-reseller, retailer) sets their own picture on My Profile."""
-    if not core.can_fn("prof.edit"):
+    if not core.can_fn("prof.photo"):          # My Profile > Change Photo
         abort(403)
     _save_photo(g.me["id"], g.me["username"])
     return redirect(url_for("profile"))

@@ -4,7 +4,7 @@
 {% block content %}
 <div class="page-head">
   <div><h1>Documents</h1><p class="sub">Agreements, ID copies, invoices and photos, kept safely on the server.</p></div>
-  {% if can('documents', 'edit') %}<div class="actions"><button class="btn primary" data-open="doc-dlg" data-new>{{ icon('upload') }}Upload document</button></div>{% endif %}
+  <div class="actions">{% if can_fn('doc.export') %}<a class="btn" href="{{ url_for('documents_export') }}">{{ icon('download') }}CSV</a>{% endif %}{% if can('documents', 'edit') %}<button class="btn primary" data-open="doc-dlg" data-new>{{ icon('upload') }}Upload document</button>{% endif %}</div>
 </div>
 <section class="panel">
   <form class="filters panel-body" method="get" style="padding-bottom:0">

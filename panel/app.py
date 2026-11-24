@@ -741,7 +741,8 @@ def subscribers():
                                           % ",".join(["%s"] * len(dl)), list(dl)) if dl else [])
     nas_rows = q("SELECT id, shortname, nasname FROM nas ORDER BY shortname") if dl is None else []
     keep = {k: v for k, v in request.args.items() if k != "page"}
-    return render_template("subscribers.html", rows=rows, pg=pg, plans=plans,
+    import mod_extras
+    return render_template("subscribers.html", rows=rows, pg=pg, plans=plans, transfer_to=mod_extras.transfer_targets(),
                            act_plans=core.filter_plans(q("SELECT * FROM plans ORDER BY download_mbps, label")), areas=areas, sellers=sellers,
                            sales=sales, nas_rows=nas_rows,
                            roles=core.role_labels(), keep=keep, sort=sort, direction=direction.lower(),
@@ -875,6 +876,11 @@ def subscriber_new():
             flash("That PPPoE request is gone or the username is already a customer.", "warn")
     if request.method == "POST":
         form, errors = read_sub_form(request.form, creating=True)
+        if g.me["role"] in core.SELLER_ROLES:          # Subscriber Limitation (panel_admins.max_subs)
+            import mod_extras
+            full = mod_extras.room_for(g.me["username"])
+            if full:
+                errors["username"] = "No room for a new customer: " + full
         if not errors.get("username") and (
                 q("SELECT 1 AS x FROM subscribers WHERE username = %s", (form["username"],), one=True)
                 or q("SELECT 1 AS x FROM radcheck WHERE username = %s LIMIT 1", (form["username"],), one=True)):
@@ -1041,7 +1047,8 @@ def subscriber_renew(sid):
         insert("INSERT INTO sub_ledger (subscriber_id, amount, balance_after, note, created_by) VALUES (%s, %s, %s, %s, %s)",
                (sid, -amount, round(have - amount, 2), "Renewal +%d days" % days, g.me["username"]))
         method = "balance"
-    new_expiry = mod_subs.do_renew(sub, days, amount, method, request.form.get("note", ""))
+    new_expiry = mod_subs.do_renew(sub, days, amount, method, request.form.get("note", ""),
+                                   from_balance=amount if method == "balance" else 0)
     audit("renewed", sub["username"], "+%d days, %s" % (days, amount))
     commit()
     flash("Renewed until %s." % new_expiry.strftime("%d %b %Y"), "success")
@@ -1194,7 +1201,7 @@ def subscribers_bulk():
     ids = [int(i) for i in request.form.getlist("ids") if i.isdigit()][:1000]
     action = request.form.get("action", "")
     back = safe_next(request.form.get("next")) or url_for("subscribers")
-    if not ids or action not in ("suspend", "activate", "plan", "extend", "delete", "renew", "grace", "unbind", "settings"):
+    if not ids or action not in ("suspend", "activate", "plan", "extend", "delete", "renew", "grace", "unbind", "settings", "transfer"):
         flash("Select at least one subscriber and an action.", "warn")
         return redirect(back)
     if action == "delete" and g.me["role"] != "admin":
@@ -1204,6 +1211,15 @@ def subscribers_bulk():
     names = core.my_downline()
     if names is not None:
         subs = [s for s in subs if s["created_by"] in names]
+    if action == "transfer":                 # Users > Roles > User Profile > Transfer Subscribers
+        import mod_extras
+        moved, why = mod_extras.transfer(subs, request.form.get("to_user", ""))
+        if why:
+            flash(why, "error")
+        else:
+            commit()
+            flash("%d customer%s moved to %s." % (moved, "" if moved == 1 else "s", request.form.get("to_user")), "success")
+        return redirect(back)
     plan = None
     if action == "plan" and not core.can_fn("svc.packages"):
         flash("You are not allowed to change packages here.", "error")
@@ -1596,6 +1612,11 @@ def reload_radius():
 @app.route("/logs")
 def logs():
     tab = "activity" if request.args.get("tab") == "activity" else "auth"
+    # Activity Logs and Login Logs each have their own Module tick
+    if not core.can_fn("log.act" if tab == "activity" else "log.login"):
+        if tab == "auth" and core.can_fn("log.act"):
+            return redirect(url_for("logs", tab="activity"))
+        abort(403)
     try:
         page = max(int(request.args.get("page", 1)), 1)
     except ValueError:
@@ -1738,6 +1759,7 @@ import mod_field  # noqa: E402,F401
 import mod_ops  # noqa: E402,F401
 import mod_support  # noqa: E402,F401
 import mod_staffpush  # noqa: E402,F401
+import mod_extras  # noqa: E402,F401
 
 core.attach(app)
 

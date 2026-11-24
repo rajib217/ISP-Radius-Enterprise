@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Login link{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Login link</h1><p class="sub"><a href="{{ url_for('subscriber_view', sid=sub.id) }}">{{ sub.full_name or sub.username }}</a> &middot; works once, for {{ hours }} hours</p></div></div>
+<section class="panel" style="max-width:720px"><div class="panel-body stack">
+  {% if sent %}<div class="notice ok">{{ icon('check') }}<div><strong>Sent by SMS to {{ sub.phone }}.</strong></div></div>{% endif %}
+  <p style="margin:0">Give this link to the customer (WhatsApp, Messenger, SMS). Opening it signs them in to their portal without the password. Anyone with the link can use it, so share it only with the customer.</p>
+  <div class="row-gap"><input class="mono" value="{{ link }}" readonly id="lk" style="flex:1;min-width:0" onclick="this.select()"><button class="btn primary" type="button" data-copy="lk">{{ icon('copy') }}Copy</button></div>
+  <div><a class="btn" href="{{ url_for('subscriber_view', sid=sub.id) }}">Back to the customer</a></div>
+</div></section>
+{% endblock %}

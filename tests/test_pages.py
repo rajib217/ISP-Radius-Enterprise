@@ -2620,6 +2620,165 @@ def check_rules(flask_app, ids):
           and _net_off == 403 and _still_on == 0,
           "subscriber page: Why Refused shows a reseller only their own customers; a balance never goes below zero; "
           "Due includes an expired package; turning the internet off needs Disable Net")
+    # side menu: Monthly statement sits under Accounting (after Dues), no longer under Users
+    _hm = adm.get("/").get_data(as_text=True)
+    _i_dues, _i_st, _i_users = _hm.find('href="/dues"'), _hm.find('href="/statements"'), _hm.find('href="/admins"')
+    _acct_end = _hm.find('href="/inventory"')
+    _st_support = st.get("/statements").status_code
+    check(_i_dues != -1 and _i_dues < _i_st and (_acct_end == -1 or _i_st < _acct_end) and _hm.count('href="/statements"') == 1
+          and _st_support == 200,
+          "side menu: Monthly statement is under Accounting (once), and Accounting users can open it")
+
+    # ================= permission ticks that used to do nothing
+    def rf(role, **keys):
+        for k, v in keys.items():
+            run("INSERT INTO role_funcs (role, fkey, allowed) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE allowed = VALUES(allowed)",
+                (role, k.replace("__", "."), 1 if v else 0))
+    _snap_rf = run_q("SELECT role, fkey, allowed FROM role_funcs WHERE role IN ('support', 'reseller')")
+    # a group's Module switch off turns the whole group off (Manage Invoices > View alone opens nothing)
+    rf("support", inv__module=0, pay__module=0, inv__view=1)
+    _pay_gate = st.get("/payments").status_code
+    rf("support", pay__module=1)
+    _pay_ok = st.get("/payments").status_code
+    # logs: each log page its own tick
+    rf("support", log__login=1, log__act=0, log__sess=0)
+    _lg = [st.get(u).status_code for u in ("/logs", "/logs?tab=activity", "/logs/sessions")]
+    # My Profile > Change Photo
+    rf("reseller", prof__photo=0)
+    _ph_off = _rc2.post("/profile/photo/save", data={"_csrf": "ci", "remove": "1"}).status_code
+    rf("reseller", prof__photo=1)
+    _ph_on = _rc2.post("/profile/photo/save", data={"_csrf": "ci", "remove": "1"}).status_code
+    # Custom Expiry - Disable Time hides the time box (never for the administrator)
+    rf("reseller", sub__custom_expiry_nt=1)
+    _act_r = _rc2.get("/subscribers/activation").get_data(as_text=True)
+    _act_a = adm.get("/subscribers/activation").get_data(as_text=True)
+    # Mid-Period Package Change
+    _other = one("SELECT up.plan_id FROM user_plans up WHERE up.user_id = %s AND up.plan_id <> (SELECT plan_id FROM subscribers "
+                 "WHERE id = %s) LIMIT 1", (ids["reseller"], _rsub["id"]))
+    run("UPDATE subscribers SET expiry_date = CURDATE() + INTERVAL 10 DAY, status = 'active' WHERE id = %s", (_rsub["id"],))
+    import mod_subs as _ms
+    _mid = None
+    if _other:
+        with flask_app.test_request_context("/"):
+            from flask import g as _fg
+            import core as _core
+            _fg.me = one("SELECT id, username, full_name, role, is_active, balance, photo FROM panel_admins WHERE id = %s", (ids["reseller"],))
+            _fg.perms = _core.load_perms("reseller")
+            _fg.funcs = _core.load_funcs("reseller", _fg.perms)
+            _sr = one("SELECT * FROM subscribers WHERE id = %s", (_rsub["id"],))
+            _mid = _ms.activate_one(_sr, one("SELECT * FROM plans WHERE id = %s", (_other["plan_id"],)), 30, False, "cash", 0)
+            _core.get_db().rollback()
+    # Manage Profit: off = the profits stay as they were
+    _sub_user = one("SELECT id, username FROM panel_admins WHERE id = %s", (ids["subreseller"],))
+    _rp_plan = one("SELECT up.plan_id, up.price FROM user_plans up WHERE up.user_id = %s AND up.price IS NOT NULL LIMIT 1", (ids["reseller"],))
+    _prof_off = _prof_on = None
+    if _rp_plan:
+        rf("reseller", pkg__profit=0)
+        _rc2.post("/my-users/%d/packages" % _sub_user["id"], data={"_csrf": "ci", "price_%d" % _rp_plan["plan_id"]: str(_rp_plan["price"]),
+                                                                    "sp_%d" % _rp_plan["plan_id"]: "99"})
+        _prof_off = one("SELECT sub_profit FROM user_plans WHERE user_id = %s AND plan_id = %s", (_sub_user["id"], _rp_plan["plan_id"]))
+        rf("reseller", pkg__profit=1)
+        _rc2.post("/my-users/%d/packages" % _sub_user["id"], data={"_csrf": "ci", "price_%d" % _rp_plan["plan_id"]: str(_rp_plan["price"]),
+                                                                    "sp_%d" % _rp_plan["plan_id"]: "99"})
+        _prof_on = one("SELECT sub_profit FROM user_plans WHERE user_id = %s AND plan_id = %s", (_sub_user["id"], _rp_plan["plan_id"]))
+    run("DELETE FROM role_funcs WHERE role IN ('support', 'reseller')")
+    for r in _snap_rf:
+        run("INSERT INTO role_funcs (role, fkey, allowed) VALUES (%s, %s, %s)", (r["role"], r["fkey"], r["allowed"]))
+    check(_pay_gate == 403 and _pay_ok == 200 and _lg == [200, 403, 403] and _ph_off == 403 and _ph_on == 302
+          and '<div class="field" hidden><label class="lbl" for="act-exp-time">' in _act_r
+          and '<div class="field" ><label class="lbl" for="act-exp-time">' in _act_a
+          and (_mid is None or (not _mid["ok"] and "Mid-Period Package Change" in _mid["error"]))
+          and (_prof_off is None or float(_prof_off["sub_profit"] or 0) != 99) and (_prof_on is None or float(_prof_on["sub_profit"]) == 99),
+          "permission ticks now work: a group's Module off closes the group; each log page has its own tick; Change Photo; "
+          "Disable Time hides the time box; Mid-Period Package Change; Manage Profit")
+
+    # ================= new features behind ticks
+    # Transfer Subscribers + Subscriber Limitation
+    run("INSERT INTO tickets (subscriber_id, username, subject, status, created_by, seller) VALUES (%s, %s, 'ci-transfer-ticket', 'open', 'admin', '')",
+        (_asub["id"], _asub["username"]))
+    _old_owner = one("SELECT created_by FROM subscribers WHERE id = %s", (_asub["id"],))["created_by"]
+    _tr = adm.post("/subscribers/bulk", data={"_csrf": "ci", "action": "transfer", "to_user": _rname, "ids": [str(_asub["id"])]})
+    _tr_owner = one("SELECT created_by FROM subscribers WHERE id = %s", (_asub["id"],))["created_by"]
+    _tr_tk = one("SELECT seller FROM tickets WHERE subject = 'ci-transfer-ticket'")["seller"]
+    _cnt = one("SELECT COUNT(*) AS c FROM subscribers WHERE created_by = %s", (_rname,))["c"]
+    run("UPDATE panel_admins SET max_subs = %s WHERE id = %s", (_cnt, ids["reseller"]))
+    _spare = one("SELECT id FROM subscribers WHERE created_by = %s AND id <> %s LIMIT 1", (_old_owner, _asub["id"]))
+    _tr2 = adm.post("/subscribers/bulk", data={"_csrf": "ci", "action": "transfer", "to_user": _rname, "ids": [str(_spare["id"])]},
+                    follow_redirects=True).get_data(as_text=True) if _spare else ""
+    _spare_owner = one("SELECT created_by FROM subscribers WHERE id = %s", (_spare["id"],))["created_by"] if _spare else None
+    _new_full = _rc2.post("/subscribers/new", data={"_csrf": "ci", "username": "ci.over.limit", "password": "pass1234", "phone": "",
+                                                    "status": "active"}).get_data(as_text=True)
+    run("UPDATE panel_admins SET max_subs = NULL WHERE id = %s", (ids["reseller"],))
+    _tr_res = _rc2.post("/subscribers/bulk", data={"_csrf": "ci", "action": "transfer", "to_user": _sub_user["username"],
+                                                   "ids": [str(_asub["id"])]}).status_code
+    adm.post("/subscribers/bulk", data={"_csrf": "ci", "action": "transfer", "to_user": _old_owner, "ids": [str(_asub["id"])]})
+    check(_tr.status_code == 302 and _tr_owner == _rname and _tr_tk == _rname and (not _spare or (_spare_owner == _old_owner and "at most" in _tr2))
+          and "No room for a new customer" in _new_full and _tr_res == 403
+          and one("SELECT created_by FROM subscribers WHERE id = %s", (_asub["id"],))["created_by"] == _old_owner,
+          "Transfer Subscribers: moves customers (and their open tickets) to another reseller; off for resellers unless ticked; "
+          "Subscriber Limitation stops transfers and new customers past the limit")
+    # Login Link
+    _ll = adm.post("/subscribers/%d/login-link" % _asub["id"], data={"_csrf": "ci"}).get_data(as_text=True)
+    _tok = re.search(r"/portal/link/([A-Za-z0-9_\-]+)", _ll)
+    _pc2 = flask_app.test_client()
+    _l1 = _pc2.get("/portal/link/%s" % _tok.group(1)) if _tok else None
+    with _pc2.session_transaction() as _s2:
+        _cid = _s2.get("cid")
+    _pc3 = flask_app.test_client()
+    _l2 = _pc3.get("/portal/link/%s" % _tok.group(1)) if _tok else None
+    check(bool(_tok) and _l1.status_code == 302 and _l1.headers["Location"].endswith("/portal") and _cid == _asub["id"]
+          and _l2.status_code == 302 and "/portal/login" in _l2.headers["Location"]
+          and one("SELECT COUNT(*) AS c FROM portal_login_links WHERE subscriber_id = %s AND used_at IS NOT NULL", (_asub["id"],))["c"] >= 1,
+          "Login Link: a one-time link signs the customer in to the portal once; a second use goes to the login page")
+    # Revert Last Invoice (office renewal, then a reseller's renewal with its cost refunded)
+    run("UPDATE subscribers SET expiry_date = CURDATE() + INTERVAL 5 DAY, status = 'active', balance = 0 WHERE id = %s", (_asub["id"],))
+    _e_before = one("SELECT expiry_date FROM subscribers WHERE id = %s", (_asub["id"],))["expiry_date"]
+    adm.post("/subscribers/%d/renew" % _asub["id"], data={"_csrf": "ci", "days": "30", "amount": "100"})
+    _pay = one("SELECT * FROM payments WHERE subscriber_id = %s ORDER BY id DESC LIMIT 1", (_asub["id"],))
+    _svr = adm.get("/subscribers/%d" % _asub["id"]).get_data(as_text=True)
+    _rv = adm.post("/subscribers/%d/revert" % _asub["id"], data={"_csrf": "ci", "payment_id": str(_pay["id"])})
+    _e_after = one("SELECT expiry_date FROM subscribers WHERE id = %s", (_asub["id"],))["expiry_date"]
+    _gone = not one("SELECT id FROM payments WHERE id = %s", (_pay["id"],))
+    run("UPDATE panel_admins SET balance = 1000 WHERE id = %s", (ids["reseller"],))
+    run("UPDATE subscribers SET expiry_date = CURDATE() + INTERVAL 5 DAY, status = 'active' WHERE id = %s", (_rsub["id"],))
+    _rc2.post("/subscribers/%d/renew" % _rsub["id"], data={"_csrf": "ci", "days": "30", "amount": "0"})
+    _b_mid = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
+    _rpay = one("SELECT id FROM payments WHERE subscriber_id = %s ORDER BY id DESC LIMIT 1", (_rsub["id"],))
+    _rv_res = _rc2.post("/subscribers/%d/revert" % _rsub["id"], data={"_csrf": "ci", "payment_id": str(_rpay["id"])}).status_code
+    adm.post("/subscribers/%d/revert" % _rsub["id"], data={"_csrf": "ci", "payment_id": str(_rpay["id"])})
+    _b_back = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
+    check(_pay["prev_expiry"] == _e_before and "Revert Last Invoice" in _svr and _rv.status_code == 302 and _e_after == _e_before and _gone
+          and _b_mid < 1000 and _rv_res == 403 and _b_back == 1000,
+          "Revert Last Invoice: the last renewal is undone (expiry back, payment removed, the reseller's cost refunded); off for "
+          "resellers unless ticked")
+    # exports and the payment gateway log
+    _ex = [adm.get(u) for u in ("/logs/export.csv?tab=activity", "/logs/export.csv", "/logs/sessions.csv", "/documents/export.csv",
+                                "/inventory/export.csv", "/cashflow/categories.csv", "/logs/payments?csv=1")]
+    _pg = adm.get("/logs/payments").get_data(as_text=True)
+    _ex_res = _rc2.get("/logs/payments").status_code
+    check(all(r.status_code == 200 and r.mimetype == "text/csv" for r in _ex) and "Payment gateway" in _pg and _ex_res == 403,
+          "exports: logs, sessions, documents, inventory and cashflow categories as CSV; payment gateway log for the office")
+    # invoice (extra charge) mass actions
+    run("INSERT INTO sub_charges (subscriber_id, name, amount, created_by) VALUES (%s, 'ci-mass-fee', 77, 'admin')", (_asub["id"],))
+    _chid = one("SELECT id FROM sub_charges WHERE name = 'ci-mass-fee'")["id"]
+    adm.post("/subscribers/charges/bulk", data={"_csrf": "ci", "action": "paid", "ids": [str(_chid)]})
+    _c1 = one("SELECT paid FROM sub_charges WHERE id = %s", (_chid,))["paid"]
+    _p1 = one("SELECT COUNT(*) AS c FROM payments WHERE subscriber_id = %s AND note = 'Extra fee: ci-mass-fee'", (_asub["id"],))["c"]
+    adm.post("/subscribers/charges/bulk", data={"_csrf": "ci", "action": "unpaid", "ids": [str(_chid)]})
+    _c2 = one("SELECT paid FROM sub_charges WHERE id = %s", (_chid,))["paid"]
+    _p2 = one("SELECT COUNT(*) AS c FROM payments WHERE subscriber_id = %s AND note = 'Extra fee: ci-mass-fee'", (_asub["id"],))["c"]
+    adm.post("/subscribers/charges/bulk", data={"_csrf": "ci", "action": "delete", "ids": [str(_chid)]})
+    _chp = adm.get("/subscribers/charges").get_data(as_text=True)
+    check(_c1 == 1 and _p1 == 1 and _c2 == 0 and _p2 == 0 and not one("SELECT id FROM sub_charges WHERE id = %s", (_chid,))
+          and "data-ch-all" in _chp,
+          "invoice mass actions: tick charges, mark paid (payment recorded), mark unpaid (payment removed) or delete")
+    # User Packages > Delete
+    _rm_used = adm.post("/admins/%d/packages/%d/remove" % (ids["reseller"], one("SELECT plan_id FROM subscribers WHERE id = %s", (_rsub["id"],))["plan_id"]),
+                        data={"_csrf": "ci"}, follow_redirects=True).get_data(as_text=True)
+    adm.post("/admins/%d/packages/%d/remove" % (ids["reseller"], _ppid), data={"_csrf": "ci"})
+    _rm_gone = not one("SELECT plan_id FROM user_plans WHERE user_id = %s AND plan_id = %s", (ids["reseller"], _ppid))
+    check("Not removed" in _rm_used and _rm_gone,
+          "User Packages > Delete: removes a package from a user, not while their customers use it")
     return bad
 
 

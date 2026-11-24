@@ -11,7 +11,7 @@
 </section>
 
 <div class="split-even" style="margin-top:16px">
-  {% if can_fn('prof.edit') %}<section class="panel">
+  {% if can_fn('prof.photo') %}<section class="panel">
     <div class="panel-head"><h2>Profile picture</h2></div>
     <form class="panel-body stack" method="post" action="{{ url_for('profile_photo_save') }}" enctype="multipart/form-data">
       {{ csrf_input() }}

@@ -16,9 +16,18 @@
     <button class="btn" type="submit">Search</button>
   </form>
   {% if rows %}
+  {% set cbulk = can_fn('inv.mark_paid') or can_fn('inv.mass_status') or can_fn('inv.mass_delete') %}
+  {% if cbulk %}<form id="chBulk" method="post" action="{{ url_for('charges_bulk') }}" class="dues-bar panel-body">
+    {{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path }}">
+    <span><b data-ch-count>0</b> ticked</span>
+    {% if can_fn('inv.mark_paid') %}<button class="btn sm primary" type="submit" name="action" value="paid" data-ch-btn disabled data-confirm="Mark the ticked unpaid charges paid and record the payments?">{{ icon('check') }}Mark paid</button>{% endif %}
+    {% if can_fn('inv.mass_status') %}<button class="btn sm" type="submit" name="action" value="unpaid" data-ch-btn disabled data-confirm="Mark the ticked paid charges unpaid again (their recorded payments are removed)?">Mark unpaid</button>{% endif %}
+    {% if can_fn('inv.mass_delete') %}<button class="btn sm danger" type="submit" name="action" value="delete" data-ch-btn disabled data-confirm="Delete the ticked charges?">{{ icon('trash') }}Delete</button>{% endif %}
+  </form>{% endif %}
   <div class="tbl-wrap"><table class="tbl">
-    <thead><tr><th>Date</th><th>Customer</th><th>Charge</th><th class="num">Amount</th><th>Status</th><th class="hide-sm">Added by</th><th></th></tr></thead>
+    <thead><tr>{% if cbulk %}<th class="chk"><input type="checkbox" data-ch-all aria-label="Tick all"></th>{% endif %}<th>Date</th><th>Customer</th><th>Charge</th><th class="num">Amount</th><th>Status</th><th class="hide-sm">Added by</th><th></th></tr></thead>
     <tbody>{% for r in rows %}<tr>
+      {% if cbulk %}<td class="chk"><input type="checkbox" name="ids" value="{{ r.id }}" form="chBulk" data-ch-id aria-label="Tick charge {{ r.id }}"></td>{% endif %}
       <td class="nowrap" data-card="key">{{ r.created_at|d }}</td>
       <td data-card="title"><a href="{{ url_for('subscriber_view', sid=r.subscriber_id) }}"><b class="mono">{{ r.username }}</b></a><small style="display:block" class="muted">{{ r.full_name or '' }}</small></td>
       <td data-card="key">{{ r.name }}{% if r.note %}<small style="display:block" class="muted">{{ r.note }}</small>{% endif %}</td>
@@ -50,3 +59,11 @@
 </dialog>
 {% endif %}
 {% endblock %}
+{% block scripts %}<script>
+(function () {
+  var all = document.querySelector("[data-ch-all]"), boxes = document.querySelectorAll("[data-ch-id]"), c = document.querySelector("[data-ch-count]");
+  function upd() { var n = 0; boxes.forEach(function (b) { if (b.checked) n++; }); if (c) c.textContent = n; document.querySelectorAll("[data-ch-btn]").forEach(function (b) { b.disabled = !n; }); }
+  if (all) all.addEventListener("change", function () { boxes.forEach(function (b) { b.checked = all.checked; }); upd(); });
+  boxes.forEach(function (b) { b.addEventListener("change", upd); }); upd();
+})();
+</script>{% endblock %}

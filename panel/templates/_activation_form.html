@@ -33,7 +33,7 @@
     <div class="actbox" id="act-exp-box" hidden>
       <div class="grid2">
         <div class="field"><label class="lbl" for="act-exp">Expiry date <b class="req">*</b></label><input id="act-exp" name="expiry" type="date" disabled></div>
-        <div class="field"><label class="lbl" for="act-exp-time">Expiry time</label><input id="act-exp-time" name="expiry_time" type="time" step="60" disabled></div>
+        <div class="field" {{ 'hidden' if me.role != 'admin' and can_fn('sub.custom_expiry_nt') }}><label class="lbl" for="act-exp-time">Expiry time</label><input id="act-exp-time" name="expiry_time" type="time" step="60" disabled></div>
       </div>
       <div class="help">The customer is active until this date and time. The date must be after today, or after the current expiry if that is later.</div>
     </div>

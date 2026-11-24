@@ -51,7 +51,11 @@
       <option value="plan">Change plan</option>
       <option value="grace">Grace period</option>
       <option value="unbind">Remove MAC binding</option>
+      {% if transfer_to %}<option value="transfer">Transfer to…</option>{% endif %}
     </select>
+    {% if transfer_to %}<select name="to_user" data-for="transfer" class="hide" aria-label="Transfer to">
+      {% for t in transfer_to %}<option value="{{ t.username }}">{{ t.username }}{% if t.full_name %} ({{ t.full_name }}){% endif %} · {{ 'Office' if t.role == 'admin' else t.role }}</option>{% endfor %}
+    </select>{% endif %}
     <select name="plan_id" data-for="plan" class="hide" aria-label="New plan">
       {% for p in plans %}<option value="{{ p.id }}">{{ p.label }}</option>{% endfor %}
     </select>
@@ -285,7 +289,7 @@
         <label class="mass-toggle"><span class="switch"><input type="checkbox" name="custom" data-custom-toggle><i></i></span>Enable</label></div>
       <div class="grid2" data-custom-fields hidden>
         <div class="field"><label class="lbl" for="ma-exp">Expiry date</label><input id="ma-exp" name="expiry" type="date"><div class="help">Must be after each customer's current expiry; the price is pro-rated.</div></div>
-        <div class="field"><label class="lbl" for="ma-time">Expiry time</label><input id="ma-time" name="expiry_time" type="time"></div>
+        <div class="field" {{ 'hidden' if me.role != 'admin' and can_fn('sub.custom_expiry_nt') }}><label class="lbl" for="ma-time">Expiry time</label><input id="ma-time" name="expiry_time" type="time"></div>
       </div>
       {% endif %}
       <div class="field"><label class="lbl">Selected Subscribers <b class="req">*</b></label><textarea rows="2" readonly data-ids-label></textarea></div>

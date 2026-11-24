@@ -92,6 +92,11 @@ def _clock(hhmm):
     return "%d:%02d %s" % (h % 12 or 12, m, "AM" if h < 12 else "PM")
 
 
+def time_hidden():
+    """Custom Expiry - Disable Time ticked: this person picks the date only (never the administrator)."""
+    return g.me["role"] != "admin" and core.can_fn("sub.custom_expiry_nt")
+
+
 def end_moment(sub, plan):
     """When the account ends now: the expiry date at the subscriber's time, else the package's, else 23:59:59."""
     if not sub.get("expiry_date"):
@@ -101,7 +106,8 @@ def end_moment(sub, plan):
     return datetime.combine(sub["expiry_date"], datetime.min.time()).replace(hour=h, minute=m, second=59 if at == "23:59" else 0)
 
 
-def do_renew(sub, days, amount, method="cash", note="", notify=True, exact=False, expiry_time=_KEEP):
+def do_renew(sub, days, amount, method="cash", note="", notify=True, exact=False, expiry_time=_KEEP, from_balance=0.0,
+             prev_plan_id=_KEEP):
     """Add days (from today, or from the current expiry if it is later), activate and record the payment.
     exact=True uses a date the person typed as it is (no whole-month or fixed-day rounding).
     expiry_time: "HH:MM" (or None for the package's time / end of day) to store with the new expiry; left out, the
@@ -118,10 +124,15 @@ def do_renew(sub, days, amount, method="cash", note="", notify=True, exact=False
         x("UPDATE subscribers SET expiry_time = %s WHERE id = %s", (expiry_time, sub["id"]))
     # what a reseller / sub-reseller / retailer paid for this package (set by charge_me just before), kept for the profit report
     charged = g.pop("charged", None) or (None, None)
+    # prev_*: what this renewal changed, so Revert Last Invoice can put it back; from_balance: what it took from (or,
+    # negative, added to) the customer's balance
     pay_id = insert("INSERT INTO payments (subscriber_id, username, amount, days_added, method, note, period_to, "
-                    "received_by, payer_id, cost) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                    "received_by, payer_id, cost, prev_expiry, prev_expiry_time, prev_status, from_balance, prev_plan_id) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
                     (sub["id"], sub["username"], amount, (new_expiry - base).days, method[:32], note[:255], new_expiry,
-                     g.me["username"], charged[0], charged[1]))
+                     g.me["username"], charged[0], charged[1], sub.get("expiry_date"), sub.get("expiry_time"),
+                     sub.get("status"), round(float(from_balance or 0), 2),
+                     sub.get("plan_id") if prev_plan_id is _KEEP else prev_plan_id))
     g.last_payment = pay_id
     with get_db().cursor() as cur:
         radius.sync_subscriber(cur, sub["username"], plan, "active", new_expiry, sub["static_ip"])
@@ -364,6 +375,12 @@ def activate_one(sub, plan, days, from_balance, method, received, custom=False, 
                 "Not activated: %s's balance (%.2f) is lower than the %.2f needed%s. Add balance to the customer, or take "
                 "the payment in cash. Nothing was changed." % (sub["username"], have, -change,
                                                              "" if from_balance else " besides the %.2f received" % received)}
+    running = bool(sub.get("expiry_date") and sub["expiry_date"] >= date.today() and sub.get("status") == "active")
+    if plan_id != sub["plan_id"] and sub["plan_id"] and running and not core.can_fn("sub.mid_change"):
+        return {"ok": False, "seller": False, "error":
+                "Not activated: %s's package is still running until %s. Changing the package before then needs the "
+                "Mid-Period Package Change permission (or use Migration). Nothing was changed."
+                % (sub["username"], sub["expiry_date"].strftime("%d %b %Y"))}
     sub2 = dict(sub, plan_id=plan_id)
     why = charge_me(sub2, "%s %s +%d days" % (label, sub["username"], days), days)
     if why:
@@ -409,7 +426,7 @@ def activate_one(sub, plan, days, from_balance, method, received, custom=False, 
         running = end_moment(sub, _plan(sub["plan_id"]))
         new_time = sub.get("expiry_time") if running and running > datetime.now() else datetime.now().strftime("%H:%M")
     new_expiry = do_renew(sub2, days, price, pay_method[:32], note, notify=notify and price > 0, exact=custom,
-                          expiry_time=new_time)
+                          expiry_time=new_time, from_balance=-change, prev_plan_id=sub["plan_id"])
     audit("activated", sub["username"], "%s, +%d days, %.2f via %s%s" % (plan["label"] or plan["name"], days, price, pay_method,
                                                                      (", balance %+.2f" % change) if change else ""))
     return {"ok": True, "expiry": new_expiry, "time": new_time, "price": price, "method": pay_method, "change": change}
@@ -463,7 +480,7 @@ def subscribers_mass_activate():
             flash("Choose a package.", "error")
             return redirect(back)
     custom = f.get("custom") == "on"
-    custom_time = (f.get("expiry_time") or "").strip()
+    custom_time = "" if time_hidden() else (f.get("expiry_time") or "").strip()
     if custom and not core.can_fn("sub.custom_expiry"):
         flash("You do not have permission to set a custom expiry date. Ask the administrator to allow Custom Expiry.", "error")
         return redirect(back)
@@ -605,7 +622,7 @@ def subscriber_activate():
             days = _custom_days(sub, f.get("expiry"))
             if days is None:
                 raise ValueError
-            custom_time = (f.get("expiry_time") or "").strip()
+            custom_time = "" if time_hidden() else (f.get("expiry_time") or "").strip()
             if custom_time and not TIME_RE.match(custom_time):
                 raise ValueError
         else:

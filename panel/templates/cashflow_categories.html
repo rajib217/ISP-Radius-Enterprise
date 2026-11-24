@@ -4,7 +4,7 @@
 {% block content %}
 <div class="page-head">
   <div><h1>Cashflow Categories</h1><p class="sub">{{ cats|length }} categor{{ 'y' if cats|length == 1 else 'ies' }} · <a href="{{ url_for('cashflow') }}">Back to Cashflow</a></p></div>
-  <div class="actions">{% if can('accounting', 'edit') and can_fn('cfc.add') %}<button class="btn primary" data-open="cfc-dlg" data-new>{{ icon('plus') }}Add Category</button>{% endif %}</div>
+  <div class="actions">{% if can_fn('cfc.export') %}<a class="btn" href="{{ url_for('cashflow_categories_export') }}">{{ icon('download') }}CSV</a>{% endif %}{% if can('accounting', 'edit') and can_fn('cfc.add') %}<button class="btn primary" data-open="cfc-dlg" data-new>{{ icon('plus') }}Add Category</button>{% endif %}</div>
 </div>
 {% for k, label in kinds %}
 <section class="panel">

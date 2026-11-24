@@ -264,6 +264,8 @@ def plan_report():
 
 @route("/logs/sessions", module="logs")
 def logs_sessions():
+    if not core.can_fn("log.sess"):           # Session Logs > Module
+        abort(403)
     where, params = [], []
     text = request.args.get("q", "").strip()
     if text:

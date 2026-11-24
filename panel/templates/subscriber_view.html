@@ -30,6 +30,9 @@
   {% if can_fn('sub.attr_view') %}<a class="btn sm primary" href="#attributes" data-tab-link="attributes">{{ icon('grid') }}Attributes</a>{% endif %}
   {% if can('notes') and can_fn('sub.note') %}<a class="btn sm primary" href="{{ url_for('notes', sub=sub.id) }}">{{ icon('note') }}Note</a>{% endif %}
   {% if can_fn('sub.grace') %}<button class="btn sm primary" data-open="grace-dlg">{{ icon('pin') }}Grace Period</button>{% endif %}
+  {% if can_fn('sub.login_link') and app_cfg.portal_on == '1' %}<button class="btn sm primary" data-open="link-dlg">{{ icon('link') }}Login Link</button>{% endif %}
+  {% if x.revert %}{% if x.revert.why %}<button class="btn sm" type="button" disabled title="Cannot revert: the last renewal was {{ x.revert.why }}">{{ icon('refresh') }}Revert Last Invoice</button>
+  {% else %}<form method="post" action="{{ url_for('subscriber_revert', sid=sub.id) }}" data-confirm="Revert the last renewal of {{ sub.username }} ({{ currency }} {{ x.revert.amount|money }} on {{ x.revert.paid_at|dt }})? The expiry goes back to {{ x.revert.prev_expiry|d if x.revert.prev_expiry else 'none' }}{% if x.revert.cost and x.revert.payer_id %} and the reseller gets {{ x.revert.cost|money }} back{% endif %}.">{{ csrf_input() }}<input type="hidden" name="payment_id" value="{{ x.revert.id }}"><button class="btn sm solid-danger" type="submit">{{ icon('refresh') }}Revert Last Invoice</button></form>{% endif %}{% endif %}
   {% if can_fn('sub.reset_mac') %}<form method="post" action="{{ url_for('subscriber_reset_mac', sid=sub.id) }}" data-confirm="Clear the MAC binding of {{ sub.username }}?">{{ csrf_input() }}<button class="btn sm primary" type="submit">{{ icon('refresh') }}Reset MAC Address</button></form>{% endif %}
 </div>
 {% endif %}
@@ -371,6 +374,12 @@
     <label class="mod-row"><span>Auto MAC lock<br><small class="muted">Lock to the first device that connects (checked every 5 minutes)</small></span><span class="switch"><input type="checkbox" name="auto_mac" {{ 'checked' if sub.auto_mac }}{{ ' disabled' if not can_fn('svc.maclock') }}><i></i></span></label>
     <label class="mod-row"><span>Auto renew<br><small class="muted">Renew from the balance when the package expires</small></span><span class="switch"><input type="checkbox" name="auto_renew" {{ 'checked' if sub.auto_renew }}{{ ' disabled' if not can_fn('svc.skip_renew') }}><i></i></span></label></div>
   <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save</button></div></form></dialog>
+{% if can_fn('sub.login_link') %}<dialog class="modal" id="link-dlg" aria-labelledby="link-title"><form method="post" action="{{ url_for('subscriber_login_link', sid=sub.id) }}">{{ csrf_input() }}
+  <div class="modal-head"><h2 id="link-title">Login link</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
+  <div class="modal-body stack"><p style="margin:0">A link that opens {{ sub.username }}'s customer portal without the password. It works <b>once</b>, for 24 hours.</p>
+    {% if can('sms', 'edit') and sub.phone %}<label class="check"><input type="checkbox" name="sms" value="1" checked> Send it by SMS to {{ sub.phone }}</label>{% endif %}</div>
+  <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Create link</button></div>
+</form></dialog>{% endif %}
 <dialog class="modal" id="pw-dlg" aria-labelledby="pw-title"><form method="post" action="{{ url_for('subscriber_password', sid=sub.id) }}">{{ csrf_input() }}
   <div class="modal-head"><h2 id="pw-title">Change password</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
   <div class="modal-body"><div class="field"><label class="lbl" for="pw-new">New password</label><input id="pw-new" name="password" maxlength="64" autocomplete="off" spellcheck="false" required><div class="help">4 to 64 characters, no spaces. The customer's router must use the new one.</div></div></div>

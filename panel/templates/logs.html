@@ -2,7 +2,8 @@
 {% from "_macros.html" import icon, simple_pager %}
 {% block title %}Logs{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Logs</h1><p class="sub">Login attempts seen by RADIUS, and actions taken in this panel.</p></div></div>
+<div class="page-head"><div><h1>Logs</h1><p class="sub">Login attempts seen by RADIUS, and actions taken in this panel.</p></div>
+  {% if can_fn('log.act_x' if tab == 'activity' else 'log.login_x') %}<div class="actions"><a class="btn" href="{{ url_for('logs_export', tab=tab) }}">{{ icon('download') }}CSV</a></div>{% endif %}</div>
 <section class="panel">
   {% include "_logs_tabs.html" %}
   <form class="filters" method="get">

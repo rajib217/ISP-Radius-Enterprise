@@ -50,7 +50,8 @@ def _statement_rows(first, nxt):
     """One row per reseller / sub-reseller / retailer the signed-in person may see, for the month [first, nxt)."""
     names = core.my_downline()
     if names is None:
-        if not (g.me["role"] == "admin" or core.can_fn("usr.view")):
+        # office: the Accounting menu (or the Users > View tick, as before)
+        if not (g.me["role"] == "admin" or core.can("accounting") or core.can_fn("usr.view")):
             abort(403)
         sellers = q("SELECT a.id, a.username, a.full_name, a.role, a.balance, par.username AS parent FROM panel_admins a "
                     "LEFT JOIN panel_admins par ON par.id = a.parent_id WHERE a.role IN ('reseller', 'subreseller', 'retailer') "

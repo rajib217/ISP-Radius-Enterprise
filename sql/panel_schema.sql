@@ -969,3 +969,26 @@ CREATE TABLE IF NOT EXISTS ticket_month_stats (
   visits     INT NOT NULL DEFAULT 0,
   PRIMARY KEY (month, kind, ref)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Revert Last Invoice: what a renewal changed, so it can be put back
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS prev_expiry DATE NULL;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS prev_expiry_time VARCHAR(5) NULL;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS prev_status VARCHAR(16) NULL;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS from_balance DECIMAL(10,2) NOT NULL DEFAULT 0;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS prev_plan_id INT UNSIGNED NULL;
+
+-- Login Link: a one-time sign-in link to the customer portal (only its SHA-256 is kept)
+CREATE TABLE IF NOT EXISTS portal_login_links (
+  id            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  subscriber_id INT UNSIGNED NOT NULL,
+  token_hash    CHAR(64)    NOT NULL,
+  expires_at    DATETIME    NOT NULL,
+  used_at       DATETIME    NULL,
+  created_by    VARCHAR(64) NOT NULL DEFAULT '',
+  created_at    DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_token (token_hash),
+  KEY idx_sub (subscriber_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Subscriber Limitation: the most customers a reseller / sub-reseller / retailer may have (NULL = no limit)
+ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS max_subs INT UNSIGNED NULL;

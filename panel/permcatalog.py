@@ -31,7 +31,7 @@ TABS = [
     ]},
     {"title": "My Profile", "icon": "user", "groups": [
         G("My Profile (Reseller)", None,
-          [I("prof.module", "Module", "", "vna"), I("prof.edit", "Edit", "", "na"), I("prof.photo", "Change Photo", "", "n"),
+          [I("prof.module", "Module", "", "vna"), I("prof.edit", "Edit", "", "na"), I("prof.photo", "Change Photo", "", "na"),
            I("prof.password", "Change Password", "", "na"), I("prof.note", "Add Note", "", "n")],
           [I("prof.settings", "Profile Settings", "", "n"),
            I("prof.topup", "Balance Topup", "Allow Resellers To Topup Balance By Payment Gateways", "na"),
@@ -39,7 +39,7 @@ TABS = [
            I("prof.inv_settings", "Invoice Settings", "Invoice Template Settings Details On User Profile", "n")], wide=True),
         G("My Packages", "plans", [I("pkg.module", "Module", "", "vg"),
                                    I("pkg.assign", "Assign/Manage", "Allow To Assign New Packages Or Manage Existing Packages"),
-                                   I("pkg.profit", "Manage Profit", "Allow To Manage Their Own Package Profit", "n"),
+                                   I("pkg.profit", "Manage Profit", "Allow To Set The Subscriber / Sub-reseller Profit For The People Below Them", "vna"),
                                    I("pkg.delete", "Delete", "Allow To Delete Existing Packages If There Are No Users/Subscribers")]),
     ]},
     {"title": "User", "icon": "users", "groups": [
@@ -55,11 +55,11 @@ TABS = [
            I("usr.balance", "Manage/Add Balance", "Allow To Add Balance To Users", "n"),
            I("usr.inv_module", "Invoice Template Module", "Enable Invoice Template On User Profile", "n"),
            I("usr.inv_settings", "Invoice Settings", "Invoice Template Settings Details On User Profile", "n"),
-           I("usr.transfer", "Transfer Subscribers", "Allow To Transfer Subscribers To Another Users", "n"),
+           I("usr.transfer", "Transfer Subscribers", "Move Customers To Another Reseller (Or The Office). Off Unless Ticked", "no"),
            I("usr.ptype", "Update Profile Type", "Allow To Change User Profile Type (Only Admin Can Change It)", "n"),
            I("usr.limit", "Accounting/Balance Limit", "Allow To Set Users Accounting Transaction Limit", "n")],
           [I("usr.maclock", "MAC Lock", "Allow To Set MAC Lock For Users", "n"), I("usr.iplock", "IP Lock", "Allow To Set IP Lock For Users", "n"),
-           I("usr.sublimit", "Subscriber Limitation", "Allow To Set Subscriber Number Limitation For Users", "n"),
+           I("usr.sublimit", "Subscriber Limitation", "Set The Most Customers A Reseller / Sub-reseller / Retailer May Have. Off Unless Ticked", "no"),
            I("usr.reslimit", "Reseller Limitation", "Allow To Set Reseller Number Limitation For Admin", "n"),
            I("usr.subreslimit", "Subreseller Limitation", "Allow To Set Subreseller Number Limitation For Reseller", "n"),
            I("usr.retlimit", "Retailer Limitation", "Allow To Set Retailer Number Limitation For Subreseller", "n"),
@@ -67,7 +67,7 @@ TABS = [
            I("usr.api", "API Access", "Allow User To Authenticate & Access REST API Endpoints", "no")], wide=True),
         G("User Packages", None, [I("usr.pkg_module", "Module", "", "vn"),
                                   I("usr.pkg_assign", "Assign/Manage", "Allow To Assign New Packages Or Manage Existing Packages", "no"),
-                                  I("usr.pkg_delete", "Delete", "Allow To Delete Existing Packages If There Are No Users/Subscribers", "n")]),
+                                  I("usr.pkg_delete", "Delete", "Remove A Package From A User When None Of Their Customers Uses It. Off Unless Ticked", "no")]),
     ]},
     {"title": "Subscriber", "icon": "users", "groups": [
         G("Subscriber Profile", "subscribers",
@@ -81,7 +81,7 @@ TABS = [
            I("sub.migration", "Package Migration", "Allow To Migrate Subscriber Package"),
            I("sub.mass_activation", "Mass Activation", "Allow To Mass Activate/Renew Subscribers By Current/Specific Package"),
            I("sub.custom_expiry", "Custom Expiry", "Allow To Use Custom Expiry Date On Activation/Renew Modal. Off for everyone except Admin until ticked", "o"),
-           I("sub.custom_expiry_nt", "Custom Expiry - Disable Time", "Hide Time Selection, Show Date Only (Requires Custom Expiry Permission)", "n"),
+           I("sub.custom_expiry_nt", "Custom Expiry - Disable Time", "Hide Time Selection, Show Date Only (Requires Custom Expiry Permission)", "no"),
            I("sub.expiry", "Expiration Date", "Allow To Change Subscriber Expiration Date"),
            I("sub.grace", "Grace Period", "Allow To Set Grace Period For Subscribers"),
            I("sub.mid_change", "Mid-Period Package Change", "Allow Changing Subscriber Package Before Current Expiry (Use Migration Otherwise)", "o"),
@@ -100,7 +100,7 @@ TABS = [
            I("sub.fee_edit", "Extra Service Fee - Edit", "Edit extra service fees", "o"),
            I("sub.fee_delete", "Extra Service Fee - Delete", "Delete extra service fees", "o"),
            I("sub.fee_module", "Extra Service Module", "Access main extra service module to view all services", "vo"),
-           I("sub.invoice", "Custom Invoice"), I("sub.revert", "Revert Last Invoice", "Allow To Subscriber Revert Last Invoice", "n"),
+           I("sub.invoice", "Custom Invoice"), I("sub.revert", "Revert Last Invoice", "Undo The Customer's Last Renewal Within 48 Hours (Expiry, Package, Balances). Off Unless Ticked", "no"),
            I("sub.login_link", "Login Link", "Allow To View Subscriber's Login Link", "vn"),
            I("sub.reset_mac", "Reset MAC Address", "Allow To Reset Subscriber MAC Address & Force Disconnect")], wide=True),
         G("Service Settings", None,
@@ -187,6 +187,15 @@ ALL_ITEMS = [(g["mod"], g, it) for t in TABS for g in t["groups"] for c in g["co
 KEYS = [it["key"] for _, _, it in ALL_ITEMS]
 KEY_INFO = {it["key"]: (g["mod"], it["flags"]) for _, g, it in ALL_ITEMS}
 GROUP_OF = {it["key"]: g for _, g, it in ALL_ITEMS}
+# the group's "Module" switch (flag g) for every other key of that group: switched off, the whole group is off
+GATE_OF = {}
+for _g in {id(g): g for _, g, _it in ALL_ITEMS}.values():
+    _items = [it for c in _g["cols"] for it in c]
+    _gate = next((it["key"] for it in _items if "g" in it["flags"]), None)
+    if _gate:
+        for it in _items:
+            if it["key"] != _gate:
+                GATE_OF[it["key"]] = _gate
 RANK = {"none": 0, "view": 1, "edit": 2}
 
 # page / action  ->  the key (or any one of several keys) a role needs ticked to use it
@@ -214,6 +223,7 @@ ENDPOINT_FN = {
     "onu_save": "onu.edit", "onu_map": "onu.edit", "onu_delete": "onu.delete",
     "inventory_save": ("itm.add", "itm.edit"), "inventory_move": "itm.move", "inventory_delete": "itm.delete",
     "ticket_new": "tk.add", "ticket_reply": "tk.reply", "ticket_update": "tk.update", "ticket_delete": "tk.delete",
+    "subscriber_login_link": "sub.login_link", "subscriber_revert": "sub.revert",
     "ticket_lookup": "tk.add", "tickets_bulk": "tk.update", "ticket_move": "tk.update", "ticket_to_office": "tk.reply",
     "note_save": "note.add", "note_delete": "note.delete",
     "document_upload": "doc.add", "document_delete": "doc.delete",
@@ -313,10 +323,13 @@ def module_levels(ticked):
 
 
 def effective(ticked, perms):
-    """The keys a person may really use: ticked AND their module level is high enough."""
+    """The keys a person may really use: ticked, their group's Module switch ticked, AND their module level is high
+    enough (e.g. Manage Invoices > View does nothing while Manage Invoices > Module is off)."""
     ok = set()
     for k in ticked:
         if k not in KEY_INFO:
+            continue
+        if k in GATE_OF and GATE_OF[k] not in ticked:
             continue
         mod, flags = KEY_INFO[k]
         if mod is None or RANK.get(perms.get(mod, "none"), 0) >= RANK["view" if "v" in flags else "edit"]:
