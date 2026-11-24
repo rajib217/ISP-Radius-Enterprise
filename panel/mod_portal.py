@@ -411,7 +411,7 @@ def _preview_expiry(sub, days):
     """The expiry the customer gets if bKash confirms now (same rules as mod_subs.do_renew)."""
     base = max(sub["expiry_date"] or date.today(), date.today())
     plan = mod_subs._plan(sub["plan_id"])
-    new = mod_subs.plan_expiry(plan, base, days)
+    new = mod_subs.plan_expiry(plan, base, days, monthly=mod_subs.monthly_for(sub))
     if plan and plan.get("fixed_expire_day"):
         new = mod_subs.fixed_expiry(new, base, plan["fixed_expire_day"])
     return new

@@ -313,7 +313,7 @@ def _credit_seller(sub, row, trx):
                     "VALUES (%s, %s, %s, 'bkash', %s, %s)",
                     (owner["id"], amount, after, ("Customer %s paid in the portal, bKash %s" % (sub["username"], trx))[:255],
                      "portal:" + sub["username"][:56]))
-    why = mod_subs.charge_me(sub, "Portal bKash renewal %s +%d days" % (sub["username"], int(row["days"])))
+    why = mod_subs.charge_me(sub, "Portal bKash renewal %s +%d days" % (sub["username"], int(row["days"])), int(row["days"]))
     if why:
         core.audit("portal_seller_short", sub["username"], why[:500], who="bkash")
 

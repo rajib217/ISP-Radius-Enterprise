@@ -236,15 +236,16 @@ def subscriber_automation(conn, cur):
                                 (s["username"], "Balance %.2f is below the %.2f needed" % (have, amount)))
             continue
         base = max(s["expiry_date"], date.today())
-        new_expiry = mod_subs.plan_expiry(plan, base, int(plan["validity_days"]))
-        if plan.get("fixed_expire_day"):
-            new_expiry = mod_subs.fixed_expiry(new_expiry, base, plan["fixed_expire_day"])
         # a reseller's customer: the reseller pays their package price from their own balance first
         cur.execute("SELECT id, username, role FROM panel_admins WHERE username = %s", (s.get("created_by"),))
         seller = cur.fetchone()
+        monthly = bool(seller) and mod_subs.role_monthly(cur, seller["role"])
+        new_expiry = mod_subs.plan_expiry(plan, base, int(plan["validity_days"]), monthly=monthly)
+        if plan.get("fixed_expire_day"):
+            new_expiry = mod_subs.fixed_expiry(new_expiry, base, plan["fixed_expire_day"])
         paid_by = cost = None
         if seller and seller["role"] in mod_subs.core.SELLER_ROLES:
-            cost = mod_subs._price_of(cur, seller["id"], plan["id"])
+            cost = mod_subs.seller_cost(cur, seller["id"], plan["id"])
             paid_by = seller["id"] if cost else None
             why = mod_subs.charge_seller(cur, seller["id"], plan["id"], "Auto renew %s" % s["username"], "auto")
             if why:

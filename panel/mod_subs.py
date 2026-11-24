@@ -44,14 +44,42 @@ def add_months(base, months):
     return date(y, m + 1, min(base.day, calendar.monthrange(y, m + 1)[1]))
 
 
-def plan_expiry(plan, base, days):
+def plan_expiry(plan, base, days, monthly=False):
     """New expiry for a renewal. When the days are the package's own length, months and years are real calendar
-    months and years (not 30 or 365 days); a custom number of days is added as plain days."""
-    if plan and plan.get("duration_type") in ("month", "year") and plan.get("duration") \
-            and days == int(plan.get("validity_days") or 0):
+    months and years (not 30 or 365 days); a custom number of days is added as plain days.
+    monthly (the customer's reseller has Monthly renew): a 30 / 60 / 90 ... day package renewed for its own length
+    becomes 1 / 2 / 3 calendar months (5 Jan -> 5 Feb, 31 Jan -> 28 Feb); the price stays the package's."""
+    full = int((plan or {}).get("validity_days") or 0)
+    if plan and plan.get("duration_type") in ("month", "year") and plan.get("duration") and days == full:
         n = int(plan["duration"]) * (12 if plan["duration_type"] == "year" else 1)
         return add_months(base, n)
+    if monthly and full and days == full and full % 30 == 0:
+        return add_months(base, full // 30)
     return base + timedelta(days=days)
+
+
+MONTHLY_KEY = "sub.monthly_renew"     # Users > Roles > (Reseller ...) > Subscriber > Monthly Renew
+
+
+def role_monthly(cur, role):
+    """Is Monthly Renew ticked for this reseller / sub-reseller / retailer role? (off unless ticked)"""
+    if role not in core.SELLER_ROLES:
+        return False
+    cur.execute("SELECT allowed FROM role_funcs WHERE role = %s AND fkey = %s", (role, MONTHLY_KEY))
+    r = cur.fetchone()
+    return bool(r and r["allowed"])
+
+
+def monthly_for(sub):
+    """Does this customer's reseller / sub-reseller / retailer renew by calendar month (Monthly Renew on their role)?"""
+    who = (sub or {}).get("created_by")
+    if not who:
+        return False
+    r = q("SELECT role FROM panel_admins WHERE username = %s", (who,), one=True)
+    if not r:
+        return False
+    with get_db().cursor() as cur:
+        return role_monthly(cur, r["role"])
 
 
 _KEEP = object()
@@ -80,7 +108,7 @@ def do_renew(sub, days, amount, method="cash", note="", notify=True, exact=False
     subscriber's stored time is kept."""
     base = max(sub["expiry_date"] or date.today(), date.today())
     plan = _plan(sub["plan_id"])
-    new_expiry = plan_expiry(plan, base, days)
+    new_expiry = plan_expiry(plan, base, days, monthly=monthly_for(sub))
     if plan and plan.get("fixed_expire_day"):
         new_expiry = fixed_expiry(new_expiry, base, plan["fixed_expire_day"])
     if exact:
@@ -124,10 +152,30 @@ def _price_of(cur, user_id, plan_id):
         return None
 
 
-def charge_seller(cur, seller_id, plan_id, label, by):
-    """Take the seller's package price from their balance for one activation or renewal and write it in their ledger.
-    Returns None when done (or when no price is set for them), or a short reason when their balance is too low."""
-    cost = _price_of(cur, seller_id, plan_id) if plan_id else None
+def seller_cost(cur, seller_id, plan_id, days=None):
+    """What the seller pays for one activation: their price for the package (Users > the seller > Packages), or the
+    package's own price when none is set for them (never free by mistake; an explicit 0 stays free). A renewal for
+    more or fewer days than the package's own length costs that share of it (60 days of a 30-day package = 2x).
+    None when there is no package."""
+    if not plan_id:
+        return None
+    cost = _price_of(cur, seller_id, plan_id)
+    cur.execute("SELECT price, validity_days FROM plans WHERE id = %s", (plan_id,))
+    plan = cur.fetchone()
+    if not plan:
+        return cost
+    if cost is None:
+        cost = round(float(plan["price"] or 0), 2)
+    full = int(plan["validity_days"] or 0)
+    if days and full and int(days) != full:
+        cost = round(cost * int(days) / full, 2)
+    return cost
+
+
+def charge_seller(cur, seller_id, plan_id, label, by, days=None):
+    """Take the seller's package price (seller_cost) from their balance for one activation or renewal and write it in
+    their ledger. Returns None when done (or when the price is 0), or a short reason when their balance is too low."""
+    cost = seller_cost(cur, seller_id, plan_id, days)
     if not cost:
         return None
     cur.execute("UPDATE panel_admins SET balance = balance - %s WHERE id = %s AND balance >= %s", (cost, seller_id, cost))
@@ -154,7 +202,7 @@ def payer_for(sub):
     return None
 
 
-def charge_me(sub, label):
+def charge_me(sub, label, days=None):
     """Take the package price from whoever pays for this activation (see payer_for). Returns None when done or when
     nobody is charged, or a sentence saying whose balance is too low."""
     g.pop("charged", None)
@@ -164,23 +212,23 @@ def charge_me(sub, label):
     if not payer["mine"]:
         label = "%s (by %s)" % (label, g.me["username"])
     with get_db().cursor() as cur:
-        why = charge_seller(cur, payer["id"], sub["plan_id"], label, g.me["username"])
+        why = charge_seller(cur, payer["id"], sub["plan_id"], label, g.me["username"], days)
     if why:
         return ("your " if payer["mine"] else "%s's " % payer["username"]) + why
     with get_db().cursor() as cur:
-        cost = _price_of(cur, payer["id"], sub["plan_id"]) if sub.get("plan_id") else None
+        cost = seller_cost(cur, payer["id"], sub["plan_id"], days) if sub.get("plan_id") else None
     if cost:
         g.charged = (payer["id"], cost)
     return None
 
 
-def charge_info(sub):
+def charge_info(sub, days=None):
     """What the activation window shows: {'cost', 'who', 'mine', 'balance', 'low'} or None."""
     payer = payer_for(sub)
     if not payer or not sub.get("plan_id"):
         return None
     with get_db().cursor() as cur:
-        cost = _price_of(cur, payer["id"], sub["plan_id"])
+        cost = seller_cost(cur, payer["id"], sub["plan_id"], days)
         cur.execute("SELECT balance FROM panel_admins WHERE id = %s", (payer["id"],))
         r = cur.fetchone()
     if not cost:
@@ -211,15 +259,27 @@ def _visible_subs(where, args):
     if names is not None:
         where += " AND created_by IN (" + ",".join(["%s"] * len(names)) + ")"
         args = list(args) + list(names)
-    return q("SELECT id, username, full_name, phone, status, plan_id, expiry_date, expiry_time, created_by, balance FROM subscribers WHERE " + where +
+    return q("SELECT id, username, full_name, phone, status, plan_id, expiry_date, expiry_time, created_by, balance, "
+             "(SELECT p.fixed_expire_time FROM plans p WHERE p.id = subscribers.plan_id) AS plan_time FROM subscribers WHERE " + where +
              " ORDER BY username LIMIT 15", args)
+
+
+def _ends_text(r):
+    """'17 Jan 2027 11:59 PM': the date and the time the package ends (the customer's own time, else the package's,
+    else the end of the day), as the subscriber list shows it."""
+    if not r.get("expiry_date"):
+        return ""
+    try:
+        end = end_moment(r, {"fixed_expire_time": r.get("plan_time")})
+    except (TypeError, ValueError):
+        return r["expiry_date"].strftime("%d %b %Y")
+    return end.strftime("%d %b %Y") + " " + _clock(end.strftime("%H:%M"))
 
 
 def _sub_json(r):
     return {"id": r["id"], "username": r["username"], "name": r["full_name"] or "", "phone": r.get("phone") or "", "state": _state(r),
             "plan_id": r["plan_id"],
-            "expiry": (r["expiry_date"].strftime("%d %b %Y") + (" " + _clock(r["expiry_time"]) if r.get("expiry_time") else ""))
-            if r["expiry_date"] else "",
+            "expiry": _ends_text(r),
             "expiry_iso": r["expiry_date"].isoformat() if r["expiry_date"] else ""}
 
 
@@ -280,7 +340,7 @@ def subscriber_charge_info():
         return jsonify({"charge": None, "price": None})
     sub = rows[0]
     days = _custom_days(sub, request.args.get("exp")) if request.args.get("exp") else None
-    return jsonify({"charge": charge_info(dict(sub, plan_id=plan_id)), "price": customer_price(sub, plan, days),
+    return jsonify({"charge": charge_info(dict(sub, plan_id=plan_id), days), "price": customer_price(sub, plan, days),
                     "balance": round(float(sub["balance"] or 0), 2)})
 
 
@@ -305,7 +365,7 @@ def activate_one(sub, plan, days, from_balance, method, received, custom=False, 
                 "the payment in cash. Nothing was changed." % (sub["username"], have, -change,
                                                              "" if from_balance else " besides the %.2f received" % received)}
     sub2 = dict(sub, plan_id=plan_id)
-    why = charge_me(sub2, "%s %s +%d days" % (label, sub["username"], days))
+    why = charge_me(sub2, "%s %s +%d days" % (label, sub["username"], days), days)
     if why:
         return {"ok": False, "seller": True, "error": "Not activated: %s. Add balance first. Nothing was changed." % why}
     if plan_id != sub["plan_id"]:

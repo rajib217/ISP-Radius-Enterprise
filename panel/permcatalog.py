@@ -85,6 +85,7 @@ TABS = [
            I("sub.expiry", "Expiration Date", "Allow To Change Subscriber Expiration Date"),
            I("sub.grace", "Grace Period", "Allow To Set Grace Period For Subscribers"),
            I("sub.mid_change", "Mid-Period Package Change", "Allow Changing Subscriber Package Before Current Expiry (Use Migration Otherwise)", "o"),
+           I("sub.monthly_renew", "Monthly Renew", "Resellers: A 30-Day Package Renews To The Same Date Next Month (31 Or 28 Days Alike) For One Month's Price", "no"),
            I("sub.balance", "Manage/Add Balance", "Allow To Add/Withdraw Subscriber Balance/Payment"),
            I("sub.mass_payment", "Mass Payment", "Allow To Add Payment To Multiple Subscribers", "n"),
            I("sub.mass_delete", "Mass Delete", "Allow To Delete Multiple Subscribers"),
@@ -168,7 +169,6 @@ TABS = [
         G("PGW Transactions", None, [I("log.pgw", "Module", "", "vn"), I("log.pgw_x", "Export", "", "vn")]),
     ]},
     {"title": "Reports", "icon": "chart", "groups": [
-        G("My Profit (Reseller)", None, [I("rep.myprofit", "Module", "Resellers / sub-resellers / retailers: see their own profit and that of the people below them", "vn")]),
         G("Reports", "reports", [I("rep.module", "Module", "", "vg"), I("rep.sales", "Sales Reports", "", "v"),
                                  I("rep.payment", "Payment Reports", "", "v"), I("rep.btrc", "BTRC Reports", "Every customer's name, phone and address for BTRC. Office staff only, off until ticked", "vno"),
                                  I("rep.bandwidth", "Bandwidth Usage Reports", "", "vn")]),
@@ -191,7 +191,6 @@ RANK = {"none": 0, "view": 1, "edit": 2}
 
 # page / action  ->  the key (or any one of several keys) a role needs ticked to use it
 ENDPOINT_FN = {
-    "my_profit": "rep.myprofit", "my_profit_csv": "rep.myprofit",
     "subscriber_new": "sub.add", "subscriber_edit": "sub.edit", "subscriber_delete": "sub.delete",
     "import_csv": "sub.import", "import_sample": "sub.import", "subscribers_export": "sub.export",
     "subscriber_renew": "sub.activation", "subscriber_activate": ("sub.activation", "sub.mass_activation"), "subscriber_activation": ("sub.activation", "sub.mass_activation"),

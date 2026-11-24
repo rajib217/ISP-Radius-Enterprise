@@ -121,9 +121,10 @@ def my_packages():
         abort(403)                        # technicians never (core.ROLE_LOCKS / permcatalog.ROLE_NEVER)
     allowed = core.allowed_plan_ids()
     me = g.me["username"]
+    names = list(core.my_downline() or [me])     # a seller's own customers and their downline's
     rows = q("SELECT p.*, (SELECT COUNT(*) FROM subscribers s WHERE s.plan_id = p.id) AS total, "
-             "(SELECT COUNT(*) FROM subscribers s WHERE s.plan_id = p.id AND s.created_by = %s) AS mine "
-             "FROM plans p ORDER BY p.download_mbps, p.label", (me,))
+             "(SELECT COUNT(*) FROM subscribers s WHERE s.plan_id = p.id AND s.created_by IN (" + ",".join(["%s"] * len(names)) +
+             ")) AS mine FROM plans p ORDER BY p.download_mbps, p.label", names)
     if allowed is not None:
         rows = [r for r in rows if r["id"] in allowed]
     month = {r["plan_id"]: r for r in q(
@@ -139,8 +140,11 @@ def my_packages():
         if seller:
             # a seller sees what they pay and what their customers pay, never the ISP-wide customer count
             up = prices.get(r["id"]) or {}
-            r["my_cost"] = float(up["price"]) if up.get("price") is not None else None
-            r["customer_price"] = (r["my_cost"] + float(up.get("sub_profit") or 0)) if r["my_cost"] is not None else None
+            import mod_policy
+            # no price set for them: they pay the package's own price (mod_subs.seller_cost)
+            r["my_cost"] = float(up["price"]) if up.get("price") is not None else float(r["price"] or 0)
+            # what their customer pays: cost + subscriber profit, plus the package's taxes / fees (as charged at renewal)
+            r["customer_price"] = mod_policy.fee_total(r["my_cost"] + float(up.get("sub_profit") or 0), r["id"])
             r.pop("total", None)
     return render_template("my_packages.html", rows=rows, restricted=allowed is not None, seller=seller)
 
@@ -620,7 +624,8 @@ def _packages_page(u, endpoint, allowed=None, back=None):
                                 "VALUES (%s, %s, %s, %s, %s)", rows)
         audit("packages_assigned", u["username"], "%d packages" % len(rows))
         commit()
-        flash("Saved. %s can now use %s." % (u["username"], "%d package%s" % (len(rows), "" if len(rows) == 1 else "s") if rows else "every package"), "success")
+        nothing = "no package (resellers sell only what is given to them)" if u["role"] in core.SELLER_ROLES else "every package"
+        flash("Saved. %s can now use %s." % (u["username"], "%d package%s" % (len(rows), "" if len(rows) == 1 else "s") if rows else nothing), "success")
         return redirect(back or (url_for("admin_view", aid=aid) + "#packages"))
     for p in plans:
         r = mine.get(p["id"])

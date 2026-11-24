@@ -1028,7 +1028,7 @@ def subscriber_renew(sid):
         flash("Enter the number of days (1-3650) and a valid amount.", "error")
         return redirect(back)
     method = request.form.get("method", "cash")
-    why = mod_subs.charge_me(sub, "Renewal %s +%d days" % (sub["username"], days))
+    why = mod_subs.charge_me(sub, "Renewal %s +%d days" % (sub["username"], days), days)
     if why:
         flash("Not renewed: %s. Add balance first. Nothing was changed." % why, "error")
         return redirect(back)

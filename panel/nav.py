@@ -24,7 +24,6 @@ STRUCTURE = [
     _g("mypkg", "My Packages", "package", endpoint="my_packages"),
     _g("myusers", "My Users", "users", endpoint="my_users", match=["my_users", "user_transfer", "my_user_save", "my_user_packages", "my_user_delete"], sellers=True, fn="usr.module"),
     _g("mystmt", "Monthly Statement", "file", endpoint="statements", match=["statements"], sellers=True, fn="prof.module"),
-    _g("myprofit", "My Profit", "chart", endpoint="my_profit", match=["my_profit", "my_profit_csv"], sellers=True, fn="rep.myprofit"),
     _g("users", "Users", "users", office=True, items=[
         _i("Roles", "roles", ["roles", "role_permissions"], fn="usr.role_module"),
         _i("Users", "admins", ["admins", "admin_save", "admin_toggle", "admin_delete", "admin_view", "admin_packages"], none_of=["group"], fn="usr.module"),

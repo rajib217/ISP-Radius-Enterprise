@@ -162,7 +162,7 @@ def allocation():
 @admin_required
 def allocation_save():
     uid = request.form.get("user_id", "")
-    u = q("SELECT id, username FROM panel_admins WHERE id = %s AND role <> 'admin'", (uid,), one=True) if uid.isdigit() else None
+    u = q("SELECT id, username, role FROM panel_admins WHERE id = %s AND role <> 'admin'", (uid,), one=True) if uid.isdigit() else None
     if not u:
         abort(404)
     ids = sorted({int(p) for p in request.form.getlist("plans") if p.isdigit()})
@@ -170,12 +170,15 @@ def allocation_save():
         x("DELETE FROM user_plans WHERE user_id = %s AND plan_id NOT IN (" + ",".join(["%s"] * len(ids)) + ")",
           [u["id"]] + ids)
         with get_db().cursor() as cur:
-            cur.executemany("INSERT IGNORE INTO user_plans (user_id, plan_id) VALUES (%s, %s)", [(u["id"], p) for p in ids])
+            # a newly given package starts at its own price (change it under Users > the user > Packages)
+            cur.executemany("INSERT IGNORE INTO user_plans (user_id, plan_id, price) SELECT %s, id, price FROM plans WHERE id = %s",
+                            [(u["id"], p) for p in ids])
     else:
         x("DELETE FROM user_plans WHERE user_id = %s", (u["id"],))
     audit("allocation_saved", u["username"], "%d plans" % len(ids))
     commit()
-    flash("%s can now use %s." % (u["username"], "%d plan%s" % (len(ids), "" if len(ids) == 1 else "s") if ids else "every plan"),
+    nothing = "no package (resellers sell only what is given to them)" if u["role"] in core.SELLER_ROLES else "every plan"
+    flash("%s can now use %s." % (u["username"], "%d plan%s" % (len(ids), "" if len(ids) == 1 else "s") if ids else nothing),
           "success")
     return redirect(core.safe_next(request.form.get("next")) or url_for("allocation"))
 

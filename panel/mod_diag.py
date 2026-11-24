@@ -100,6 +100,13 @@ def diagnose(user):
 def diagnose_page():
     user = request.args.get("user", "").strip()[:64]
     sub, checks, attempts = None, [], []
+    names = core.my_downline()
+    if user and names is not None:
+        # a reseller / sub-reseller / retailer looks only at their own downline's customers
+        own = q("SELECT created_by FROM subscribers WHERE username = %s", (user,), one=True)
+        if not own or own["created_by"] not in names:
+            checks = [("bad", "No customer of yours has this username", "Check the spelling, or open the customer from Subscribers.")]
+            return render_template("diagnose.html", user=user, sub=None, checks=checks, attempts=[], bad=checks)
     if user:
         sub, checks = diagnose(user)
         attempts = q("SELECT reply, authdate FROM radpostauth WHERE username = %s ORDER BY id DESC LIMIT 8", (user,))

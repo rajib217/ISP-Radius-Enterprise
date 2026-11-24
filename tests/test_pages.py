@@ -1886,7 +1886,7 @@ def check_rules(flask_app, ids):
         _g = [x["key"] for c in _grp["cols"] for x in c if "g" in x["flags"]]
         _gate[_it["key"]] = _g[0] if _g else None
     _deps = {"net.live": ["sub.module"], "cfc.module": ["cf.module"], "cfc.add": ["cf.module"], "cfc.edit": ["cf.module"], "cfc.delete": ["cf.module"]}
-    _seller_only = {"my_profit", "my_profit_csv", "my_users", "my_user_packages", "add_balance"}
+    _seller_only = {"my_users", "my_user_packages", "add_balance"}
     st = client(ids["staff"])
     _get_rules = {r.endpoint: r for r in flask_app.url_map.iter_rules() if "GET" in r.methods}
     _closed, _shut = [], []
@@ -2501,6 +2501,125 @@ def check_rules(flask_app, ids):
     _cell_r = _sl[_i_r:_i_r + 6000]
     check(_i_a != -1 and _i_r != -1 and "02:30 PM" in _cell_a and "11:59 PM" in _cell_r and _i_a < _i_r,
           "subscriber list: Expiration shows the date and the end time (the customer's own, else the package's, else 11:59 PM)")
+    # packages: a package given on the Allocation page is never free; a renewal costs the days it adds
+    run("INSERT INTO plans (name, label, description, price, validity_days, duration, duration_type, policy_group, download_mbps, upload_mbps) "
+        "VALUES ('ciprobe', 'CI probe 20M', 'probe', 800, 30, 30, 'day', '', 20, 20)")
+    _ppid = one("SELECT id FROM plans WHERE name = 'ciprobe'")["id"]
+    _have = [str(r["plan_id"]) for r in run_q("SELECT plan_id FROM user_plans WHERE user_id = %s", (ids["reseller"],))]
+    adm.post("/allocation/save", data={"_csrf": "ci", "user_id": str(ids["reseller"]), "plans": _have + [str(_ppid)]})
+    _alloc_price = one("SELECT price FROM user_plans WHERE user_id = %s AND plan_id = %s", (ids["reseller"], _ppid))["price"]
+    run("UPDATE panel_admins SET balance = 1000 WHERE id = %s", (ids["reseller"],))
+    _old_plan = one("SELECT plan_id FROM subscribers WHERE id = %s", (_rsub["id"],))["plan_id"]
+    run("UPDATE subscribers SET plan_id = %s WHERE id = %s", (_ppid, _rsub["id"]))
+    _rc2.post("/subscribers/%d/renew" % _rsub["id"], data={"_csrf": "ci", "days": "30", "amount": "0"})
+    _b1 = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
+    run("UPDATE user_plans SET price = NULL WHERE user_id = %s AND plan_id = %s", (ids["reseller"], _ppid))
+    run("UPDATE panel_admins SET balance = 1000 WHERE id = %s", (ids["reseller"],))
+    _rc2.post("/subscribers/%d/renew" % _rsub["id"], data={"_csrf": "ci", "days": "30", "amount": "0"})
+    _b2 = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
+    run("UPDATE user_plans SET price = 400 WHERE user_id = %s AND plan_id = %s", (ids["reseller"], _ppid))
+    run("UPDATE panel_admins SET balance = 1000 WHERE id = %s", (ids["reseller"],))
+    _rc2.post("/subscribers/%d/renew" % _rsub["id"], data={"_csrf": "ci", "days": "60", "amount": "0"})
+    _b3 = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
+    _e0 = one("SELECT expiry_date FROM subscribers WHERE id = %s", (_rsub["id"],))["expiry_date"]
+    _rc2.post("/subscribers/%d/renew" % _rsub["id"], data={"_csrf": "ci", "days": "3650", "amount": "0"})
+    _b4 = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
+    _e1 = one("SELECT expiry_date FROM subscribers WHERE id = %s", (_rsub["id"],))["expiry_date"]
+    run("UPDATE subscribers SET plan_id = %s WHERE id = %s", (_old_plan, _rsub["id"]))
+    _mp = _rc2.get("/my-packages").get_data(as_text=True)
+    _none = adm.post("/allocation/save", data={"_csrf": "ci", "user_id": str(ids["subreseller"])}, follow_redirects=True).get_data(as_text=True)
+    _blank = adm.post("/plans/save", data={"_csrf": "ci", "id": str(_ppid), "description": "probe", "duration": "30",
+                                           "duration_type": "day", "price": "", "pool_name": ""}, follow_redirects=True).get_data(as_text=True)
+    _pr_after = float(one("SELECT price FROM plans WHERE id = %s", (_ppid,))["price"])
+    check(float(_alloc_price) == 800 and _b1 == 200 and _b2 == 200 and _b3 == 200 and _b4 == 200 and _e1 == _e0
+          and "CI probe 20M" in _mp and "no package" in _none and "Enter the price" in _blank and _pr_after == 800,
+          "packages: Allocation gives a package at its own price; no price set = the package price, never free; 60 days of a "
+          "30-day package cost twice; 10 years at once is refused when the balance cannot pay it; a blank price is refused")
+    # monthly renew (Users > Roles > Reseller > Subscriber > Monthly Renew): a 30-day package renews to the same date
+    # next month for one month's price
+    _rid = ids["reseller"]
+    _rperm = adm.get("/roles/reseller/permissions").get_data(as_text=True)
+    _ticked0 = 'name="sub.monthly_renew"' in _rperm and 'name="sub.monthly_renew" value="1" checked' not in _rperm
+    run("INSERT INTO role_funcs (role, fkey, allowed) VALUES ('reseller', 'sub.monthly_renew', 1) ON DUPLICATE KEY UPDATE allowed = 1")
+    _rperm2 = adm.get("/roles/reseller/permissions").get_data(as_text=True)
+    run("UPDATE subscribers SET plan_id = %s WHERE id = %s", (_ppid, _rsub["id"]))
+    run("UPDATE user_plans SET price = 400 WHERE user_id = %s AND plan_id = %s", (_rid, _ppid))
+
+    def _renew_from(day):
+        run("UPDATE subscribers SET expiry_date = %s WHERE id = %s", (day, _rsub["id"]))
+        run("UPDATE panel_admins SET balance = 1000 WHERE id = %s", (_rid,))
+        _rc2.post("/subscribers/%d/renew" % _rsub["id"], data={"_csrf": "ci", "days": "30", "amount": "0"})
+        return (one("SELECT expiry_date FROM subscribers WHERE id = %s", (_rsub["id"],))["expiry_date"],
+                1000 - float(one("SELECT balance FROM panel_admins WHERE id = %s", (_rid,))["balance"]))
+    _y = _dt.date.today().year + 1
+    _m1 = _renew_from(_dt.date(_y, 1, 5))
+    _m2 = _renew_from(_dt.date(_y, 1, 31))
+    _m3 = _renew_from(_dt.date(_y, 2, 5))
+    run("UPDATE role_funcs SET allowed = 0 WHERE role = 'reseller' AND fkey = 'sub.monthly_renew'")
+    _d1 = _renew_from(_dt.date(_y, 1, 5))
+    run("DELETE FROM role_funcs WHERE role = 'reseller' AND fkey = 'sub.monthly_renew'")
+    run("UPDATE subscribers SET plan_id = %s WHERE id = %s", (_old_plan, _rsub["id"]))
+    _feb_end = _dt.date(_y, 3, 1) - _dt.timedelta(days=1)
+    check(_ticked0 and "Monthly Renew" in _rperm2
+          and _m1 == (_dt.date(_y, 2, 5), 400.0) and _m2 == (_feb_end, 400.0) and _m3 == (_dt.date(_y, 3, 5), 400.0)
+          and _d1 == (_dt.date(_y, 2, 4), 400.0),
+          "monthly renew: ticked on the Reseller role (Subscriber tab), a 30-day package renews 5 Jan -> 5 Feb "
+          "(31 Jan -> end of Feb, 5 Feb -> 5 Mar) for one month's price; off = 30 days")
+    _menus = [client(ids[k]).get("/").get_data(as_text=True) for k in ("reseller", "subreseller")]
+    _gone = [_rc2.get(u).status_code for u in ("/my-profit", "/my-profit.csv")]
+    check(all('href="/my-profit"' not in m and "My Profit" not in m for m in _menus) and _gone == [404, 404]
+          and "rep.myprofit" not in adm.get("/roles/reseller/permissions").get_data(as_text=True),
+          "My Profit is gone: no menu item, no page, no CSV and no permission tick")
+    # activation page: the customer's expiry shows the date and the time it ends
+    run("UPDATE subscribers SET expiry_date = '2027-01-17', expiry_time = NULL WHERE id = %s", (_asub["id"],))
+    run("UPDATE plans SET fixed_expire_time = NULL WHERE id = (SELECT plan_id FROM subscribers WHERE id = %s)", (_asub["id"],))
+    _lk1 = json.loads(adm.get("/subscribers/lookup?q=%s" % _asub["username"]).get_data(as_text=True))["items"]
+    run("UPDATE subscribers SET expiry_time = '14:30' WHERE id = %s", (_asub["id"],))
+    _lk2 = json.loads(adm.get("/subscribers/lookup?q=%s" % _asub["username"]).get_data(as_text=True))["items"]
+    _e1 = next(i["expiry"] for i in _lk1 if i["id"] == _asub["id"])
+    _e2 = next(i["expiry"] for i in _lk2 if i["id"] == _asub["id"])
+    check(_e1 == "17 Jan 2027 11:59 PM" and _e2 == "17 Jan 2027 2:30 PM",
+          "activation page: Expires shows the date and time (the customer's own, else the package's, else 11:59 PM)")
+    # Add Package: a mistake keeps what was typed and marks the box; a deleted policy is named; fees are checkboxes
+    _fee_id = one("SELECT id FROM fees ORDER BY id LIMIT 1")
+    _np = adm.post("/plans/save", data={"_csrf": "ci", "name": "cinewpkg", "description": "CI New Pkg", "price": "750", "duration": "1",
+                                        "duration_type": "month", "pool_name": "", "quota_daily_gb": "12",
+                                        "fees": [str(_fee_id["id"])] if _fee_id else []})
+    _npt = _np.get_data(as_text=True)
+    _np2 = adm.post("/plans/save", data={"_csrf": "ci", "name": "cinewpkg", "description": "CI New Pkg", "price": "abc", "duration": "30",
+                                         "duration_type": "day", "pool_name": "", "policy_group": ""}).get_data(as_text=True)
+    run("UPDATE plans SET policy_group = 'ci-gone-policy' WHERE id = %s", (_ppid,))
+    _ed = adm.get("/plans/%d/edit" % _ppid).get_data(as_text=True)
+    check(_np.status_code == 200 and 'value="cinewpkg"' in _npt and 'value="CI New Pkg"' in _npt and 'value="750"' in _npt
+          and 'value="12"' in _npt and 'option value="month" selected' in _npt and 'field bad' in _npt and "Choose a Policy" in _npt
+          and (not _fee_id or ('name="fees" value="%d" checked' % _fee_id["id"]) in _npt)
+          and not one("SELECT id FROM plans WHERE name = 'cinewpkg'")
+          and "field bad" in _np2 and ("Check the price" in _np2 or "must be a number" in _np2)
+          and "ci-gone-policy" in _ed and "was deleted" in _ed and 'type="checkbox" name="fees"' in _ed
+          and "Display name (Description)" in _ed and "Saved for later" in _ed and "Not printed yet" in _ed,
+          "Add Package: a mistake keeps everything typed and marks the box red; a deleted policy is named; fees are checkboxes; "
+          "settings nothing uses yet are labelled so")
+    # subscriber page: Why Refused only for one's own customers; balance never below zero; Due counts an expired
+    # package; Enable / Disable Net each need their own tick
+    _dg_other = _rc2.get("/diagnose?user=%s" % _asub["username"]).get_data(as_text=True)
+    _dg_own = _rc2.get("/diagnose?user=%s" % _rsub["username"]).get_data(as_text=True)
+    run("UPDATE subscribers SET balance = 50, status = 'active', net_disabled = 0, expiry_date = CURDATE() - INTERVAL 3 DAY "
+        "WHERE id = %s", (_asub["id"],))
+    adm.post("/subscribers/%d/balance" % _asub["id"], data={"_csrf": "ci", "amount": "-500"})
+    _bal_after = float(one("SELECT balance FROM subscribers WHERE id = %s", (_asub["id"],))["balance"])
+    _pp = float(one("SELECT p.price FROM subscribers s JOIN plans p ON p.id = s.plan_id WHERE s.id = %s", (_asub["id"],))["price"] or 0)
+    _sv = adm.get("/subscribers/%d" % _asub["id"]).get_data(as_text=True)
+    _due_txt = "%.2f" % max(_pp - 50, 0)
+    run("INSERT INTO role_funcs (role, fkey, allowed) VALUES ('support', 'sub.net_on', 1), ('support', 'sub.net_off', 0) "
+        "ON DUPLICATE KEY UPDATE allowed = VALUES(allowed)")
+    _net_off = st.post("/subscribers/%d/net" % _asub["id"], data={"_csrf": "ci"}).status_code
+    _still_on = one("SELECT net_disabled FROM subscribers WHERE id = %s", (_asub["id"],))["net_disabled"]
+    run("DELETE FROM role_funcs WHERE role = 'support' AND fkey IN ('sub.net_on', 'sub.net_off')")
+    check("No customer of yours" in _dg_other and "Open subscriber" not in _dg_other and "Open subscriber" in _dg_own
+          and _bal_after == 50 and ("package expired" in _sv if _pp > 50 else True) and _due_txt in _sv
+          and _net_off == 403 and _still_on == 0,
+          "subscriber page: Why Refused shows a reseller only their own customers; a balance never goes below zero; "
+          "Due includes an expired package; turning the internet off needs Disable Net")
     return bad
 
 

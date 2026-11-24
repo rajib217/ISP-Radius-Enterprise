@@ -52,8 +52,13 @@ def context(sub, sessions):
     sid, user = sub["id"], sub["username"]
     out = {}
     out["photo"] = url_for("subscriber_photo", sid=sid, v=int(os.path.getmtime(_photo_path(sid)))) if _photo_path(sid) else ""
-    out["due"] = q("SELECT COALESCE(SUM(amount), 0) AS t FROM sub_charges WHERE subscriber_id = %s AND paid = 0",
-                   (sid,), one=True)["t"]
+    out["due_charges"] = float(q("SELECT COALESCE(SUM(amount), 0) AS t FROM sub_charges WHERE subscriber_id = %s AND paid = 0",
+                                 (sid,), one=True)["t"] or 0)
+    # an expired package is owed too: its price less what is already in the balance (as Accounting > Dues counts it)
+    out["due_package"] = 0.0
+    if sub.get("status") != "suspended" and sub.get("expiry_date") and sub["expiry_date"] < date.today() and sub.get("plan_id"):
+        out["due_package"] = round(max(float(sub.get("price") or 0) - float(sub.get("balance") or 0), 0), 2)
+    out["due"] = round(out["due_charges"] + out["due_package"], 2)
     out["open_tickets"] = q("SELECT COUNT(*) AS c FROM tickets WHERE subscriber_id = %s AND status IN ('open', 'pending')",
                             (sid,), one=True)["c"]
     out["quota_gb"] = sub.get("quota_total_gb")
@@ -235,11 +240,11 @@ def subscriber_balance(sid):
         flash("Enter an amount (use a minus sign to take money off the balance).", "error")
         return _back(sid)
     new = round(float(sub["balance"] or 0) + amount, 2)
+    if new < 0:                       # nobody takes more than the customer has (office staff included)
+        flash("The customer's balance cannot go below zero (it is %.2f)." % float(sub["balance"] or 0), "error")
+        return _back(sid)
     if g.me["role"] in core.SELLER_ROLES:
         # a seller's money comes out of their own balance (taking it back returns it to them)
-        if new < 0:
-            flash("The customer's balance cannot go below zero (it is %.2f)." % float(sub["balance"] or 0), "error")
-            return _back(sid)
         ok, have = core.seller_pays(amount, "Balance %s %s" % ("to" if amount > 0 else "back from", sub["username"]))
         if not ok:
             flash("Your balance (%.2f) is lower than %.2f. Add balance to yourself first. Nothing was changed." % (have, amount), "error")
@@ -276,6 +281,8 @@ def subscriber_settings(sid):
 def subscriber_net(sid):
     sub = _sub(sid)
     off = 0 if sub["net_disabled"] else 1
+    if not core.can_fn("sub.net_off" if off else "sub.net_on"):    # each direction has its own tick
+        abort(403)
     x("UPDATE subscribers SET net_disabled = %s WHERE id = %s", (off, sid))
     _resync(sub, net_disabled=off)
     audit("net_disabled" if off else "net_enabled", sub["username"])

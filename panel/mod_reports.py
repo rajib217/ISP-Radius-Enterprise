@@ -198,24 +198,6 @@ def _profit_report(span, days, labels):
                       "series": [{"name": "Profit", "values": [round(daily.get(d, 0), 2) for d in days]}]}}
 
 
-@route("/my-profit")
-def my_profit():
-    """The same profit table for a reseller / sub-reseller / retailer: themselves and everyone below them."""
-    if g.me["role"] not in core.SELLER_ROLES:
-        abort(403)
-    start, end = core.date_range(29)
-    days = [start + timedelta(days=i) for i in range((end - start).days + 1)]
-    ctx = _profit_report((start, end), days, [d.strftime("%d %b") for d in days])
-    return render_template("my_profit.html", start=start, end=end, tab="profit", **ctx)
-
-
-@route("/my-profit.csv")
-def my_profit_csv():
-    if g.me["role"] not in core.SELLER_ROLES:
-        abort(403)
-    return profit_csv()
-
-
 @route("/reports/profit.csv", module="reports")
 def profit_csv():
     """Summary per seller, or, when one seller is chosen, every sale of that seller."""
