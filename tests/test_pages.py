@@ -2491,6 +2491,16 @@ def check_rules(flask_app, ids):
           and _st_tech and _st_tech["n"] >= 1 and _st_tech["fix_sum"] >= 180 and "Past months" in _rp2 and _old_month in _rp2,
           "tickets: on the 1st, tickets closed before that month are removed with their messages and photos (open ones stay); "
           "each month's numbers stay on Report > Past months; once a month only")
+    # subscriber list: the expiry shows the date and the time the package ends
+    run("UPDATE subscribers SET expiry_date = CURDATE() + INTERVAL 400 DAY, expiry_time = '14:30' WHERE id = %s", (_asub["id"],))
+    run("UPDATE subscribers SET expiry_date = CURDATE() + INTERVAL 399 DAY, expiry_time = NULL WHERE id = %s", (_rsub["id"],))
+    run("UPDATE plans SET fixed_expire_time = NULL WHERE id = (SELECT plan_id FROM subscribers WHERE id = %s)", (_rsub["id"],))
+    _sl = adm.get("/subscribers?sort=expiry&dir=desc&per=500").get_data(as_text=True)
+    _i_a, _i_r = _sl.find("/subscribers/%d\"" % _asub["id"]), _sl.find("/subscribers/%d\"" % _rsub["id"])
+    _cell_a = _sl[_i_a:_i_a + 6000]
+    _cell_r = _sl[_i_r:_i_r + 6000]
+    check(_i_a != -1 and _i_r != -1 and "02:30 PM" in _cell_a and "11:59 PM" in _cell_r and _i_a < _i_r,
+          "subscriber list: Expiration shows the date and the end time (the customer's own, else the package's, else 11:59 PM)")
     return bad
 
 

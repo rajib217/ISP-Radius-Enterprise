@@ -700,17 +700,26 @@ def subscribers():
     sort = request.args.get("sort", "created")
     sort = sort if sort in SORTS else "created"
     direction = "ASC" if request.args.get("dir") == "asc" else "DESC"
-    rows = q("SELECT s.id, s.username, s.full_name, s.phone, s.area, s.status, s.expiry_date, s.grace_until, "
+    order = SORTS[sort] + " " + direction
+    if sort == "expiry":                 # same day: the earlier time first (customer's own time, else the package's, else 23:59)
+        order += ", COALESCE(s.expiry_time, p.fixed_expire_time, '23:59') " + direction
+    rows = q("SELECT s.id, s.username, s.full_name, s.phone, s.area, s.status, s.expiry_date, s.expiry_time, s.grace_until, "
              "s.mac_bind, s.static_ip, s.created_by, s.balance, s.photo, s.plan_id, p.label AS plan_label, p.download_mbps, p.upload_mbps, p.bandwidth_value, p.bandwidth_type, "
+             "p.fixed_expire_time, "
              "p.price AS plan_price, p.validity_days AS plan_days, "
              "a.full_name AS seller_name, a.role AS seller_role, "
              "(SELECT value FROM radcheck rc WHERE rc.username = s.username AND rc.attribute = 'Cleartext-Password' "
              "LIMIT 1) AS password, "
              "(SELECT COALESCE(SUM(c.amount), 0) FROM sub_charges c WHERE c.subscriber_id = s.id AND c.paid = 0) "
              "AS due" + BASE_FROM + " LEFT JOIN panel_admins a ON a.username = s.created_by" + where +
-             " ORDER BY " + SORTS[sort] + " " + direction + ", s.id DESC LIMIT %s OFFSET %s",
+             " ORDER BY " + order + ", s.id DESC LIMIT %s OFFSET %s",
              params + [pg["per"], pg["offset"]])
     decorate(rows)
+    for r in rows:                       # the exact moment the package ends (date and time)
+        try:
+            r["ends"] = mod_subs.end_moment(r, {"fixed_expire_time": r.get("fixed_expire_time")})
+        except (TypeError, ValueError):
+            r["ends"] = None
     if rows:
         marks = ",".join(["%s"] * len(rows))
         names = [r["username"] for r in rows]
