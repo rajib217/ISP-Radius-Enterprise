@@ -3201,6 +3201,24 @@ def check_rules(flask_app, ids):
           "(never above the due or the cap, never a card number, a TrxID or a form only once, a quick repeat asks first), an "
           "expired package renews, a receipt prints; settings, users, accounting, reports, logs and exports stay closed; "
           "deposit + the reseller's confirmation bring cash in hand to zero; only an administrator voids " + repr(_no))
+    # the collector's pages (phone-first design): cards with filters, method tiles with a live preview, cash-in-hand
+    run("UPDATE subscribers SET status = 'active', balance = 0, expiry_date = CURDATE() - INTERVAL 5 DAY WHERE id = %s", (_rsub["id"],))
+    _dl = _cc.get("/collect").get_data(as_text=True)
+    _dl_exp = _cc.get("/collect?show=expired").get_data(as_text=True)
+    _dl_fee = _cc.get("/collect?show=charges").get_data(as_text=True)
+    _pf = _cc.get("/collect/%d" % _rsub["id"]).get_data(as_text=True)
+    _rp_c = _cc.get("/collect/report?from=2020-01-01&to=2020-01-02").get_data(as_text=True)
+    _cl_r = _rc2.get("/collections?collector=%d" % _col["id"]).get_data(as_text=True)
+    _cl_bad = _rc2.get("/collections?collector=%d" % _col2).status_code
+    _bn = _cc.get("/collect").get_data(as_text=True)
+    check('class="cl-card done"' in _dl and "Paid today" in _dl and "Expired 5 days" in _dl and 'href="tel:' in _dl and "cl-chip on" in _dl
+          and _rsub["username"] in _dl_exp and _rsub["username"] not in _dl_fee
+          and "data-cl-pay" in _pf and 'class="cl-method' in _pf and "data-cl-effect" in _pf and "Full due" in _pf
+          and 'data-cf-for="pos"' in _pf and 'data-cf-for="bkash"' in _pf and "Receive" in _pf
+          and "cl-cash" in _rp_c and "No collections in this period" in _rp_c and "cl-mix" in _rp_c
+          and 'class="cl-member on' in _cl_r and _cl_bad == 403 and 'href="/collect/report"' in _bn,
+          "Bill Collector pages: due cards (expired / charges filters, call, directions), the payment form with method tiles, "
+          "quick amounts and a live preview, cash in hand with deposit; the hirer filters by collector (only their own)")
     return bad
 
 

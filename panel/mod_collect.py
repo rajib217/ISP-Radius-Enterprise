@@ -117,16 +117,28 @@ def collect():
         params += ["%" + term + "%"] * 4
     rows = q("SELECT s.*, p.price, COALESCE(p.label, p.name) AS plan_label FROM subscribers s LEFT JOIN plans p ON p.id = s.plan_id "
              + where + " ORDER BY s.expiry_date IS NULL, s.expiry_date, s.username LIMIT 300", params)
-    out = []
+    every = []
     for s in rows:
         d = due_of(s)
         if d["total"] > 0:
             s["due"], s["code"] = d, core.sub_code(s["id"])
-            out.append(s)
+            s["late"] = (date.today() - s["expiry_date"]).days if d["package"] and s.get("expiry_date") else 0
+            every.append(s)
+    # filter chips (counted before the filter): all, an expired package, only unpaid charges; and an area
+    show = request.args.get("show") if request.args.get("show") in ("expired", "charges") else "all"
+    area = request.args.get("area", "").strip()[:64]
+    areas = sorted({s["area"] for s in every if s.get("area")})
+    counts = {"all": len(every), "expired": sum(1 for s in every if s["due"]["package"]),
+              "charges": sum(1 for s in every if not s["due"]["package"])}
+    out = [s for s in every if (show == "all" or (show == "expired") == bool(s["due"]["package"]))
+           and (not area or s.get("area") == area)]
     me = g.me["id"]
     today = q("SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0) AS t FROM collections WHERE collector_id = %s AND status = 'posted' "
               "AND created_at >= CURDATE()", (me,), one=True)
-    return render_template("collect.html", rows=out, term=term, today=today, hand=cash_in_hand(me))
+    paid_today = {r["subscriber_id"] for r in q("SELECT DISTINCT subscriber_id FROM collections WHERE collector_id = %s "
+                                                "AND status = 'posted' AND created_at >= CURDATE()", (me,))}
+    return render_template("collect.html", rows=out, term=term, today=today, hand=cash_in_hand(me), show=show, area=area,
+                           areas=areas, counts=counts, owed=round(sum(s["due"]["total"] for s in out), 2), paid_today=paid_today)
 
 
 # ===================================================================== take a payment
@@ -199,8 +211,14 @@ def collect_one(sid):
 
 def _form(sub, d, f=None):
     f = f or {}
+    charges = q("SELECT name, amount, created_at FROM sub_charges WHERE subscriber_id = %s AND paid = 0 ORDER BY id", (sub["id"],))
+    recent = q("SELECT receipt_no, amount, method, status, created_at, id FROM collections WHERE subscriber_id = %s "
+               "ORDER BY id DESC LIMIT 5", (sub["id"],))
+    late = (date.today() - sub["expiry_date"]).days if d["package"] and sub.get("expiry_date") else 0
     return render_template("collect_form.html", sub=sub, due=d, methods=[m for m in METHODS if core.can_fn(METHOD_KEY[m[0]])],
-                           f=f, token=secrets.token_urlsafe(24), code=core.sub_code(sub["id"]), cap=caps()[0])
+                           f=f, token=secrets.token_urlsafe(24), code=core.sub_code(sub["id"]), cap=caps()[0], charges=charges,
+                           recent=recent, late=late, labels=dict(METHODS), repeat_min=REPEAT_MIN,
+                           plan_label=(d["plan"]["label"] or d["plan"]["name"]) if d["plan"] else "")
 
 
 def post(sub, d, amount, method, pos_ref, trx, token):
@@ -323,8 +341,12 @@ def collect_report():
     rows = q("SELECT c.*, s.full_name FROM collections c LEFT JOIN subscribers s ON s.id = c.subscriber_id "
              "WHERE c.collector_id = %s AND c.created_at >= %s AND c.created_at < %s ORDER BY c.id DESC", (me, lo, hi))
     tot = {m: sum(float(r["amount"]) for r in rows if r["method"] == m and r["status"] == "posted") for m, _ in METHODS}
+    cnt = {m: sum(1 for r in rows if r["method"] == m and r["status"] == "posted") for m, _ in METHODS}
+    today = date.today()
+    presets = [("Today", today, today), ("Yesterday", today - timedelta(days=1), today - timedelta(days=1)),
+               ("7 days", today - timedelta(days=6), today), ("This month", today.replace(day=1), today)]
     deps = q("SELECT * FROM collection_deposits WHERE collector_id = %s ORDER BY id DESC LIMIT 30", (me,))
-    return render_template("collect_report.html", rows=rows, tot=tot, total=sum(tot.values()), start=start, end=end,
+    return render_template("collect_report.html", rows=rows, tot=tot, cnt=cnt, presets=presets, total=sum(tot.values()), start=start, end=end,
                            deps=deps, hand=cash_in_hand(me), methods=dict(METHODS),
                            boss=core.seller_boss())
 
@@ -412,19 +434,31 @@ def collections():
     ids = [p["id"] for p in people]
     for p in people:
         p.update(cash_in_hand(p["id"]))
+    pick = request.args.get("collector", type=int)
+    if pick is not None and pick not in ids:
+        abort(403)
     rows, deps = [], []
     if ids:
         mark = ",".join(["%s"] * len(ids))
         rows = q("SELECT c.*, a.username AS collector_user, s.full_name FROM collections c JOIN panel_admins a ON a.id = c.collector_id "
                  "LEFT JOIN subscribers s ON s.id = c.subscriber_id WHERE c.collector_id IN (" + mark + ") "
-                 "AND c.created_at >= %s AND c.created_at < %s ORDER BY c.id DESC LIMIT 500", ids + [lo, hi])
+                 "AND c.created_at >= %s AND c.created_at < %s ORDER BY c.id DESC LIMIT 1000", ids + [lo, hi])
+        for p in people:                         # what each one took in the period
+            mine = [r for r in rows if r["collector_id"] == p["id"] and r["status"] == "posted"]
+            p["took"], p["n"] = round(sum(float(r["amount"]) for r in mine), 2), len(mine)
+            p["last"] = mine[0]["created_at"] if mine else None
+        if pick:
+            rows = [r for r in rows if r["collector_id"] == pick]
         deps = q("SELECT d.*, a.username AS collector_user FROM collection_deposits d JOIN panel_admins a ON a.id = d.collector_id "
                  "WHERE d.collector_id IN (" + mark + ") AND (d.status = 'pending' OR d.created_at >= %s) "
                  "ORDER BY d.status = 'pending' DESC, d.id DESC LIMIT 100", ids + [lo])
     total = sum(float(r["amount"]) for r in rows if r["status"] == "posted")
     max_txn, max_day = caps()
+    pending = [d for d in deps if d["status"] == "pending"]
     return render_template("collections.html", people=people, rows=rows, deps=deps, total=total, start=start, end=end,
-                           methods=dict(METHODS), max_txn=max_txn, max_day=max_day)
+                           methods=dict(METHODS), max_txn=max_txn, max_day=max_day, pick=pick, pending=pending,
+                           waiting=round(sum(float(d["amount"]) for d in pending), 2),
+                           in_hand=round(sum(p["hand"] for p in people), 2))
 
 
 @route("/collections/<int:cid>/void", methods=["POST"])
