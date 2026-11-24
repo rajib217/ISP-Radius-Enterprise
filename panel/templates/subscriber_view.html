@@ -66,7 +66,7 @@
     <div class="kpi"><div><small>Tickets</small><b>{{ x.open_tickets }}</b></div><i class="ki blue">{{ icon('ticket') }}</i></div>
   </div>
   <nav class="sv-tabs" aria-label="Sections">
-    {% for key, label, ic in [('profile','Profile','user'),('reports','Reports','chart'),('ledgers','Ledgers','file'),('invoices','Invoices','file'),('payments','Payments','card'),('online','Online Payments','wallet'),('messages','SMS Deliveries','phone'),('notifications','App Notifications','bell'),('services','Services','sliders'),('fees','Extra Service Fee','dollar'),('attributes','Attributes','grid'),('mac','MAC Address','server'),('documents','Documents','folder'),('logins','Login Log','shield'),('sessions','Session Log','activity'),('coa','CoA Logs','power'),('calls','Call Log','phone'),('activity','Activities','chart'),('tickets','Tickets','ticket')] %}
+    {% for key, label, ic in [('profile','Profile','user'),('reports','Reports','chart'),('ledgers','Ledgers','file'),('invoices','Invoices','file'),('payments','Payments','card'),('online','Online Payments','wallet'),('messages','SMS Deliveries','phone'),('notifications','App Notifications','bell'),('services','Services','sliders'),('fees','Package Tax/Fee','dollar'),('attributes','Attributes','grid'),('mac','MAC Address','server'),('documents','Documents','folder'),('logins','Login Log','shield'),('sessions','Session Log','activity'),('coa','CoA Logs','power'),('calls','Call Log','phone'),('activity','Activities','chart'),('tickets','Tickets','ticket')] %}
     {% if (key != 'documents' or (can('documents') and can_fn('sub.document'))) and (key != 'fees' or can_fn('sub.fee_view')) and (key != 'attributes' or can_fn('sub.attr_view')) %}{% if (key != 'tickets' or can('tickets')) and not (no_money and key in ('ledgers', 'invoices', 'payments', 'online')) %}<a href="#{{ key }}" data-tab="{{ key }}">{{ icon(ic) }}{{ label }}</a>{% endif %}{% endif %}
     {% endfor %}
   </nav>
@@ -111,7 +111,7 @@
     <div class="kvc-body"><dl>
       <dt>Package</dt><dd>{% if sub.plan_label %}<a href="{{ url_for('plans') }}">{{ sub.plan_label }}</a> <small class="muted">{{ bw(sub) }}</small>{% else %}—{% endif %}</dd>
       <dt>Package Duration</dt><dd class="v">{{ ('%d %s%s' % (sub.duration or sub.validity_days, sub.duration_type or 'day', '' if (sub.duration or sub.validity_days) == 1 else 's')) if sub.validity_days else '—' }}</dd>
-      <dt>Price</dt><dd>{{ currency }} {{ sub.price|money if sub.price is not none else '—' }}</dd>
+      <dt>Price</dt><dd>{% if x.cust_price is not none %}{{ currency }} {{ x.cust_price|money }}{% if me.role not in ('reseller', 'subreseller', 'retailer') and sub.price is not none and (x.cust_price|float) != (sub.price|float) %} <small class="muted">(package {{ sub.price|money }})</small>{% endif %}{% else %}—{% endif %}</dd>
       <dt>Policy</dt><dd>{{ sub.policy_group or '—' }}</dd>
       <dt>Connected Policy</dt><dd>{{ x.groups|join(', ') or '—' }}</dd>
       <dt>Total Policies</dt><dd>{{ x.groups|length }} - {{ 'OK' if x.groups else 'None' }}</dd></dl></div></section>
@@ -165,13 +165,6 @@
         </form>{% endif %}
       </div></div></section>
 </div>
-{% if online %}
-<section class="panel" style="margin-top:16px"><div class="panel-head"><h2>Live sessions</h2><span class="aside">{{ sessions|length }}</span></div>
-  <div class="tbl-wrap"><table class="tbl"><thead><tr><th>IP address</th><th>MAC / caller</th><th>Router</th><th>Connected</th><th class="num">Down</th><th class="num">Up</th><th></th></tr></thead><tbody>
-  {% for s in sessions %}<tr><td class="mono">{{ s.framedipaddress or '—' }}</td><td class="mono">{{ s.callingstationid or '—' }}</td><td class="mono">{{ s.nasipaddress }}</td><td>{{ s.acctstarttime|ago }}</td><td class="num">{{ s.acctoutputoctets|bytes }}</td><td class="num">{{ s.acctinputoctets|bytes }}</td>
-    <td class="act">{% if edit %}<form method="post" action="{{ url_for('online_disconnect') }}" data-confirm="Disconnect this session?">{{ csrf_input() }}<input type="hidden" name="id" value="{{ s.radacctid }}"><input type="hidden" name="next" value="{{ url_for('subscriber_view', sid=sub.id) }}"><button class="btn sm" type="submit">{{ icon('power') }}Disconnect</button></form>{% endif %}</td></tr>{% endfor %}
-  </tbody></table></div></section>
-{% endif %}
 </div>
 
 <div class="sv-pane" id="tab-reports" hidden>
@@ -223,13 +216,17 @@
   {% else %}<div class="empty"><p>No app notifications yet. Payments, balance top-ups and expiry warnings are sent automatically{% if edit %}; use Send Notification for your own message{% endif %}.</p></div>{% endif %}</section></div>
 
 {% if not no_money %}<div class="sv-pane" id="tab-online" hidden><section class="panel"><div class="panel-head"><h2>Online payments</h2></div>
-  <div class="empty"><h3>No online payments</h3><p>Payments made through a payment gateway (bKash) will be listed here once the gateway is connected. Cash and manual payments are under Payments.</p></div></section></div>{% endif %}
+  {% if t.online_pay %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th class="num">Amount</th><th class="num">Fee</th><th class="num">Days</th><th>bKash Trx ID</th><th>Status</th></tr></thead><tbody>
+  {% for o in t.online_pay %}<tr><td class="nowrap">{{ o.created_at|dt }}</td><td class="num">{{ currency }} {{ o.amount|money }}</td><td class="num">{{ o.fee|money }}</td><td class="num">{{ o.days or '' }}</td><td class="mono">{{ o.trx_id or '—' }}<small class="muted" style="display:block">{{ o.payment_id or '' }}</small></td>
+    <td><span class="pill {{ {'completed': 'ok', 'pending': 'warn'}.get(o.status, 'bad') }}">{{ o.status|capitalize }}</span>{% if o.message and o.status != 'completed' %}<small class="muted" style="display:block">{{ o.message|truncate(70) }}</small>{% endif %}</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% else %}<div class="empty"><h3>No online payments</h3><p>bKash payments the customer makes in the portal show here. Cash and manual payments are under Payments.</p></div>{% endif %}</section></div>{% endif %}
 
 <div class="sv-pane" id="tab-services" hidden><div class="cards3">
   <section class="panel kvc"><div class="panel-head"><h2>{{ icon('package') }}Package</h2></div>
     <div class="kvc-body"><dl><dt>Package</dt><dd>{{ sub.plan_label or '—' }}{% if sub.plan_label %} <small class="muted">{{ bw(sub) }}</small>{% endif %}</dd>
       <dt>Duration</dt><dd>{{ ('%d %s%s' % (sub.duration or sub.validity_days, sub.duration_type or 'day', '' if (sub.duration or sub.validity_days) == 1 else 's')) if sub.validity_days else '—' }}</dd>
-      <dt>Price</dt><dd>{{ currency }} {{ sub.price|money if sub.price is not none else '—' }}</dd><dt>Expiry</dt><dd{% if sub.state == 'expired' %} class="r"{% endif %}>{{ (sub.expiry_date|d) ~ ((' ' ~ (sub.expiry_time|clock)) if sub.expiry_time else '') if sub.expiry_date else '—' }}</dd></dl></div></section>
+      <dt>Price</dt><dd>{% if x.cust_price is not none %}{{ currency }} {{ x.cust_price|money }}{% if me.role not in ('reseller', 'subreseller', 'retailer') and sub.price is not none and (x.cust_price|float) != (sub.price|float) %} <small class="muted">(package {{ sub.price|money }})</small>{% endif %}{% else %}—{% endif %}</dd><dt>Expiry</dt><dd{% if sub.state == 'expired' %} class="r"{% endif %}>{{ (sub.expiry_date|d) ~ ((' ' ~ (sub.expiry_time|clock)) if sub.expiry_time else '') if sub.expiry_date else '—' }}</dd></dl></div></section>
   <section class="panel kvc"><div class="panel-head"><h2>{{ icon('sliders') }}Service Settings</h2></div>
     <div class="kvc-body"><dl>
       {% for label, on, fk in [('SMS Status', sub.sms_on, 'svc.sms'), ('Email Status', sub.email_on, 'svc.email'), ('Auto Mac Lock', sub.auto_mac, 'svc.maclock'), ('Auto Renew Status', sub.auto_renew, 'svc.skip_renew')] if can_fn(fk) or fk in ('svc.maclock', 'svc.skip_renew') %}<dt>{{ label }}</dt><dd class="{{ 'g' if on else 'r' }}">{{ 'Enabled' if on else 'Disabled' }}</dd>{% endfor %}
@@ -279,13 +276,15 @@
 </section></div>{% endif %}
 
 <div class="sv-pane" id="tab-logins" hidden><section class="panel"><div class="panel-head"><h2>Login attempts</h2></div>
-  {% if t.logins %}<ul class="list">{% for a in t.logins %}<li><span class="badge {{ 'ok' if a.reply == 'Access-Accept' else 'bad' }}">{{ 'Accepted' if a.reply == 'Access-Accept' else 'Refused' }}</span><span class="grow"></span><span class="muted">{{ a.authdate|dt }}</span></li>{% endfor %}</ul>{% else %}<div class="empty"><p>No login attempts logged.</p></div>{% endif %}</section></div>
+  {% if t.logins %}<ul class="list">{% for a in t.logins %}<li><span class="badge {{ 'ok' if a.reply == 'Access-Accept' else 'bad' }}">{{ 'Accepted' if a.reply == 'Access-Accept' else 'Refused' }}</span>{% if a.reason and a.reply != 'Access-Accept' %} <span class="muted">{{ a.reason|truncate(90) }}</span>{% endif %}<span class="grow"></span><span class="muted mono">{{ a.mac or '' }}{% if a.nas_ip and me.role not in ('reseller', 'subreseller', 'retailer') %} · {{ a.nas_ip }}{% endif %}</span> <span class="muted">{{ a.authdate|dt }}</span></li>{% endfor %}</ul>{% else %}<div class="empty"><p>No login attempts logged.</p></div>{% endif %}</section></div>
 
 <div class="sv-pane" id="tab-sessions" hidden><section class="panel"><div class="panel-head"><h2>Sessions</h2></div>
   {% if t.sessions %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Started</th><th>Ended</th><th>Length</th><th>IP</th><th>MAC</th><th class="num">Down</th><th class="num">Up</th><th>Ended by</th></tr></thead><tbody>{% for h in t.sessions %}<tr><td class="nowrap">{{ h.acctstarttime|dt }}</td><td class="nowrap">{{ h.acctstoptime|dt if h.acctstoptime else 'Online' }}</td><td>{{ h.acctsessiontime|dur }}</td><td class="mono">{{ h.framedipaddress or '' }}</td><td class="mono">{{ h.callingstationid or '' }}</td><td class="num">{{ h.acctoutputoctets|bytes }}</td><td class="num">{{ h.acctinputoctets|bytes }}</td><td class="muted">{{ h.acctterminatecause or '' }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><p>No sessions yet.</p></div>{% endif %}</section></div>
 
+{% set seller_view = me.role in ('reseller', 'subreseller', 'retailer') %}
 <div class="sv-pane" id="tab-coa" hidden><section class="panel"><div class="panel-head"><h2>Disconnect (CoA) requests</h2></div>
-  {% if t.coa %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Router</th><th>Result</th><th>By</th><th>Message</th></tr></thead><tbody>{% for c in t.coa %}<tr><td class="nowrap">{{ c.created_at|dt }}</td><td class="mono">{{ c.nas_ip }}</td><td><span class="pill {{ 'ok' if c.ok else 'bad' }}">{{ 'Accepted' if c.ok else 'Failed' }}</span></td><td class="muted">{{ c.created_by }}</td><td class="muted">{{ c.message }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><p>No disconnect requests logged{% if app_cfg.coa_log != '1' %} (CoA Request Log is off in Settings &rsaquo; Software){% endif %}.</p></div>{% endif %}</section></div>
+  {% if app_cfg.coa_log != '1' %}<div class="notice warn" style="margin:12px 16px 0">{{ icon('alert') }}<div><strong>CoA logging is off.</strong><p>New disconnect requests are not recorded{% if t.coa %}; the lines below are from before it was switched off{% endif %}. Turn it on in Settings &rsaquo; Software &rsaquo; CoA Request Log.</p></div></div>{% endif %}
+  {% if t.coa %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Router</th><th>Result</th><th>By</th><th>Message</th></tr></thead><tbody>{% for c in t.coa %}<tr><td class="nowrap">{{ c.created_at|dt }}</td><td>{% if seller_view %}{{ c.nas_name or 'Router' }}{% else %}{% if c.nas_name %}{{ c.nas_name }} {% endif %}<span class="mono muted">{{ c.nas_ip }}</span>{% endif %}</td><td>{% set not_sent = (c.message or '').startswith('Not sent') %}<span class="pill {{ 'ok' if c.ok else ('warn' if not_sent else 'bad') }}">{{ 'Accepted' if c.ok else ('Not sent' if not_sent else 'Failed') }}</span></td><td class="muted">{{ c.created_by }}</td><td class="muted">{{ c.message }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><p>No disconnect requests logged.</p></div>{% endif %}</section></div>
 
 <div class="sv-pane" id="tab-calls" hidden><section class="panel"><div class="panel-head"><h2>Call log</h2><a class="aside" href="{{ url_for('follow_ups') }}">Follow-ups</a></div>
   {% if can('subscribers', 'edit') %}<form class="panel-body call-form" method="post" action="{{ url_for('call_add', sid=sub.id) }}">

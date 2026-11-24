@@ -284,12 +284,16 @@ def kick_all(cur, username, port):
     cur.execute("SELECT nasname, secret FROM nas WHERE coa_enabled = 1")
     secrets = {r["nasname"]: r["secret"] for r in cur.fetchall()}
     done = 0
+    cur.execute("SELECT svalue FROM settings WHERE skey = 'coa_log'")
+    row = cur.fetchone()
+    logging_on = row["svalue"] if row else "1"
     for s in sessions:
         if secrets.get(s["nasipaddress"]):
             ok, msg = disconnect_session(s["nasipaddress"], secrets[s["nasipaddress"]], port, username,
                                          s["acctsessionid"], s["framedipaddress"])
-            cur.execute("SELECT svalue FROM settings WHERE skey = 'coa_log'")
-            row = cur.fetchone()
-            log_coa(cur, username, s["nasipaddress"], ok, msg, "auto", row["svalue"] if row else "1")
+            log_coa(cur, username, s["nasipaddress"], ok, msg, "auto", logging_on)
             done += bool(ok)
+        else:                          # nothing can be sent: say so in the CoA log instead of skipping silently
+            log_coa(cur, username, s["nasipaddress"], False, "Not sent: router %s is not in the NAS list, or CoA "
+                    "(disconnect) is switched off for it (Network > NAS)." % s["nasipaddress"], "auto", logging_on)
     return done

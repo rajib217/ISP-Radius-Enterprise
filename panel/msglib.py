@@ -131,6 +131,19 @@ def enqueue_many(cur, rows, chunk=500):
     return done
 
 
+_LOGIN_LINK = re.compile(r"https?://\S*/portal/link/\S+")
+_CODE = re.compile(r"(?<!\d)\d{6}(?!\d)")
+
+
+def mask_secrets(body):
+    """A message as staff may read it in delivery lists: one-time login links and the customer's 6-digit Done code
+    (ticket_otp) hidden, so nobody can use them from the panel."""
+    body = _LOGIN_LINK.sub("[login link]", body or "")
+    if "code" in body.lower():
+        body = _CODE.sub("••••••", body)
+    return body
+
+
 def parse_days(text):
     """'3, 1,0' -> [0, 1, 3] (only 0-60 allowed)."""
     out = set()

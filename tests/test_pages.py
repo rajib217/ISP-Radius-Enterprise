@@ -2808,6 +2808,54 @@ def check_rules(flask_app, ids):
           and "reconnect" in _sv_b and "moved to the new settings" not in _sv_same and "Reconnect this package" in _ed_pg,
           "Edit Package: a new Policy reaches every customer of the package at once; online ones can be reconnected now; "
           "saving without a policy change touches nobody")
+    # subscriber page: no Live sessions box at the bottom (the Session Log tab has the sessions)
+    run("INSERT INTO radacct (acctsessionid, acctuniqueid, username, nasipaddress, acctstarttime, acctupdatetime) "
+        "VALUES ('ci-live-s', 'ci-live-u', %s, '10.10.0.1', NOW(), NOW())", (_asub["username"],))
+    _svl = adm.get("/subscribers/%d" % _asub["id"]).get_data(as_text=True)
+    run("DELETE FROM radacct WHERE acctuniqueid = 'ci-live-u'")
+    check("Live sessions" not in _svl and 'data-tab="sessions"' in _svl,
+          "subscriber page: the Live sessions box is gone; sessions are under the Session Log tab")
+    # CoA log: a disconnect that cannot be sent is recorded with the reason; resellers see router names, not IPs
+    run("UPDATE radacct SET acctstoptime = NOW() WHERE username = %s AND acctstoptime IS NULL", (_asub["username"],))
+    run("INSERT INTO radacct (acctsessionid, acctuniqueid, username, nasipaddress, acctstarttime, acctupdatetime) "
+        "VALUES ('ci-coa-s', 'ci-coa-u', %s, '10.99.99.99', NOW(), NOW())", (_asub["username"],))
+    _kk = adm.post("/subscribers/%d/kick" % _asub["id"], data={"_csrf": "ci"}, follow_redirects=True).get_data(as_text=True)
+    _ns = one("SELECT message, ok FROM coa_log WHERE username = %s ORDER BY id DESC LIMIT 1", (_asub["username"],))
+    _cv = adm.get("/subscribers/%d" % _asub["id"]).get_data(as_text=True)
+    _cv_tab = _cv[_cv.find('id="tab-coa"'):_cv.find('id="tab-coa"') + 3000]
+    run("DELETE FROM radacct WHERE acctuniqueid = 'ci-coa-u'")
+    _nas = one("SELECT nasname, shortname FROM nas WHERE shortname <> '' LIMIT 1")
+    run("INSERT INTO coa_log (username, nas_ip, ok, message, created_by) VALUES (%s, %s, 1, %s, 'admin')",
+        (_rsub["username"], _nas["nasname"], "Disconnect-ACK from %s" % _nas["nasname"]))
+    _rv_page = _rc2.get("/subscribers/%d" % _rsub["id"]).get_data(as_text=True)
+    _rv_tab = _rv_page[_rv_page.find('id="tab-coa"'):_rv_page.find('id="tab-coa"') + 3000]
+    setv("coa_log", "0")
+    _off = adm.get("/subscribers/%d" % _asub["id"]).get_data(as_text=True)
+    setv("coa_log", "1")
+    check(_ns and not _ns["ok"] and _ns["message"].startswith("Not sent") and "not in the NAS list" in _kk
+          and "Not sent" in _cv_tab and _nas["nasname"] not in _rv_tab and _nas["shortname"] in _rv_tab
+          and "CoA logging is off" in _off,
+          "CoA log: a disconnect that could not be sent is logged with the real reason; resellers see the router's name, not "
+          "its IP; the tab says when CoA logging is off")
+    # customer page tabs: codes and login links hidden; real bKash payments; the customer's own price; why a login was refused
+    run("INSERT INTO outbox (channel, to_addr, subject, body, subscriber_id) VALUES ('sms', '8801711555444', '', "
+        "'Your code for complaint #99 is 482913. Give it to the technician only when the work is done.', %s), "
+        "('sms', '8801711555444', '', 'ISP: open your account: https://panel.example/portal/link/SeCrEtToKeN123 thanks', %s)",
+        (_asub["id"], _asub["id"]))
+    run("INSERT INTO portal_payments (subscriber_id, amount, fee, days, token, payment_id, trx_id, status) "
+        "VALUES (%s, 555, 8, 30, %s, 'TRCITAB', 'BKCITAB1', 'completed')", (_asub["id"], "q" * 32))
+    run("INSERT INTO radpostauth (username, pass, reply, authdate, reason, nas_ip, mac) VALUES (%s, '', 'Access-Reject', NOW(), "
+        "'ci-reason: password does not match', '10.10.0.1', 'AA:BB:CC:00:11:22')", (_asub["username"],))
+    _tp = _tc.get("/subscribers/%d" % _asub["id"]).get_data(as_text=True)
+    _ap = adm.get("/subscribers/%d" % _asub["id"]).get_data(as_text=True)
+    _msgs = adm.get("/messages").get_data(as_text=True)
+    _onl = _ap[_ap.find('id="tab-online"'):_ap.find('id="tab-online"') + 3000]
+    check("482913" not in _tp and "482913" not in _ap and "SeCrEtToKeN123" not in _ap and "[login link]" in _ap
+          and "482913" not in _msgs and "SeCrEtToKeN123" not in _msgs
+          and "BKCITAB1" in _onl and "ci-reason: password does not match" in _ap and "AA:BB:CC:00:11:22" in _ap
+          and "Package Tax/Fee</a>" in _ap,
+          "customer page tabs: Done codes and login links are hidden in SMS lists; Online Payments lists bKash payments; "
+          "Login Log says why a login was refused; Package Tax/Fee tab")
     return bad
 
 

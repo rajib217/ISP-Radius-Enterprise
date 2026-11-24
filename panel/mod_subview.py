@@ -78,6 +78,15 @@ def context(sub, sessions):
                                "ORDER BY id DESC LIMIT 1", (sid,), one=True)
     import mod_extras
     out["revert"] = mod_extras.revertable(sid) if core.can_fn("sub.revert") else None
+    # what this customer actually pays for the package (their reseller's price and profit, plus taxes / fees)
+    out["cust_price"] = None
+    plan = _plan(sub["plan_id"]) if sub.get("plan_id") else None
+    if plan:
+        import mod_subs
+        try:
+            out["cust_price"] = mod_subs.customer_price(sub, plan)
+        except Exception:
+            out["cust_price"] = None
     out["isp_name"] = core.cfg()["isp_name"]
     out["interim_min"] = round(int(core.cfg()["interim_interval"] or 0) / 60, 2)
     return out
@@ -95,6 +104,14 @@ def tabs(sub, sessions):
         t["notifs"] = []
     t["messages"] = q("SELECT channel, to_addr, subject, body, status, error, created_at, sent_at FROM outbox "
                       "WHERE subscriber_id = %s ORDER BY id DESC LIMIT 50", (sid,))
+    import msglib
+    for m in t["messages"]:             # one-time codes and login links are never shown back in the panel
+        m["body"] = msglib.mask_secrets(m["body"])
+    try:
+        t["online_pay"] = q("SELECT id, amount, fee, days, status, payment_id, trx_id, message, created_at FROM portal_payments "
+                            "WHERE subscriber_id = %s ORDER BY id DESC LIMIT 100", (sid,))
+    except Exception:
+        t["online_pay"] = []
     attrs = []
     for table in ("radcheck", "radreply"):
         for r in q("SELECT attribute, op, value FROM %s WHERE username = %%s ORDER BY id" % table, (user,)):
@@ -105,12 +122,16 @@ def tabs(sub, sessions):
     t["macs"] = q("SELECT callingstationid AS mac, COUNT(*) AS n, MAX(acctstarttime) AS last FROM radacct "
                   "WHERE username = %s AND callingstationid <> '' GROUP BY callingstationid ORDER BY last DESC LIMIT 20",
                   (user,))
-    t["logins"] = q("SELECT reply, authdate FROM radpostauth WHERE username = %s ORDER BY id DESC LIMIT 50", (user,))
+    t["logins"] = q("SELECT reply, authdate, reason, nas_ip, mac FROM radpostauth WHERE username = %s ORDER BY id DESC LIMIT 50", (user,))
     t["sessions"] = q("SELECT acctstarttime, acctstoptime, acctsessiontime, acctinputoctets, acctoutputoctets, "
                       "framedipaddress, callingstationid, acctterminatecause FROM radacct WHERE username = %s "
                       "ORDER BY radacctid DESC LIMIT 50", (user,))
-    t["coa"] = q("SELECT nas_ip, ok, message, created_by, created_at FROM coa_log WHERE username = %s ORDER BY id DESC LIMIT 50",
-                 (user,))
+    t["coa"] = q("SELECT c.nas_ip, c.ok, c.message, c.created_by, c.created_at, n.shortname AS nas_name FROM coa_log c "
+                 "LEFT JOIN nas n ON n.nasname = c.nas_ip WHERE c.username = %s ORDER BY c.id DESC LIMIT 50", (user,))
+    if core.my_downline() is not None:   # resellers see the router's name, never the office network's addresses
+        for c in t["coa"]:
+            if c["nas_ip"]:
+                c["message"] = (c["message"] or "").replace(c["nas_ip"], c["nas_name"] or "the router")
     t["activity"] = q("SELECT admin, action, detail, created_at FROM audit_log WHERE target = %s ORDER BY id DESC LIMIT 50",
                       (user,))
     t["tickets"] = q("SELECT id, subject, status, priority, updated_at FROM tickets WHERE subscriber_id = %s "

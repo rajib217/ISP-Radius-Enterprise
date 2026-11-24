@@ -947,6 +947,9 @@ def subscriber_edit(sid):
                            areas=core.area_names())
 
 
+NOT_SENT = "Not sent: router %s is not in the NAS list, or CoA (disconnect) is switched off for it (Network > NAS)."
+
+
 def nas_secrets():
     return {r["nasname"]: r["secret"] for r in q("SELECT nasname, secret FROM nas WHERE coa_enabled = 1")}
 
@@ -957,10 +960,15 @@ def kick_user(username, limit=None):
                  "WHERE username = %s AND acctstoptime IS NULL", (username,))
     secrets_by_nas, port = nas_secrets(), cfg()["coa_port"]
     kicked = failed = 0
+    g.kick_not_sent = []
     for s in sessions:
         secret = secrets_by_nas.get(s["nasipaddress"])
         if not secret:
+            # nothing can be sent: say so in the CoA log instead of failing silently
             failed += 1
+            g.kick_not_sent.append(s["nasipaddress"])
+            radius.log_coa(get_db().cursor(), username, s["nasipaddress"], False, NOT_SENT % s["nasipaddress"],
+                           g.me["username"], cfg()["coa_log"])
             continue
         ok, msg = radius.disconnect_session(s["nasipaddress"], secret, port, username,
                                             s["acctsessionid"], s["framedipaddress"])
@@ -1083,8 +1091,12 @@ def subscriber_kick(sid):
     commit()
     if kicked and not failed:
         flash("Disconnected. The router will let the customer reconnect right away.", "success")
+    elif failed and getattr(g, "kick_not_sent", None):
+        flash("Could not disconnect: router %s is not in the NAS list, or CoA (disconnect) is switched off for it. "
+              "Turn it on under Network > NAS." % ", ".join(sorted(set(g.kick_not_sent))), "error")
     elif failed:
-        flash("Could not disconnect %d session(s). Check the router's incoming RADIUS setting." % failed, "error")
+        flash("Could not disconnect %d session(s): the router refused or did not answer. Check the router's incoming "
+              "RADIUS (CoA) setting and the shared secret." % failed, "error")
     else:
         flash("This customer has no live session.", "warn")
     return redirect(safe_next(request.form.get("next")) or url_for("subscriber_view", sid=sid))

@@ -219,6 +219,8 @@ def messages():
     pg = pager(total)
     rows = q("SELECT o.*, s.id AS sid FROM outbox o LEFT JOIN subscribers s ON s.id = o.subscriber_id" + cond +
              " ORDER BY o.id DESC LIMIT %s OFFSET %s", params + [pg["per"], pg["offset"]])
+    for r in rows:                         # one-time codes and login links are never shown back in the panel
+        r["body"] = msglib.mask_secrets(r["body"])
     keep = {k: v for k, v in request.args.items() if k != "page"}
     return render_template("messages.html", rows=rows, pg=pg, counts=counts, keep=keep,
                            sender=core.service_state("isp-panel-sender"))
