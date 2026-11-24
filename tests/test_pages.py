@@ -2784,6 +2784,30 @@ def check_rules(flask_app, ids):
     check("Live throughput" not in _dash and "Subscriber status" not in _dash and "status-mix" not in _dash
           and "Active subscribers" in _dash,
           "admin dashboard: the Live throughput card and the Subscriber status chart are gone, the other cards stay")
+    # Edit Package: a new Policy reaches every customer of the package (and, if asked, online ones reconnect now)
+    run("INSERT INTO radgroupreply (groupname, attribute, op, value) VALUES ('ci-pol-a', 'Mikrotik-Rate-Limit', ':=', '10M/10M'), "
+        "('ci-pol-b', 'Mikrotik-Rate-Limit', ':=', '20M/20M')")
+    _pl = one("SELECT * FROM plans WHERE id = (SELECT plan_id FROM subscribers WHERE id = %s)", (_asub["id"],))
+    _form = {"_csrf": "ci", "id": str(_pl["id"]), "description": _pl["description"] or _pl["label"], "price": str(_pl["price"] or 0),
+             "duration": str(_pl["duration"] or 30), "duration_type": _pl["duration_type"] or "day", "pool_name": _pl["pool_name"] or "",
+             "policy_group": "ci-pol-a"}
+    adm.post("/plans/save", data=_form)
+    _ga = [r["groupname"] for r in run_q("SELECT groupname FROM radusergroup WHERE username = %s", (_asub["username"],))]
+    run("UPDATE subscribers SET status = 'active', expiry_date = CURDATE() + INTERVAL 20 DAY, quota_hit = '', net_disabled = 0 WHERE id = %s",
+        (_asub["id"],))
+    run("INSERT INTO radacct (acctsessionid, acctuniqueid, username, nasipaddress, acctstarttime, acctupdatetime) "
+        "VALUES ('ci-kick-s', 'ci-kick-u', %s, '10.10.0.1', NOW(), NOW())", (_asub["username"],))
+    run("DELETE FROM coa_queue WHERE username = %s", (_asub["username"],))
+    _sv_b = adm.post("/plans/save", data=dict(_form, policy_group="ci-pol-b", kick_online="1"), follow_redirects=True).get_data(as_text=True)
+    _gb = [r["groupname"] for r in run_q("SELECT groupname FROM radusergroup WHERE username = %s", (_asub["username"],))]
+    _kq = one("SELECT COUNT(*) AS c FROM coa_queue WHERE username = %s AND reason = 'package changed'", (_asub["username"],))["c"]
+    _sv_same = adm.post("/plans/save", data=dict(_form, policy_group="ci-pol-b"), follow_redirects=True).get_data(as_text=True)
+    _ed_pg = adm.get("/plans/%d/edit" % _pl["id"]).get_data(as_text=True)
+    run("DELETE FROM radacct WHERE acctuniqueid = 'ci-kick-u'")
+    check("ci-pol-a" in _ga and "ci-pol-b" in _gb and "ci-pol-a" not in _gb and _kq == 1 and "moved to the new settings" in _sv_b
+          and "reconnect" in _sv_b and "moved to the new settings" not in _sv_same and "Reconnect this package" in _ed_pg,
+          "Edit Package: a new Policy reaches every customer of the package at once; online ones can be reconnected now; "
+          "saving without a policy change touches nobody")
     return bad
 
 

@@ -1,7 +1,7 @@
 """Packages: list, the full Add / Edit Package page, and saving every setting."""
 import re
 
-from flask import abort, flash, redirect, render_template, request, url_for
+from flask import abort, flash, g, redirect, render_template, request, url_for
 
 import core
 import radius
@@ -211,6 +211,7 @@ def plan_save():
         flash("Check the package fields: bandwidth, price and durations must be valid numbers.", "error")
         return _form_page(_typed(f, pid), err=field, fees_sel=_fees_typed(f))
 
+    old = None
     if pid:
         old = q("SELECT * FROM plans WHERE id = %s", (pid,), one=True) or abort(404)
         name = old["name"]
@@ -229,8 +230,46 @@ def plan_save():
     with get_db().cursor() as cur:
         if fee_ids:
             cur.executemany("INSERT INTO plan_fees (plan_id, fee_id) VALUES (%s, %s)", [(pid, i) for i in fee_ids])
-        radius.sync_plan(cur, q("SELECT * FROM plans WHERE id = %s", (pid,), one=True), cfg()["interim_interval"])
-    audit("plan_saved", name, "policy %s, %d days" % (vals["policy_group"], days))
+        plan = q("SELECT * FROM plans WHERE id = %s", (pid,), one=True)
+        radius.sync_plan(cur, plan, cfg()["interim_interval"])
+    # the policy group, the expired / disabled / quota policies and the fixed end time are written on each customer's
+    # own RADIUS rows: when one of them changed, rewrite them for every customer of this package
+    resynced = kicked = 0
+    if old and any(str(old.get(k) or "") != str(vals.get(k) or "") for k in RESYNC_KEYS):
+        resynced, kicked = resync_customers(plan, kick=f.get("kick_online") == "1")
+    audit("plan_saved", name, "policy %s, %d days%s" % (vals["policy_group"], days,
+                                                        ", %d customers updated" % resynced if resynced else ""))
     commit()
-    flash("Package %s saved. Policy changes apply the next time each customer connects." % name, "success")
+    if resynced:
+        flash("Package %s saved. %d customer%s moved to the new settings%s." % (
+            name, resynced, "" if resynced == 1 else "s",
+            "; %d online customer%s reconnect%s now" % (kicked, "" if kicked == 1 else "s", "s" if kicked == 1 else "")
+            if kicked else "; online customers get them when they next connect"), "success")
+    else:
+        flash("Package %s saved." % name, "success")
     return redirect(url_for("plans"))
+
+
+RESYNC_KEYS = ("policy_group", "expired_policy", "disabled_policy", "fixed_expire_time",
+               "quota_total_action", "quota_daily_action", "quota_weekly_action",
+               "quota_total_policy", "quota_daily_policy", "quota_weekly_policy")
+
+
+def resync_customers(plan, kick=False):
+    """Rewrite the RADIUS rows of every customer on this package; with kick, queue a disconnect for the online ones
+    (the NOC service sends it; their router reconnects them at once with the new policy). Returns (updated, kicked)."""
+    subs = q("SELECT username, status, expiry_date, static_ip FROM subscribers WHERE plan_id = %s", (plan["id"],))
+    online = set()
+    if kick and subs:
+        online = {r["username"] for r in q("SELECT DISTINCT r.username FROM radacct r JOIN subscribers s ON s.username = r.username "
+                                           "WHERE r.acctstoptime IS NULL AND s.plan_id = %s", (plan["id"],))}
+    with get_db().cursor() as cur:
+        for s in subs:
+            radius.sync_subscriber(cur, s["username"], plan, s["status"], s["expiry_date"], s["static_ip"])
+        for u in online:
+            try:
+                cur.execute("INSERT INTO coa_queue (username, reason, created_by) VALUES (%s, 'package changed', %s)",
+                            (u, (g.me["username"] if getattr(g, "me", None) else "")[:64]))
+            except Exception:          # the queue table appears after update.sh; the rows above are still rewritten
+                break
+    return len(subs), len(online)

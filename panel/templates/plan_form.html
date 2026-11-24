@@ -89,6 +89,7 @@
     </div>
   </details>
 
+  {% if editing %}<div class="panel pkg-kick"><label class="check panel-body"><input type="checkbox" name="kick_online" value="1"> <span><b>Reconnect this package's online customers now</b> — when the Policy, the expired / disabled / quota actions or the fixed time change, every customer of the package gets them on save; tick this to disconnect the online ones once so their router reconnects them with the new settings straight away (otherwise at their next connection)</span></label></div>{% endif %}
   <div class="form-foot"><a class="btn" href="{{ url_for('plans') }}">Cancel</a><button class="btn primary" type="submit">Submit</button></div>
 </form>
 {% endblock %}
