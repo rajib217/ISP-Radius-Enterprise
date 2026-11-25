@@ -3330,6 +3330,69 @@ def check_rules(flask_app, ids):
           "Backup: one file holds the database and the photos, documents, ticket photos and logo; restore puts the files "
           "back; a tampered archive is refused; .tar uploads work; old uploads are cleaned up; a failed daily backup is "
           "retried; after a restore everyone signs in again " + repr((_refused, _calls, _left_old)))
+    # ===== Subscribers menu: Online sessions only shows (and disconnects) a reseller's own customers
+    _rown = one("SELECT username FROM panel_admins WHERE id = %s", (ids["reseller"],))["username"]
+    _mine_u = one("SELECT username FROM subscribers WHERE created_by = %s ORDER BY id LIMIT 1", (_rown,))["username"]
+    _office_u = one("SELECT username FROM subscribers WHERE created_by NOT IN (SELECT username FROM panel_admins WHERE role IN "
+                    "('reseller', 'subreseller', 'retailer')) ORDER BY id LIMIT 1")["username"]
+    for _u in (_mine_u, _office_u):
+        run("UPDATE radacct SET acctstoptime = NOW() WHERE username = %s AND acctstoptime IS NULL", (_u,))
+        run("INSERT INTO radacct (acctsessionid, acctuniqueid, username, nasipaddress, acctstarttime, acctupdatetime) "
+            "VALUES (%s, %s, %s, '10.250.0.1', NOW(), NOW())", ("ci-" + _u, "ci-u-" + _u, _u))
+    _on_r = _rc2.get("/online").get_data(as_text=True)
+    _on_a = adm.get("/online").get_data(as_text=True)
+    _rt_on = one("SELECT a.id FROM panel_admins a WHERE a.username = 'ci_rtech'")
+    _rtc_on = client(_rt_on["id"]).get("/online").get_data(as_text=True) if _rt_on else ""
+    _off_sess = one("SELECT radacctid FROM radacct WHERE acctuniqueid = %s", ("ci-u-" + _office_u,))["radacctid"]
+    _dis = client(_rt_on["id"]).post("/online/disconnect", data={"_csrf": "ci", "id": str(_off_sess)}, follow_redirects=True) if _rt_on else None
+    _still = one("SELECT acctstoptime FROM radacct WHERE radacctid = %s", (_off_sess,))["acctstoptime"] is None
+    _live_rt = client(_rt_on["id"]).get("/api/live").status_code if _rt_on else 0
+    _pill_rt = "live-pill" in client(_rt_on["id"]).get("/").get_data(as_text=True) if _rt_on else True
+    # the lists count from the real end time; grace and auto renew as their names say
+    _ex = "/subscribers?status=%s&q=%s"
+    _lsub = one("SELECT id, username FROM subscribers WHERE created_by = %s ORDER BY id LIMIT 1", (_rown,))
+    def _in(status, u):                            # does this customer appear in that list?
+        return ("/subscribers/%d\"" % _lsub["id"]) in adm.get(_ex % (status, u)).get_data(as_text=True)
+    _t_past = (_dt.datetime.now() - _dt.timedelta(hours=1)).strftime("%H:%M")
+    _t_soon = (_dt.datetime.now() + _dt.timedelta(hours=2)).strftime("%H:%M")
+    if _dt.datetime.now().hour >= 1:
+        run("UPDATE subscribers SET status = 'active', net_disabled = 0, grace_until = NULL, expiry_date = CURDATE(), expiry_time = %s "
+            "WHERE id = %s", (_t_past, _lsub["id"]))
+        _ended_today = [_in("expired", _lsub["username"]), _in("exp1", _lsub["username"]), _in("internet_disabled", _lsub["username"])]
+    else:
+        _ended_today = [True, False, True]          # just after midnight there is no "earlier today"
+    if _dt.datetime.now().hour <= 21:
+        run("UPDATE subscribers SET expiry_date = CURDATE(), expiry_time = %s WHERE id = %s", (_t_soon, _lsub["id"]))
+        # still running and connected now: Expiring, not Expired, not Offline
+        _soon = [_in("expired", _lsub["username"]), _in("exp1", _lsub["username"]), _in("offline", _lsub["username"])]
+    else:
+        _soon = [False, True, False]
+    # in a grace period and online: not "Expired Online", but in Grace Period On; not "Offline" while online
+    run("UPDATE subscribers SET expiry_date = CURDATE() - INTERVAL 2 DAY, expiry_time = NULL, grace_until = CURDATE() + INTERVAL 2 DAY "
+        "WHERE id = %s", (_lsub["id"],))
+    _grace = [_in("expired_online", _lsub["username"]), _in("grace", _lsub["username"]), _in("internet_disabled", _lsub["username"])]
+    run("UPDATE subscribers SET grace_until = NULL WHERE id = %s", (_lsub["id"],))
+    _no_grace_on = _in("expired_online", _lsub["username"])
+    # Recent Auto Renew: only renewals the system made from the balance
+    run("DELETE FROM payments WHERE subscriber_id = %s AND paid_at >= NOW() - INTERVAL 7 DAY", (_lsub["id"],))
+    run("INSERT INTO payments (subscriber_id, username, amount, days_added, method, note, received_by) "
+        "VALUES (%s, %s, 500, 30, 'cash', 'by hand', 'admin')", (_lsub["id"], _lsub["username"]))
+    _manual_auto = _in("renewed", _lsub["username"])
+    run("INSERT INTO payments (subscriber_id, username, amount, days_added, method, note, received_by) "
+        "VALUES (%s, %s, 500, 30, 'balance', 'Auto renew', 'auto')", (_lsub["id"], _lsub["username"]))
+    _real_auto = _in("renewed", _lsub["username"])
+    _legend = adm.get("/subscribers").get_data(as_text=True)
+    run("UPDATE radacct SET acctstoptime = NOW() WHERE acctuniqueid LIKE 'ci-u-%%'")
+    check(_mine_u in _on_r and _office_u not in _on_r and _office_u in _on_a and _mine_u in _on_a
+          and "10.250.0.1" in _on_a and (not _rt_on or (_office_u not in _rtc_on and _still and _dis.status_code == 200
+                                                        and "already ended" in _dis.get_data(as_text=True)))
+          and _live_rt == 403 and not _pill_rt
+          and _ended_today == [True, False, True] and _soon == [False, True, False]
+          and _grace == [False, True, False] and _no_grace_on and not _manual_auto and _real_auto
+          and "Renewed automatically" in _legend and "next 24 hours" in _legend,
+          "Subscribers menu: Online sessions shows and disconnects only a reseller's own customers (their technician too, "
+          "no ISP-wide counter); Expired / Expiring count from the real end time; grace customers are not Expired Online; "
+          "Recent Auto Renew is only automatic renewals " + repr((_ended_today, _soon, _grace, _no_grace_on, _manual_auto, _real_auto)))
     return bad
 
 

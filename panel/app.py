@@ -240,7 +240,8 @@ def _sees_live():
     me = getattr(g, "me", None)
     if not me:
         return False
-    return me["role"] == "admin" or (me["role"] not in core.SELLER_ROLES and core.can("online"))
+    # a reseller's own technician / collector is limited to that reseller's customers too (my_downline)
+    return me["role"] == "admin" or (core.my_downline() is None and core.can("online"))
 
 
 def _portal_unread():
@@ -656,8 +657,8 @@ def dashboard():
 
 @app.route("/api/live")
 def api_live():
-    if g.get("me") and g.me["role"] in core.SELLER_ROLES:
-        abort(403)            # ISP-wide numbers; sellers see only their own customers
+    if g.get("me") and core.my_downline() is not None:
+        abort(403)            # ISP-wide numbers; sellers (and their own staff) see only their own customers
     online = q("SELECT COUNT(*) AS c FROM radacct WHERE acctstoptime IS NULL", one=True)["c"]
     bad = q("SELECT COUNT(*) AS c FROM radpostauth WHERE reply = 'Access-Reject' "
             "AND authdate >= NOW() - INTERVAL 1 HOUR", one=True)["c"]
@@ -749,7 +750,7 @@ def subscribers():
     nas_rows = q("SELECT id, shortname, nasname FROM nas ORDER BY shortname") if dl is None else []
     keep = {k: v for k, v in request.args.items() if k != "page"}
     import mod_extras
-    return render_template("subscribers.html", rows=rows, pg=pg, plans=plans, transfer_to=mod_extras.transfer_targets(),
+    return render_template("subscribers.html", stale_min=core.stale_minutes(), rows=rows, pg=pg, plans=plans, transfer_to=mod_extras.transfer_targets(),
                            act_plans=core.filter_plans(q("SELECT * FROM plans ORDER BY download_mbps, label")), areas=areas, sellers=sellers,
                            sales=sales, nas_rows=nas_rows,
                            roles=core.role_labels(), keep=keep, sort=sort, direction=direction.lower(),
@@ -1538,9 +1539,21 @@ def import_csv():
 # ====================================================================
 #  live sessions
 # ====================================================================
+def _online_scope():
+    """(' AND ra.username IN (...)', params): a reseller (and their own staff) sees only their downline's sessions."""
+    names = core.my_downline()
+    if names is None:
+        return "", []
+    if not names:
+        return " AND 1 = 0", []
+    return (" AND ra.username IN (SELECT username FROM subscribers WHERE created_by IN (%s))"
+            % ",".join(["%s"] * len(names))), list(names)
+
+
 @app.route("/online")
 def online():
-    where, params = ["ra.acctstoptime IS NULL"], []
+    sc, sp = _online_scope()
+    where, params = ["ra.acctstoptime IS NULL" + sc], list(sp)
     text = request.args.get("q", "").strip()
     if text:
         like = text + "%"
@@ -1561,8 +1574,8 @@ def online():
              "LEFT JOIN nas ON nas.nasname = ra.nasipaddress" + cond +
              " ORDER BY ra.acctstarttime DESC LIMIT %s OFFSET %s", params + [pg["per"], pg["offset"]])
     nases = q("SELECT ra.nasipaddress AS ip, COALESCE(nas.shortname, ra.nasipaddress) AS name, COUNT(*) AS c "
-              "FROM radacct ra LEFT JOIN nas ON nas.nasname = ra.nasipaddress WHERE ra.acctstoptime IS NULL "
-              "GROUP BY ra.nasipaddress, nas.shortname ORDER BY c DESC")
+              "FROM radacct ra LEFT JOIN nas ON nas.nasname = ra.nasipaddress WHERE ra.acctstoptime IS NULL" + sc +
+              " GROUP BY ra.nasipaddress, nas.shortname ORDER BY c DESC", sp)       # only routers their customers use
     keep = {k: v for k, v in request.args.items() if k != "page"}
     return render_template("online.html", rows=rows, pg=pg, nases=nases, keep=keep)
 
@@ -1570,8 +1583,9 @@ def online():
 @app.route("/online/disconnect", methods=["POST"])
 def online_disconnect():
     back = safe_next(request.form.get("next")) or url_for("online")
-    sess = q("SELECT * FROM radacct WHERE radacctid = %s AND acctstoptime IS NULL",
-             (request.form.get("id", "0"),), one=True)
+    sc, sp = _online_scope()
+    sess = q("SELECT * FROM radacct ra WHERE ra.radacctid = %s AND ra.acctstoptime IS NULL" + sc,
+             [request.form.get("id", "0")] + sp, one=True)       # someone else's customer: as if it had ended
     if not sess:
         flash("That session has already ended.", "warn")
         return redirect(back)

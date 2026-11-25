@@ -337,16 +337,16 @@
   <div class="modal-body">
     <dl class="facts">
       <dt>Online</dt><dd>Has a live session now.</dd>
-      <dt>Stale</dt><dd>Session open but no update from the router for 15 minutes (power cut or cable pulled).</dd>
-      <dt>Offline</dt><dd>Active customers with no live session.</dd>
-      <dt>Expired</dt><dd>Package end date has passed.</dd>
-      <dt>Expired Online</dt><dd>Expired but still connected. They are disconnected at the next login.</dd>
+      <dt>Stale</dt><dd>Session open but no update from the router for {{ stale_min }} minutes (power cut or cable pulled).</dd>
+      <dt>Offline</dt><dd>Customers who may use the internet now (package running, or in a grace period) but are not connected.</dd>
+      <dt>Expired</dt><dd>The package has ended (at the customer's own end time, not only the date).</dd>
+      <dt>Expired Online</dt><dd>Package ended, no grace period, but still connected. They are disconnected at the next login.</dd>
       <dt>Profile Disabled Online</dt><dd>Suspended by you but still connected.</dd>
       <dt>Internet Disabled</dt><dd>Suspended, or expired with no grace period. They cannot log in.</dd>
-      <dt>Expiring ...</dt><dd>Active customers whose package ends within that time.</dd>
+      <dt>Expiring ...</dt><dd>Package still running and ends within that time (1 day = the next 24 hours).</dd>
       <dt>MAC Binded</dt><dd>Login is locked to one router or device MAC.</dd>
-      <dt>Grace Period On</dt><dd>Allowed to stay online for a few extra days after expiry.</dd>
-      <dt>Recent Auto Renew</dt><dd>Renewed or paid in the last 7 days.</dd>
+      <dt>Grace Period On</dt><dd>Allowed to stay online for a few extra days after expiry; the grace has not ended yet.</dd>
+      <dt>Recent Auto Renew</dt><dd>Renewed automatically from their balance in the last 7 days.</dd>
       <dt>Balance</dt><dd>Unpaid extra service fees (see Extra Service Fees).</dd>
     </dl>
   </div>

@@ -297,6 +297,23 @@ def onu_scope(alias="o"):
     return " AND %s.olt_id IN (SELECT od.id FROM net_devices od WHERE od.kind = 'olt'%s)" % (alias, sql), p
 
 
+# when the package ends (no alias for plans needed: every caller of sub_filters can use it)
+_PLAN_TIME = "NULLIF((SELECT px.fixed_expire_time FROM plans px WHERE px.id = s.plan_id), '')"
+PKG_END = "TIMESTAMP(s.expiry_date, COALESCE(NULLIF(s.expiry_time, ''), " + _PLAN_TIME + ", '23:59:59'))"
+# a grace period still running (Grace Period On): RADIUS lets them in until the grace day at the package's time
+GRACE_ON = ("(s.grace_until IS NOT NULL AND s.grace_until > s.expiry_date AND "
+            "TIMESTAMP(s.grace_until, COALESCE(" + _PLAN_TIME + ", '23:59:59')) > NOW())")
+
+
+def stale_minutes():
+    """Silence that makes an open session 'Stale': two missed router updates (Settings > interim interval), at least 15."""
+    try:
+        interim = int(cfg().get("interim_interval") or 600)
+    except (TypeError, ValueError):
+        interim = 600
+    return max(15, -(-interim * 2 // 60))
+
+
 def sub_filters(args):
     """WHERE clause for the subscribers table (alias s, plans alias p)."""
     where, params = [], []
@@ -319,28 +336,30 @@ def sub_filters(args):
         params.append(args["area"])
     status = args.get("status", "")
     online = "s.username IN (SELECT username FROM radacct WHERE acctstoptime IS NULL)"
-    expired = "s.status = 'active' AND s.expiry_date < CURDATE()"
-    disabled = ("(s.status = 'suspended' OR s.net_disabled = 1 OR (s.expiry_date < CURDATE() AND "
-                "(s.grace_until IS NULL OR s.grace_until < CURDATE())))")
+    # the lists count from the moment the package really ends (the customer's time, else the package's, else 23:59:59),
+    # the same moment RADIUS cuts them at (radius.END_MOMENT) - not just the date
+    expired = "s.status = 'active' AND s.expiry_date IS NOT NULL AND " + PKG_END + " <= NOW()"
+    running = "s.status = 'active' AND (s.expiry_date IS NULL OR " + PKG_END + " > NOW() OR " + GRACE_ON + ")"
+    disabled = "(s.status = 'suspended' OR s.net_disabled = 1 OR (" + expired + " AND NOT " + GRACE_ON + "))"
     expiring = {"exp1": 1, "exp3": 3, "exp7": 7, "exp14": 14, "exp28": 28, "expiring": 7}
     if status == "active":
-        where.append("s.status = 'active' AND (s.expiry_date IS NULL OR s.expiry_date >= CURDATE())")
+        where.append(running)
     elif status == "suspended":
         where.append("s.status = 'suspended'")
     elif status == "expired":
         where.append(expired)
-    elif status in expiring:
-        where.append("s.status = 'active' AND s.expiry_date BETWEEN CURDATE() AND CURDATE() + INTERVAL %d DAY"
-                     % expiring[status])
+    elif status in expiring:                  # ends within the next N days (N x 24 hours), not yet ended
+        where.append("s.status = 'active' AND s.expiry_date IS NOT NULL AND " + PKG_END + " > NOW() AND "
+                     + PKG_END + " <= NOW() + INTERVAL %d DAY" % expiring[status])
     elif status == "online":
         where.append(online)
-    elif status == "offline":
-        where.append("s.status = 'active' AND NOT (" + online + ")")
+    elif status == "offline":                 # customers who may use the internet now but are not connected
+        where.append(running + " AND s.net_disabled = 0 AND NOT (" + online + ")")
     elif status == "stale":
         where.append("s.username IN (SELECT username FROM radacct WHERE acctstoptime IS NULL "
-                     "AND COALESCE(acctupdatetime, acctstarttime) < NOW() - INTERVAL 15 MINUTE)")
-    elif status == "expired_online":
-        where.append(expired + " AND " + online)
+                     "AND COALESCE(acctupdatetime, acctstarttime) < NOW() - INTERVAL %d MINUTE)" % stale_minutes())
+    elif status == "expired_online":          # should be cut: package ended, no grace, still connected
+        where.append(expired + " AND NOT " + GRACE_ON + " AND " + online)
     elif status == "profile_disabled_online":
         where.append("s.status = 'suspended' AND " + online)
     elif status == "internet_disabled_online":
@@ -350,9 +369,9 @@ def sub_filters(args):
     elif status == "mac":
         where.append("s.mac_bind <> ''")
     elif status == "grace":
-        where.append("s.grace_until >= CURDATE()")
-    elif status == "renewed":
-        where.append("s.id IN (SELECT subscriber_id FROM payments WHERE days_added > 0 "
+        where.append(GRACE_ON)
+    elif status == "renewed":                 # renewed by the system from the customer's balance (maintenance.py)
+        where.append("s.id IN (SELECT subscriber_id FROM payments WHERE days_added > 0 AND received_by = 'auto' "
                      "AND paid_at >= NOW() - INTERVAL 7 DAY)")
     if args.get("seller"):
         where.append("s.created_by = %s")
