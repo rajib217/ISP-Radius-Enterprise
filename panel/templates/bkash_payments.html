@@ -7,6 +7,7 @@
   <div><h1>bKash Payments</h1>
     <p class="sub">{{ 'Your top-ups and those of the people below you' if scope == 'mine' else 'Every bKash checkout: customer renewals and reseller top-ups' }} · {{ f['from']|d }} to {{ f['to']|d }}</p></div>
   <div class="actions">
+    {% if can_add %}<button class="btn primary" type="button" data-open="bkadd-dlg" data-new>{{ icon('plus') }}Add bKash payment</button>{% endif %}
     {% if can_export %}
     <a class="btn" href="{{ url_for('bkash_payments_xlsx', **keep) }}">{{ icon('download') }}Excel</a>
     <a class="btn" href="{{ url_for('bkash_payments_csv', **keep) }}">{{ icon('file') }}CSV</a>
@@ -26,7 +27,11 @@
 
 <section class="panel">
   <form class="filters panel-body" method="get" style="padding-bottom:0">
-    <div class="search">{{ icon('search') }}<input type="search" name="q" value="{{ f.q }}" placeholder="Username, Trx ID or Payment ID" aria-label="Search"></div>
+    <div class="search">{{ icon('search') }}<input type="search" name="q" value="{{ f.q }}" placeholder="Trx ID, username, name or note" aria-label="Search"></div>
+    <select name="ptype" aria-label="Profile type" data-bk-ptype><option value="">All profiles</option>
+      {% for k, label in ptypes %}<option value="{{ k }}" {{ 'selected' if f.ptype == k }}>{{ label }}</option>{% endfor %}</select>
+    {% if partners %}<select name="owner" aria-label="Account" data-bk-owner><option value="">Everyone{{ ' of that type' if f.ptype }}</option>
+      {% for p in partners %}<option value="{{ p.username }}" data-role="{{ p.role }}" {{ 'selected' if f.owner == p.username }} {{ 'hidden' if f.ptype and p.role != f.ptype }}>{{ p.username }}{% if p.full_name %} · {{ p.full_name }}{% endif %} ({{ role_names.get(p.role) }})</option>{% endfor %}</select>{% endif %}
     <select name="status" aria-label="Status"><option value="">All statuses</option>
       {% for k, label in statuses %}<option value="{{ k }}" {{ 'selected' if f.status == k }}>{{ label }}</option>{% endfor %}</select>
     <select name="kind" aria-label="Type"><option value="">All types</option>
@@ -51,12 +56,43 @@
         <td class="num" data-label="bKash fee">{{ r.fee|money }}</td>
         <td class="num" data-label="Total" data-card="key"><b>{{ r.total|money }}</b></td>
         <td data-label="Status" data-card="key"><span class="badge {{ {'completed': 'ok', 'pending': 'warn'}.get(r.status, 'bad') }}" {% if r.message %}title="{{ r.message }}"{% endif %}>{{ r.status|capitalize }}</span></td>
-        <td data-label="bKash Trx ID">{% if r.trx %}<span class="led-chip mono">{{ r.trx }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
-        <td class="mono" data-label="Payment ID"><small>{{ r.payment_id or '—' }}</small></td>
+        <td data-label="bKash Trx ID">{% if r.trx %}<span class="led-chip mono">{{ r.trx }}</span>{% else %}<span class="muted">—</span>{% endif %}{% if r.note %}<small class="muted" style="display:block;max-width:260px;white-space:normal">{{ r.note }}</small>{% endif %}</td>
+        <td class="mono" data-label="Payment ID"><small>{% if r.payment_id == 'manual' %}<span class="badge info" title="{{ r.message }}">by hand</span> {{ r.message|replace('Added by ', '') }}{% else %}{{ r.payment_id or '—' }}{% endif %}</small></td>
         <td class="nowrap" data-label="Created"><span class="led-chip">{{ r.created.strftime('%Y-%m-%d %H:%M') }}</span></td>
       </tr>{% endfor %}</tbody>
   </table></div>
   <div class="listbar"><span class="muted">Showing {{ pg.first }} to {{ pg.last }} of {{ '{:,}'.format(pg.total) }} records</span>{{ pager(pg, keep, 'bkash_payments') }}</div>
   {% else %}<div class="empty"><h3>No bKash payments</h3><p>Nothing matches these filters between {{ f['from']|d }} and {{ f['to']|d }}. Try a longer date range.</p></div>{% endif %}
 </section>
+{% if can_add %}
+<dialog class="modal" id="bkadd-dlg" aria-labelledby="bka-title">
+  <form method="post" action="{{ url_for('bkash_payment_add') }}" autocomplete="off">
+    {{ csrf_input() }}
+    <div class="modal-head"><h2 id="bka-title">Add bKash payment</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <p class="muted" style="margin:0">bKash money a reseller, sub-reseller or retailer sent to your number. It is added to their balance, written in their ledger and listed here.</p>
+      <div class="field"><label class="lbl" for="bka-who">From <b class="req">*</b></label>
+        <select id="bka-who" name="user_id" required><option value="">Choose the account</option>
+          {% for p in partners if p.is_active %}<option value="{{ p.id }}">{{ p.username }}{% if p.full_name %} · {{ p.full_name }}{% endif %} ({{ role_names.get(p.role) }}, balance {{ p.balance|money }})</option>{% endfor %}</select></div>
+      <div class="grid-2">
+        <div class="field"><label class="lbl" for="bka-amt">Amount <b class="req">*</b></label><input id="bka-amt" name="amount" type="number" step="0.01" min="0.01" inputmode="decimal" required></div>
+        <div class="field"><label class="lbl" for="bka-trx">bKash Trx ID <b class="req">*</b></label><input id="bka-trx" name="trx_id" required minlength="6" maxlength="20" pattern="[A-Za-z0-9]{6,20}" spellcheck="false" autocapitalize="characters" style="text-transform:uppercase" placeholder="e.g. 9JK4XYZ12A"></div>
+      </div>
+      <div class="field"><label class="lbl" for="bka-note">Note</label><input id="bka-note" name="note" maxlength="200" placeholder="e.g. sent from 017XXXXXXXX, for the November balance"><div class="help">Shown in the list and in their ledger; search finds it.</div></div>
+      <p class="help" style="margin:0">One Trx ID can be booked only once anywhere in the panel.</p>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit" data-confirm="Add this amount to the account's balance?">Add payment</button></div>
+  </form>
+</dialog>
+{% endif %}
+<script>
+(function () {   /* the Account list shows only the chosen type */
+  var t = document.querySelector("[data-bk-ptype]"), o = document.querySelector("[data-bk-owner]");
+  if (!t || !o) return;
+  t.addEventListener("change", function () {
+    o.querySelectorAll("option[data-role]").forEach(function (op) { op.hidden = !!t.value && op.dataset.role !== t.value; });
+    var cur = o.selectedOptions[0]; if (cur && cur.hidden) o.value = "";
+  });
+})();
+</script>
 {% endblock %}

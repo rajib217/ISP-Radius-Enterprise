@@ -7,22 +7,30 @@
 Only gateway payments are listed (with bKash's Trx ID and the status: Completed, Pending, Failed, Cancelled). Payments
 staff typed in by hand with the method "bKash" are in Payments / Ledger Reports, not here.
 
+Office staff can also add by hand bKash money a reseller / sub-reseller / retailer sent to the company's number (Trx ID
+and note): it goes into their balance (user_ledger, method bkash) and shows here as "bKash received (by hand)".
+
 Permissions (Users > Roles > Accounting > bKash Payments; not tied to the Accounting module level), same as the ledger:
   * staff with Accounting access see everything; Export needs the Export tick (or Accounting edit)
   * resellers / sub-resellers / retailers only when "Module" is ticked for their role: their own top-ups, the people
     below them, and those people's customers; Export needs the Export tick."""
 import csv
 import io
+import re
+import secrets
 from datetime import date, datetime, timedelta
 
-from flask import Response, abort, g, render_template, request
+from flask import Response, abort, flash, g, redirect, render_template, request, url_for
 
 import core
-from core import audit, commit, q, route
+from core import audit, commit, insert, q, route
 from mod_ledger import _safe, _xlsx
 
 STATUSES = [("completed", "Completed"), ("pending", "Pending"), ("failed", "Failed"), ("cancelled", "Cancelled")]
-KINDS = [("renewal", "Customer renewal"), ("topup", "Balance top-up")]
+KINDS = [("renewal", "Customer renewal"), ("topup", "Balance top-up"), ("manual", "bKash received (by hand)")]
+PTYPES = [("reseller", "Resellers"), ("subreseller", "Sub-resellers"), ("retailer", "Retailers")]
+TRX_RE = re.compile(r"^[A-Za-z0-9]{6,20}$")
+MANUAL = "manual"                 # topups.payment_id of a payment added by hand
 EXPORT_CAP = 100000
 
 
@@ -54,9 +62,11 @@ def _filters():
         end = today
     if end < start:
         start, end = end, start
+    ptype = a.get("ptype") if a.get("ptype") in dict(PTYPES) else ""
     return {"from": start, "to": end, "q": (a.get("q") or "").strip()[:64],
             "status": a.get("status") if a.get("status") in dict(STATUSES) else "",
-            "kind": a.get("kind") if a.get("kind") in dict(KINDS) else ""}
+            "kind": a.get("kind") if a.get("kind") in dict(KINDS) else "",
+            "ptype": ptype, "owner": (a.get("owner") or "").strip()[:64]}
 
 
 def _parts(f, scope, with_status=True):
@@ -80,23 +90,41 @@ def _parts(f, scope, with_status=True):
 
     if f["kind"] in ("", "renewal"):
         w, args = common("pp", "s.created_by")
+        if f["owner"]:                    # one reseller / sub-reseller / retailer: their customers
+            w += " AND s.created_by = %s"
+            args.append(f["owner"])
+        elif f["ptype"]:                  # a whole tier: the customers of everyone of that type
+            w += " AND s.created_by IN (SELECT username FROM panel_admins WHERE role = %s)"
+            args.append(f["ptype"])
         sql = ("SELECT 'R' AS src, pp.id AS sid, pp.created_at AS created, 'Customer renewal' AS kind, s.username AS account, "
                "'subscriber' AS role, pp.amount AS amount, pp.fee AS fee, pp.status AS status, pp.trx_id AS trx, "
-               "pp.payment_id AS payment_id, pp.message AS message, pp.days AS days, pp.payment_ref AS receipt "
+               "pp.payment_id AS payment_id, pp.message AS message, pp.days AS days, pp.payment_ref AS receipt, NULL AS note "
                "FROM portal_payments pp JOIN subscribers s ON s.id = pp.subscriber_id" + w)
         if like:
             sql += " AND (s.username LIKE %s OR pp.trx_id LIKE %s OR pp.payment_id LIKE %s)"
             args += [like, like, like]
         out.append((sql, args, "pp.created_at"))
-    if f["kind"] in ("", "topup"):
+    if f["kind"] in ("", "topup", "manual"):
         w, args = common("t", "a.username")
-        sql = ("SELECT 'T' AS src, t.id AS sid, t.created_at AS created, 'Balance top-up' AS kind, a.username AS account, "
+        if f["kind"] == "topup":
+            w += " AND t.payment_id <> '%s'" % MANUAL
+        elif f["kind"] == "manual":
+            w += " AND t.payment_id = '%s'" % MANUAL
+        if f["owner"]:
+            w += " AND a.username = %s"
+            args.append(f["owner"])
+        elif f["ptype"]:
+            w += " AND a.role = %s"
+            args.append(f["ptype"])
+        sql = ("SELECT 'T' AS src, t.id AS sid, t.created_at AS created, "
+               "IF(t.payment_id = '" + MANUAL + "', 'bKash received (by hand)', 'Balance top-up') AS kind, a.username AS account, "
                "a.role AS role, t.amount AS amount, t.fee AS fee, t.status AS status, t.trx_id AS trx, t.payment_id AS payment_id, "
-               "t.message AS message, NULL AS days, NULL AS receipt "
+               "t.message AS message, NULL AS days, NULL AS receipt, t.note AS note "
                "FROM topups t JOIN panel_admins a ON a.id = t.user_id" + w)
-        if like:
-            sql += " AND (a.username LIKE %s OR t.trx_id LIKE %s OR t.payment_id LIKE %s)"
-            args += [like, like, like]
+        if like:                          # the Trx ID, the account, its name, the note or who added it
+            sql += (" AND (a.username LIKE %s OR a.full_name LIKE %s OR t.trx_id LIKE %s OR t.payment_id LIKE %s "
+                    "OR t.note LIKE %s OR t.message LIKE %s)")
+            args += [like] * 6
         out.append((sql, args, "t.created_at"))
     return out
 
@@ -140,7 +168,86 @@ def bkash_payments():
     rows = _page(parts, pg["per"], pg["offset"])
     keep = {k: v for k, v in request.args.items() if k != "page"}
     return render_template("bkash_payments.html", rows=rows, pg=pg, f=f, keep=keep, statuses=STATUSES, kinds=KINDS,
-                           scope=scope, sums=_summary(f, scope), can_export=_can_export(scope))
+                           scope=scope, sums=_summary(f, scope), can_export=_can_export(scope), ptypes=PTYPES,
+                           partners=_partners(scope), can_add=_can_add(), today=date.today())
+
+
+def _partners(scope):
+    """Resellers / sub-resellers / retailers for the account pickers: everyone for the office, the downline for a seller."""
+    names = list(core.my_downline() or []) if scope == "mine" else None
+    sql = ("SELECT id, username, full_name, role, balance, is_active FROM panel_admins WHERE role IN ('reseller', 'subreseller', "
+           "'retailer')")
+    if names is not None:
+        if not names:
+            return []
+        sql += " AND username IN (%s)" % ",".join(["%s"] * len(names))
+    return q(sql + " ORDER BY FIELD(role, 'reseller', 'subreseller', 'retailer'), username", names or [])
+
+
+def _can_add():
+    """Office only: an administrator, staff with Accounting edit, or the Add By Hand tick. Never a seller or their staff."""
+    if g.me["role"] == "admin":
+        return True
+    if g.me["role"] in core.SELLER_ROLES or core.my_downline() is not None:
+        return False
+    return core.can("accounting", "edit") or core.can_fn("bkp.add")
+
+
+def trx_used(trx):
+    """Where this bKash Trx ID was already booked (a top-up, a portal payment, an SMS payment, a collection), or ''."""
+    for table, label in (("topups", "a top-up"), ("portal_payments", "a customer's portal payment"),
+                         ("sms_payments", "a bKash SMS payment"), ("collections", "a bill collection")):
+        try:
+            if q("SELECT 1 AS x FROM " + table + " WHERE trx_id = %s LIMIT 1", (trx,), one=True):
+                return label
+        except Exception:             # a table that does not exist yet
+            continue
+    return ""
+
+
+@route("/bkash-payments/add", methods=["POST"])
+def bkash_payment_add():
+    """Book bKash money a reseller / sub-reseller / retailer sent: their balance goes up, the ledger says so, and it is
+    listed here (searchable by Trx ID, account and note)."""
+    if not _can_add():
+        abort(403)
+    f = request.form
+    back = url_for("bkash_payments")
+    who = q("SELECT id, username, role, is_active FROM panel_admins WHERE id = %s AND role IN ('reseller', 'subreseller', 'retailer')",
+            (int(f["user_id"]) if (f.get("user_id") or "").isdigit() else 0,), one=True)
+    trx = (f.get("trx_id") or "").strip().upper()
+    note = " ".join((f.get("note") or "").split())[:200]
+    try:
+        amount = round(float(f.get("amount") or 0), 2)
+    except ValueError:
+        amount = 0
+    err = ""
+    if not who:
+        err = "Choose the reseller, sub-reseller or retailer who sent the money."
+    elif not 0 < amount < 10 ** 8:
+        err = "Enter the amount received."
+    elif not TRX_RE.match(trx):
+        err = "Enter the bKash Trx ID (6-20 letters / digits, from the bKash message)."
+    else:
+        used = trx_used(trx)
+        if used:
+            err = "Trx ID %s is already booked as %s. Nothing was added." % (trx, used)
+    if err:
+        flash(err, "error")
+        return redirect(back)
+    tid = insert("INSERT INTO topups (user_id, amount, fee, method, note, token, payment_id, trx_id, status, message) "
+                 "VALUES (%s, %s, 0, 'bkash', %s, %s, %s, %s, 'completed', %s)",
+                 (who["id"], amount, note, secrets.token_hex(16), MANUAL, trx, ("Added by %s" % g.me["username"])[:255]))
+    with core.get_db().cursor() as cur:
+        cur.execute("UPDATE panel_admins SET balance = balance + %s WHERE id = %s", (amount, who["id"]))
+        cur.execute("SELECT balance FROM panel_admins WHERE id = %s", (who["id"],))
+        after = float(cur.fetchone()["balance"])
+        cur.execute("INSERT INTO user_ledger (user_id, amount, balance_after, method, note, created_by) VALUES (%s, %s, %s, 'bkash', %s, %s)",
+                    (who["id"], amount, after, ("bKash %s (by hand)%s" % (trx, (": " + note) if note else ""))[:255], g.me["username"]))
+    audit("bkash_manual", who["username"], "%.2f bKash %s%s" % (amount, trx, (" - " + note) if note else ""))
+    commit()
+    flash("%.2f received from %s (Trx ID %s). Their balance is now %.2f." % (amount, who["username"], trx, after), "success")
+    return redirect(url_for("bkash_payments", q=trx, kind="manual", **{"from": date.today().isoformat()}))
 
 
 def _export():

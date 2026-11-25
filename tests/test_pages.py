@@ -3449,6 +3449,34 @@ def check_rules(flask_app, ids):
           "same); Dues shows the real amount owed; the statement lists only reseller tiers; voiding a collection undoes its "
           "renewal, fee and balance, refunds the reseller and takes the payment out of the reports "
           + repr((_d["income"], _today_own, _du_amt.group(1) if _du_amt else None, _want, _before, _after, _pays_after, _fee_back, _rbal0, _rbal1)))
+    # ===== bKash Payments: bKash money a reseller sent, added by hand with Trx ID and note; filters by tier and account
+    _rn3 = one("SELECT username, balance FROM panel_admins WHERE id = %s", (ids["reseller"],))
+    run("DELETE FROM topups WHERE trx_id IN ('CIBK0001', 'CIBK0002')")
+    _bp_page = adm.get("/bkash-payments").get_data(as_text=True)
+    _add1 = adm.post("/bkash-payments/add", data={"_csrf": "ci", "user_id": str(ids["reseller"]), "amount": "1500",
+                                                  "trx_id": "cibk0001", "note": "November balance from 01711"})
+    _bal_after = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
+    _led = one("SELECT amount, method, note FROM user_ledger WHERE user_id = %s ORDER BY id DESC LIMIT 1", (ids["reseller"],))
+    _dup = adm.post("/bkash-payments/add", data={"_csrf": "ci", "user_id": str(ids["subreseller"]), "amount": "10",
+                                                 "trx_id": "CIBK0001"}, follow_redirects=True).get_data(as_text=True)
+    _dup_n = one("SELECT COUNT(*) AS c FROM topups WHERE trx_id = 'CIBK0001'")["c"]
+    _res_add = _rc2.post("/bkash-payments/add", data={"_csrf": "ci", "user_id": str(ids["reseller"]), "amount": "99999",
+                                                      "trx_id": "CIBK0002"}).status_code
+    _by_trx = adm.get("/bkash-payments?q=CIBK0001").get_data(as_text=True)
+    _by_note = adm.get("/bkash-payments?q=November+balance").get_data(as_text=True)
+    _by_tier = adm.get("/bkash-payments?ptype=reseller&kind=manual").get_data(as_text=True)
+    _other_tier = adm.get("/bkash-payments?ptype=retailer&kind=manual").get_data(as_text=True)
+    _by_owner = adm.get("/bkash-payments?owner=%s" % _rn3["username"]).get_data(as_text=True)
+    _res_sees = _rc2.get("/bkash-payments?q=CIBK0001").get_data(as_text=True)
+    check('data-open="bkadd-dlg"' in _bp_page and 'name="ptype"' in _bp_page and 'name="owner"' in _bp_page
+          and _add1.status_code == 302 and abs(_bal_after - float(_rn3["balance"]) - 1500) < 0.01
+          and _led["method"] == "bkash" and float(_led["amount"]) == 1500 and "CIBK0001" in _led["note"]
+          and "already booked" in _dup and _dup_n == 1 and _res_add == 403
+          and "CIBK0001" in _by_trx and "November balance" in _by_trx and "CIBK0001" in _by_note
+          and "CIBK0001" in _by_tier and "CIBK0001" not in _other_tier and "CIBK0001" in _by_owner
+          and "CIBK0001" in _res_sees and "bkadd-dlg" not in _res_sees,
+          "bKash Payments: the office adds bKash money a reseller sent (Trx ID, note): their balance and ledger go up, it is "
+          "listed and found by Trx ID or note; a Trx ID is used once; resellers cannot add; filters by tier and account")
     return bad
 
 

@@ -130,7 +130,8 @@ TABS = [
         G("Ledger Reports", None, [I("led.module", "Module", "Resellers / sub-resellers / retailers: their own and their downline's ledger. Staff with Accounting access always have it.", "vgno"),
                                    I("led.export", "Export", "Excel and CSV download of the ledger", "vno")]),
         G("bKash Payments", None, [I("bkp.module", "Module", "Resellers / sub-resellers / retailers: their own and their downline's bKash checkouts. Staff with Accounting access always have it.", "vgno"),
-                                   I("bkp.export", "Export", "Excel and CSV download of bKash payments", "vno")]),
+                                   I("bkp.export", "Export", "Excel and CSV download of bKash payments", "vno"),
+                                   I("bkp.add", "Add By Hand", "Office staff: record bKash money a reseller / sub-reseller / retailer sent (Trx ID and note); it is added to their balance. Staff with Accounting edit always have it", "no")]),
         # on for resellers / sub-resellers / retailers until unticked: each sees only their own (and downline's) customers
         G("bKash SMS Payments", None, [I("bks.module", "Module", "Resellers / sub-resellers / retailers: the bKash SMS payments of their own and their downline's customers. Staff with Accounting access always have it.", "vgn"),
                                        I("bks.export", "Export", "Excel and CSV download of bKash SMS payments", "vno")]),
