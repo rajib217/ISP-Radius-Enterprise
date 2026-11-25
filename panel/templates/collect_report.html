@@ -2,18 +2,18 @@
 {% from "_macros.html" import icon %}
 {% block title %}My collections{% endblock %}
 {% block content %}
-{% set tk = currency or '৳' %}{% set room = hand.hand - hand.pending %}
+{% set tk = currency or 'BDT' %}{% set room = hand.hand - hand.pending %}
 {% set pay_icons = {'cash': 'dollar', 'pos': 'card', 'bkash': 'wallet'} %}
 {% set to_whom = (boss.full_name or boss.username) if boss else 'the office' %}
 <div class="cl">
   <div class="cl-head">
-    <div><h1>My collections <small>আমার কালেকশন</small></h1>
+    <div><p class="cx-crumb">Bill Collection</p><h1>My collections</h1>
       <p class="sub">{{ start|d }}{% if end != start %} to {{ end|d }}{% endif %}. Only you, {{ to_whom }} and the administrator see this.</p></div>
   </div>
 
   <!-- cash in hand: the one number that matters at the end of the day -->
   <section class="cl-cash" aria-label="Cash in hand">
-    <div><span>Cash in hand · হাতে নগদ</span><b class="cl-num"><span class="cl-tk">{{ tk }}</span>{{ hand.hand|money }}</b>
+    <div><span>Cash on hand</span><b class="cl-num"><span class="cl-tk">{{ tk }}</span>{{ hand.hand|money }}</b>
       <span>{% if hand.pending %}{{ hand.pending|money }} handed to {{ to_whom }}, waiting for them to confirm{% elif hand.hand > 0 %}Hand it over to {{ to_whom }} and send it here{% else %}Nothing to hand over{% endif %}</span></div>
     {% if can_fn('col.deposit') and room > 0 %}
     <form method="post" action="{{ url_for('collect_deposit') }}">{{ csrf_input() }}

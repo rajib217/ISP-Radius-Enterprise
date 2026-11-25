@@ -228,6 +228,8 @@ ENDPOINT_FN = {
     "my_user_password": ("usr.password", "usr.tech", "usr.collector"),
     "collect": "col.module", "collect_one": ("col.collect_cash", "col.collect_pos"), "collect_remind": "col.remind_sms",
     "collect_report": "col.own_report", "collect_deposit": "col.deposit",
+    "collect_suggest": "col.module", "collect_map": "col.module", "collect_map_data": "col.module", "collect_near": "col.module",
+    "collect_visit": "col.module",
     "my_user_packages": "usr.pkg_assign", "my_user_delete": "usr.delete",
     "online_disconnect": "onl.disconnect",
     "payments_add": "inv.add", "payment_delete": "inv.reverse", "payments_export": "inv.export",

@@ -16,7 +16,7 @@
 <div class="rc-actions"><button class="btn primary" data-print>{{ icon('printer') }}Print</button><a class="btn" href="{{ url_for('collect') if me.role == 'collector' else url_for('collections') }}">Back</a></div>
 <div class="rc">
   <h1>{{ inv.inv_name or isp_name }}</h1>{% if inv.inv_address %}<div class="muted">{{ inv.inv_address }}</div>{% endif %}{% if inv.inv_phone %}<div class="muted">{{ inv.inv_phone }}</div>{% endif %}
-  <div class="muted">Money receipt · টাকা প্রাপ্তির রসিদ <b>{{ c.receipt_no }}</b></div>
+  <div class="muted">Money receipt <b>{{ c.receipt_no }}</b></div>
   <table>
     <tr><td>Date</td><td>{{ c.created_at|dt }}</td></tr>
     <tr><td>Customer</td><td>{{ c.full_name or c.username }}<br><span class="muted mono">{{ code }} · {{ c.username }}</span></td></tr>
@@ -26,7 +26,7 @@
     <tr><td>Collected by</td><td>{{ c.collector_name or c.collector_user }}</td></tr>
     <tr class="total"><td>Amount</td><td>{{ currency }} {{ c.amount|money }}</td></tr>
   </table>
-  {% if c.status == 'void' %}<div class="void">VOID · বাতিল</div><div class="muted">{{ c.void_reason }} ({{ c.void_by }}, {{ c.void_at|dt }})</div>{% endif %}
+  {% if c.status == 'void' %}<div class="void">VOID</div><div class="muted">{{ c.void_reason }} ({{ c.void_by }}, {{ c.void_at|dt }})</div>{% endif %}
   <div class="muted">{{ inv.inv_footer or 'Thank you for your payment.' }}</div>
 </div>
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>

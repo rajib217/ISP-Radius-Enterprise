@@ -2,13 +2,14 @@
 {% from "_macros.html" import icon %}
 {% block title %}Collect · {{ sub.username }}{% endblock %}
 {% block content %}
-{% set tk = currency or '৳' %}{% set bal = sub.balance|float %}
+{% set tk = currency or 'BDT' %}{% set bal = sub.balance|float %}
 {% set pay_icons = {'cash': 'dollar', 'pos': 'card', 'bkash': 'wallet'} %}
 {% set pay_notes = {'cash': 'In your hand', 'pos': "Bank's card machine", 'bkash': 'TrxID by hand'} %}
 <div class="cl">
   <div class="cl-head">
     <div><a class="cl-back" href="{{ url_for('collect') }}">{{ icon('arrow-left') }}Due list</a>
-      <h1>Collect payment <small>টাকা গ্রহণ</small></h1></div>
+      <h1>Collect payment</h1></div>
+    <div class="cx-actions"><button class="btn" type="button" data-visit="{{ url_for('collect_visit', sid=sub.id) }}" data-who="{{ sub.full_name or sub.username }}">{{ icon('note') }}No payment? Log a visit</button></div>
   </div>
 
   <div class="cl-pay">
@@ -40,12 +41,20 @@
       </section>
       {% if recent %}
       <section class="cl-box">
-        <h2>{{ icon('clock') }}Last payments</h2>
+        <h2>{{ icon('clock') }}Recent payments</h2>
         <ul class="cl-recent">{% for r in recent %}<li>
           <span>{% if can_fn('col.receipt') %}<a class="mono" href="{{ url_for('collect_receipt', cid=r.id) }}">{{ r.receipt_no }}</a>{% else %}<span class="mono">{{ r.receipt_no }}</span>{% endif %}{% if r.status == 'void' %} <span class="cl-tag late">void</span>{% endif %}</span>
           <b>{{ r.amount|money }}</b>
           <small>{{ r.created_at|dt }} · {{ labels.get(r.method, r.method) }}</small>
         </li>{% endfor %}</ul>
+      </section>
+      {% endif %}
+      {% if visit %}
+      <section class="cl-box">
+        <h2>{{ icon('note') }}Last visit or call</h2>
+        <div class="cl-pad" style="gap:4px"><b>{{ all_outcomes.get(visit.outcome, visit.outcome) }}</b>
+          <small class="muted">{{ visit.created_at|dt }} · {{ visit.created_by }}{% if visit.follow_up and not visit.done %} · come back {{ visit.follow_up|d }}{% endif %}</small>
+          {% if visit.note %}<p style="margin:4px 0 0">{{ visit.note }}</p>{% endif %}</div>
       </section>
       {% endif %}
     </div>
@@ -96,8 +105,9 @@
     </section>
   </div>
 </div>
+{% include "_collect_visit.html" %}
 {% endblock %}
-{% block scripts %}<script>
+{% block scripts %}<script src="{{ asset('js/collect.js') }}"></script><script>
 (function () {
   var form = document.querySelector("[data-cl-pay]");
   if (!form) return;

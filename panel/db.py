@@ -226,6 +226,10 @@ _BAL = "GREATEST(COALESCE(s.balance, 0), 0)"
 # balance, plus unpaid charges less any balance left over
 DUE_SQL = ("(GREATEST(" + CUSTOMER_PRICE + " - " + _BAL + ", 0) + GREATEST(" + _CHARGES + " - GREATEST(" + _BAL + " - "
            + CUSTOMER_PRICE + ", 0), 0))")
+# what any customer owes now (the bill collector's lists, the map): an ended package as above, otherwise only unpaid
+# charges less the balance; and the package part alone
+OWED_SQL = "(CASE WHEN " + ENDED + " THEN " + DUE_SQL + " ELSE GREATEST(" + _CHARGES + " - " + _BAL + ", 0) END)"
+PKG_OWED_SQL = "(CASE WHEN " + ENDED + " THEN GREATEST(" + CUSTOMER_PRICE + " - " + _BAL + ", 0) ELSE 0 END)"
 # a payment that is the company's own income: from the office's own customers (a reseller's customer pays the reseller;
 # the company's income from them is the balance the reseller buys, counted from user_ledger)
 OWN_PAYMENT = ("(p.subscriber_id IS NULL OR p.subscriber_id NOT IN (SELECT id FROM subscribers WHERE created_by IN ("

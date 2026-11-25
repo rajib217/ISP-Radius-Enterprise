@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon %}
+{% block title %}Collection map{% endblock %}
+{% block content %}
+{% set tk = currency or 'BDT' %}
+<div class="cl" data-cur="{{ tk }}">
+  <header class="cl-head">
+    <div><p class="cx-crumb">Bill Collection</p><h1>Collection map</h1>
+      <p class="sub">Find a customer's door, then see who else owes around it. {{ '{:,}'.format(placed) }} customer{{ '' if placed == 1 else 's' }} have a saved location.</p></div>
+    <div class="cx-actions"><a class="btn" href="{{ url_for('collect') }}">{{ icon('table') }}Due list</a></div>
+  </header>
+
+  <section class="clm">
+    <div class="clm-bar">
+      <div class="cl-search">{{ icon('search') }}<input type="search" placeholder="Find a customer or an area" aria-label="Find a customer or an area on the map" data-suggest="{{ url_for('collect_suggest') }}" data-suggest-mode="map"></div>
+      <select data-cmap-area aria-label="Area"><option value="">All areas</option>{% for a in areas %}<option>{{ a }}</option>{% endfor %}</select>
+      <div class="clm-near">
+        <label class="sr-only" for="near-r">Distance</label>
+        <select id="near-r" data-near-r>{% for r in radii %}<option value="{{ r }}" {{ 'selected' if r == 1000 }}>{{ (r // 1000) ~ ' km' if r >= 1000 else r ~ ' m' }}</option>{% endfor %}</select>
+        <button class="btn primary" type="button" data-near-me>{{ icon('pin') }}Dues near me</button>
+      </div>
+    </div>
+    <div class="clm-legend" role="group" aria-label="Show on the map">
+      <label class="check"><input type="checkbox" data-cmap-s="expired" checked><i class="dot s-expired"></i>Package due <b data-cmap-n="expired">0</b></label>
+      <label class="check"><input type="checkbox" data-cmap-s="offline" checked><i class="dot s-offline"></i>Charges due <b data-cmap-n="offline">0</b></label>
+      <label class="check"><input type="checkbox" data-cmap-s="online"><i class="dot s-online"></i>Paid up <b data-cmap-n="online">0</b></label>
+      <label class="check"><input type="checkbox" data-cmap-s="suspended"><i class="dot s-suspended"></i>Suspended <b data-cmap-n="suspended">0</b></label>
+    </div>
+    <div class="notice warn clm-msg" data-map-msg hidden></div>
+    <div class="clm-body">
+      <div class="cmap clm-map" id="cmap" data-src="{{ url_for('collect_map_data') }}" data-near="{{ url_for('collect_near') }}" data-centre="{{ centre|tojson }}"
+           data-cta="Collect" data-cur="{{ tk }}" data-states='{"expired": "Package due", "offline": "Charges due", "online": "Paid up", "suspended": "Suspended"}'
+           tabindex="0" aria-label="Map of customers">
+        <div class="cmap-zoom"><button type="button" class="btn icon" data-cmap-zoom="1" aria-label="Zoom in" title="Zoom in">+</button><button type="button" class="btn icon" data-cmap-zoom="-1" aria-label="Zoom out" title="Zoom out">−</button><button type="button" class="btn icon" data-cmap-fit aria-label="Show all" title="Show all">{{ icon('grid') }}</button></div>
+        <div class="cmap-attr">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</div>
+      </div>
+      <aside class="clm-panel" data-near-panel hidden aria-live="polite">
+        <div class="clm-panel-head"><div data-near-head></div><button type="button" class="btn sm icon" data-near-close aria-label="Close the list" title="Close">{{ icon('x') }}</button></div>
+        <ul class="cl-near" data-near-list></ul>
+      </aside>
+    </div>
+    {% if not placed %}<div class="cx-empty">No customer has a saved location yet. Locations are set on the customer's page (Address Information &gt; Location).</div>{% endif %}
+    <p class="clm-tip">Tip: tap a customer on the map, then <b>Dues nearby</b> to see everyone who owes around their door.</p>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ asset('js/map.js') }}"></script><script src="{{ asset('js/collect.js') }}"></script>{% endblock %}

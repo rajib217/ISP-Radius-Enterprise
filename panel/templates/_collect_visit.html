@@ -1,0 +1,17 @@
+{# A door visit without payment (mod_collect.collect_visit). Opened by any button with data-visit="<url>" data-who="<name>". #}
+{% from "_macros.html" import icon %}
+<dialog class="modal" id="visit-dlg" aria-labelledby="visit-title">
+  <form method="post" action="" autocomplete="off">
+    {{ csrf_input() }}<input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">
+    <div class="modal-head"><h2 id="visit-title">Log a visit · <span data-visit-who></span></h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <p class="muted" style="margin:0">For a visit with no payment. It shows on the customer's page, and a come-back date puts them in Promised today on that day.</p>
+      <fieldset class="cl-outcomes"><legend class="lbl">What happened? <b class="req">*</b></legend>
+        {% for k, label in visit_outcomes %}<label class="cl-outcome"><input type="radio" name="outcome" value="{{ k }}" required><span>{{ label }}</span></label>{% endfor %}
+      </fieldset>
+      <div class="field" data-visit-date hidden><label class="lbl" for="visit-date">Come back on</label><input id="visit-date" name="follow_up" type="date" min="{{ now.isoformat() }}" max="{{ (now + delta60).isoformat() }}"></div>
+      <div class="field"><label class="lbl" for="visit-note">Note</label><input id="visit-note" name="note" maxlength="500" placeholder="e.g. wife at home, pays on Friday after salary"></div>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Save visit</button></div>
+  </form>
+</dialog>

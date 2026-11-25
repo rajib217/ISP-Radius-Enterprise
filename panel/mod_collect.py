@@ -19,9 +19,10 @@ import re
 import secrets
 from datetime import date, datetime, timedelta
 
-from flask import abort, flash, g, redirect, render_template, request, url_for
+from flask import abort, flash, g, jsonify, redirect, render_template, request, url_for
 
 import core
+import db
 from core import audit, commit, get_db, insert, q, route, x
 
 METHODS = (("cash", "Cash"), ("pos", "POS (card machine)"), ("bkash", "bKash"))
@@ -104,41 +105,223 @@ def _sub(sid):
 
 
 # ===================================================================== due list
+SORTS = {"oldest": "Longest overdue", "amount": "Highest due", "name": "Name", "area": "Area", "near": "Nearest to me"}
+VISIT_OUTCOMES = [("visit_not_home", "Not home"), ("visit_later", "Will pay later"), ("promised", "Promised a date"),
+                  ("visit_refused", "Refused to pay"), ("visit_no_addr", "Address not found")]
+CANDIDATES = ("s.status <> 'suspended' AND ((s.plan_id IS NOT NULL AND s.expiry_date <= CURDATE()) OR EXISTS "
+              "(SELECT 1 FROM sub_charges c WHERE c.subscriber_id = s.id AND c.paid = 0))")
+
+
+def _text_sql(term):
+    """(' AND (...)', params) matching a customer by name, username, phone, area, address or ID (RN05)."""
+    if not term:
+        return "", []
+    like = "%" + term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    code = core.parse_sub_code(term)
+    return (" AND (s.username LIKE %s OR s.full_name LIKE %s OR s.phone LIKE %s OR s.area LIKE %s OR s.address LIKE %s"
+            + (" OR s.id = %d" % code if code else "") + ")"), [like] * 5
+
+
+def owing(term="", limit=2000, extra="", extra_params=()):
+    """Customers in this collector's reach who owe now, with what they owe (db.OWED_SQL: as their page and Dues)."""
+    sc, sp = _scope_sql()
+    ts, tp = _text_sql(term)
+    rows = q("SELECT * FROM (SELECT s.id, s.username, s.full_name, s.phone, s.area, s.address, s.lat, s.lng, s.expiry_date, "
+             "s.balance, COALESCE(p.label, p.name) AS plan_label, " + db.OWED_SQL + " AS owed, " + db.PKG_OWED_SQL + " AS pkg "
+             "FROM subscribers s LEFT JOIN plans p ON p.id = s.plan_id WHERE " + CANDIDATES + sc + ts + extra + ") x "
+             "WHERE x.owed > 0 LIMIT " + str(int(limit)), list(sp) + tp + list(extra_params))
+    today = date.today()
+    for r in rows:
+        r["owed"], r["pkg"] = float(r["owed"] or 0), float(r["pkg"] or 0)
+        r["late"] = (today - r["expiry_date"]).days if r["pkg"] and r["expiry_date"] else 0
+        r["code"] = core.sub_code(r["id"])
+    return rows
+
+
+def _last_visits(ids):
+    """{subscriber_id: their newest call / visit note} for these customers."""
+    if not ids:
+        return {}
+    mark = ",".join(["%s"] * len(ids))
+    return {r["subscriber_id"]: r for r in q(
+        "SELECT c.* FROM sub_calls c JOIN (SELECT subscriber_id, MAX(id) AS mid FROM sub_calls WHERE subscriber_id IN (" + mark + ") "
+        "GROUP BY subscriber_id) m ON m.mid = c.id", list(ids))}
+
+
+def _visit_ctx():
+    """What the visit box (_collect_visit.html) needs."""
+    return {"visit_outcomes": VISIT_OUTCOMES, "now": date.today(), "delta60": timedelta(days=60)}
+
+
+def _where_am_i():
+    try:
+        lat, lng = float(request.args.get("lat", "")), float(request.args.get("lng", ""))
+        return (lat, lng) if -90 <= lat <= 90 and -180 <= lng <= 180 and (lat or lng) else None
+    except ValueError:
+        return None
+
+
 @route("/collect", module="subscribers")
 def collect():
     _need_collector()
     term = request.args.get("q", "").strip()[:64]
-    sc, sp = _scope_sql()
-    where = ("WHERE s.status <> 'suspended' AND ((s.expiry_date < CURDATE() AND s.plan_id IS NOT NULL) OR EXISTS "
-             "(SELECT 1 FROM sub_charges c WHERE c.subscriber_id = s.id AND c.paid = 0))" + sc)
-    params = list(sp)
-    if term:
-        where += " AND (s.username LIKE %s OR s.full_name LIKE %s OR s.phone LIKE %s OR s.area LIKE %s)"
-        params += ["%" + term + "%"] * 4
-    rows = q("SELECT s.*, p.price, COALESCE(p.label, p.name) AS plan_label FROM subscribers s LEFT JOIN plans p ON p.id = s.plan_id "
-             + where + " ORDER BY s.expiry_date IS NULL, s.expiry_date, s.username LIMIT 300", params)
-    every = []
-    for s in rows:
-        d = due_of(s)
-        if d["total"] > 0:
-            s["due"], s["code"] = d, core.sub_code(s["id"])
-            s["late"] = (date.today() - s["expiry_date"]).days if d["package"] and s.get("expiry_date") else 0
-            every.append(s)
-    # filter chips (counted before the filter): all, an expired package, only unpaid charges; and an area
-    show = request.args.get("show") if request.args.get("show") in ("expired", "charges") else "all"
+    every = owing(term)
+    show = request.args.get("show") if request.args.get("show") in ("expired", "charges", "promised") else "all"
     area = request.args.get("area", "").strip()[:64]
+    sort = request.args.get("sort") if request.args.get("sort") in SORTS else "oldest"
+    me_at = _where_am_i()
+    if sort == "near" and not me_at:
+        sort = "oldest"
+    visits = _last_visits([s["id"] for s in every])
+    today = date.today()
+    import ticketlib
+    for s in every:
+        v = visits.get(s["id"])
+        s["visit"] = v
+        s["promise"] = v["follow_up"] if v and not v["done"] and v["follow_up"] and v["outcome"] in ("promised", "visit_later") else None
+        s["dist"] = (ticketlib.distance_m(me_at[0], me_at[1], float(s["lat"]), float(s["lng"]))
+                     if me_at and s["lat"] is not None and s["lng"] is not None else None)
     areas = sorted({s["area"] for s in every if s.get("area")})
-    counts = {"all": len(every), "expired": sum(1 for s in every if s["due"]["package"]),
-              "charges": sum(1 for s in every if not s["due"]["package"])}
-    out = [s for s in every if (show == "all" or (show == "expired") == bool(s["due"]["package"]))
-           and (not area or s.get("area") == area)]
+    counts = {"all": len(every), "expired": sum(1 for s in every if s["pkg"]), "charges": sum(1 for s in every if not s["pkg"]),
+              "promised": sum(1 for s in every if s["promise"] and s["promise"] <= today)}
+    out = [s for s in every if (not area or s.get("area") == area) and (
+        show == "all" or (show == "expired" and s["pkg"]) or (show == "charges" and not s["pkg"])
+        or (show == "promised" and s["promise"] and s["promise"] <= today))]
+    key = {"oldest": lambda s: (s["expiry_date"] or today, -s["owed"]), "amount": lambda s: -s["owed"],
+           "name": lambda s: (s["full_name"] or s["username"]).lower(), "area": lambda s: ((s["area"] or "~").lower(), s["username"]),
+           "near": lambda s: (s["dist"] is None, s["dist"] or 0)}[sort]
+    out.sort(key=key)
     me = g.me["id"]
-    today = q("SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0) AS t FROM collections WHERE collector_id = %s AND status = 'posted' "
-              "AND created_at >= CURDATE()", (me,), one=True)
+    todays = q("SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0) AS t FROM collections WHERE collector_id = %s AND status = 'posted' "
+               "AND created_at >= CURDATE()", (me,), one=True)
     paid_today = {r["subscriber_id"] for r in q("SELECT DISTINCT subscriber_id FROM collections WHERE collector_id = %s "
                                                 "AND status = 'posted' AND created_at >= CURDATE()", (me,))}
-    return render_template("collect.html", rows=out, term=term, today=today, hand=cash_in_hand(me), show=show, area=area,
-                           areas=areas, counts=counts, owed=round(sum(s["due"]["total"] for s in out), 2), paid_today=paid_today)
+    visited_today = q("SELECT COUNT(DISTINCT subscriber_id) AS n FROM sub_calls WHERE created_by = %s AND created_at >= CURDATE() "
+                      "AND outcome LIKE 'visit%%'", (g.me["username"],), one=True)["n"]
+    return render_template("collect.html", rows=out[:500], more=max(len(out) - 500, 0), term=term, today=todays,
+                           hand=cash_in_hand(me), show=show, area=area, areas=areas, counts=counts, sort=sort, sorts=SORTS,
+                           me_at=me_at, owed=round(sum(s["owed"] for s in out), 2), paid_today=paid_today,
+                           visited_today=visited_today, all_outcomes=dict(__import__("mod_field").OUTCOMES), **_visit_ctx())
+
+
+@route("/collect/suggest", module="subscribers")
+def collect_suggest():
+    """Search-as-you-type for the collector: matching areas (with how many owe there) and customers (with what they owe).
+    Every customer in reach is found, paid up or not, so the collector can also check a name at the door."""
+    _need_collector()
+    term = (request.args.get("q") or "").strip()[:64]
+    if len(term) < 2:
+        return jsonify({"areas": [], "subs": []})
+    sc, sp = _scope_sql()
+    like = "%" + term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    areas = q("SELECT s.area AS name, COUNT(*) AS n FROM subscribers s WHERE s.area LIKE %s AND " + CANDIDATES + sc +
+              " GROUP BY s.area ORDER BY n DESC LIMIT 5", [like] + list(sp))
+    ts, tp = _text_sql(term)
+    subs = q("SELECT s.id, s.username, s.full_name, s.phone, s.area, s.lat, s.lng, s.status, " + db.OWED_SQL + " AS owed "
+             "FROM subscribers s WHERE 1 = 1" + sc + ts + " ORDER BY (s.username = %s) DESC, (s.full_name LIKE %s) DESC, s.username "
+             "LIMIT 8", list(sp) + tp + [term, term + "%"])
+    resp = jsonify({"areas": [{"name": a["name"], "n": int(a["n"])} for a in areas if a["name"]],
+                    "subs": [{"id": s["id"], "code": core.sub_code(s["id"]), "u": s["username"], "n": s["full_name"] or "",
+                              "ph": s["phone"] or "", "a": s["area"] or "", "due": round(float(s["owed"] or 0), 2),
+                              "lat": float(s["lat"]) if s["lat"] is not None else None,
+                              "lng": float(s["lng"]) if s["lng"] is not None else None,
+                              "suspended": s["status"] == "suspended",
+                              "url": url_for("collect_one", sid=s["id"])} for s in subs]})
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+# ===================================================================== map: where they live, who owes nearby
+@route("/collect/map", module="subscribers")
+def collect_map():
+    _need_collector()
+    sc, sp = _scope_sql()
+    placed = q("SELECT COUNT(*) AS c FROM subscribers s WHERE s.lat IS NOT NULL AND s.lng IS NOT NULL" + sc, sp, one=True)["c"]
+    c = q("SELECT AVG(s.lat) AS lat, AVG(s.lng) AS lng FROM subscribers s WHERE s.lat IS NOT NULL" + sc, sp, one=True)
+    centre = [float(c["lat"]), float(c["lng"])] if c and c["lat"] is not None else None
+    areas = [r["area"] for r in q("SELECT DISTINCT s.area FROM subscribers s WHERE s.area <> '' AND s.lat IS NOT NULL" + sc +
+                                  " ORDER BY s.area", sp)]
+    return render_template("collect_map.html", placed=placed, centre=centre, radii=(250, 500, 1000, 2000, 5000), areas=areas,
+                           **_visit_ctx())
+
+
+@route("/collect/map/data", module="subscribers")
+def collect_map_data():
+    """Every placed customer in reach: red = package due, amber = charges due, green = paid up (or paid today)."""
+    _need_collector()
+    sc, sp = _scope_sql()
+    rows = q("SELECT s.id, s.username, s.full_name, s.phone, s.area, s.lat, s.lng, s.status, " + db.OWED_SQL + " AS owed, "
+             + db.PKG_OWED_SQL + " AS pkg FROM subscribers s WHERE s.lat IS NOT NULL AND s.lng IS NOT NULL" + sc + " LIMIT 20000", sp)
+    out = []
+    for r in rows:
+        owed, pkg = float(r["owed"] or 0), float(r["pkg"] or 0)
+        state = "suspended" if r["status"] == "suspended" else ("expired" if pkg else ("offline" if owed > 0 else "online"))
+        out.append({"id": r["id"], "code": core.sub_code(r["id"]), "u": r["username"], "n": r["full_name"] or "",
+                    "ph": r["phone"] or "", "a": r["area"] or "", "p": "", "s": state, "due": round(owed, 2),
+                    "lat": float(r["lat"]), "lng": float(r["lng"]), "url": url_for("collect_one", sid=r["id"])})
+    resp = jsonify(out)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@route("/collect/near", module="subscribers")
+def collect_near():
+    """Customers who owe within `r` metres of a point (the collector's position, or a customer's door), nearest first."""
+    _need_collector()
+    at = _where_am_i()
+    if not at:
+        return jsonify({"ok": False, "why": "No position."}), 400
+    radius = request.args.get("r", 1000, type=int)
+    radius = radius if 50 <= radius <= 20000 else 1000
+    import ticketlib
+    # a box around the point first (1 degree latitude ~ 111 km), then the exact distance
+    d_lat = radius / 111000.0
+    d_lng = radius / (111000.0 * max(0.2, __import__("math").cos(__import__("math").radians(at[0]))))
+    rows = owing(extra=" AND s.lat BETWEEN %s AND %s AND s.lng BETWEEN %s AND %s",
+                 extra_params=(at[0] - d_lat, at[0] + d_lat, at[1] - d_lng, at[1] + d_lng))
+    out = []
+    for r in rows:
+        dist = ticketlib.distance_m(at[0], at[1], float(r["lat"]), float(r["lng"]))
+        if dist <= radius:
+            out.append({"id": r["id"], "code": r["code"], "u": r["username"], "n": r["full_name"] or "", "a": r["area"] or "",
+                        "ph": r["phone"] or "", "due": round(r["owed"], 2), "late": r["late"], "m": int(dist),
+                        "lat": float(r["lat"]), "lng": float(r["lng"]), "url": url_for("collect_one", sid=r["id"])})
+    out.sort(key=lambda r: r["m"])
+    resp = jsonify({"ok": True, "radius": radius, "rows": out[:100], "total": round(sum(r["due"] for r in out), 2), "n": len(out)})
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+# ===================================================================== a door visit without payment
+@route("/collect/<int:sid>/visit", module="subscribers", need="view", methods=["POST"])
+def collect_visit(sid):
+    """The collector was at the door but took no money: what happened, and when to come back (a promise date)."""
+    _need_collector()
+    sub = _sub(sid)
+    f = request.form
+    outcome = f.get("outcome") if f.get("outcome") in dict(VISIT_OUTCOMES) else ""
+    note = " ".join((f.get("note") or "").split())[:500]
+    back = core.safe_next(f.get("next")) or url_for("collect_one", sid=sid)
+    try:
+        follow = core.parse_date(f.get("follow_up"))
+    except ValueError:
+        follow = None
+    if not outcome:
+        flash("Choose what happened at the door.", "error")
+        return redirect(back)
+    if follow and (follow < date.today() or follow > date.today() + timedelta(days=60)):
+        flash("Pick a come-back date from today to 60 days ahead.", "error")
+        return redirect(back)
+    if outcome == "promised" and not follow:
+        flash("Pick the date the customer promised to pay.", "error")
+        return redirect(back)
+    x("UPDATE sub_calls SET done = 1 WHERE subscriber_id = %s AND done = 0", (sid,))     # the newest note is what counts
+    insert("INSERT INTO sub_calls (subscriber_id, outcome, note, follow_up, created_by) VALUES (%s, %s, %s, %s, %s)",
+           (sid, outcome, note, follow, g.me["username"]))
+    audit("collection_visit", sub["username"], "%s%s" % (dict(VISIT_OUTCOMES)[outcome], (", come back " + follow.isoformat()) if follow else ""))
+    commit()
+    flash("Visit saved for %s%s." % (sub["username"], (": come back on %s" % follow.strftime("%d %b")) if follow else ""), "success")
+    return redirect(back)
 
 
 # ===================================================================== take a payment
@@ -217,7 +400,8 @@ def _form(sub, d, f=None):
     late = (date.today() - sub["expiry_date"]).days if d["package"] and sub.get("expiry_date") else 0
     return render_template("collect_form.html", sub=sub, due=d, methods=[m for m in METHODS if core.can_fn(METHOD_KEY[m[0]])],
                            f=f, token=secrets.token_urlsafe(24), code=core.sub_code(sub["id"]), cap=caps()[0], charges=charges,
-                           recent=recent, late=late, labels=dict(METHODS), repeat_min=REPEAT_MIN,
+                           recent=recent, late=late, labels=dict(METHODS), repeat_min=REPEAT_MIN, **_visit_ctx(),
+                           visit=_last_visits([sub["id"]]).get(sub["id"]), all_outcomes=dict(__import__("mod_field").OUTCOMES),
                            plan_label=(d["plan"]["label"] or d["plan"]["name"]) if d["plan"] else "")
 
 

@@ -22,7 +22,10 @@ import mod_tickets
 from core import audit, commit, insert, pager, q, route, x
 
 OUTCOMES = [("called", "Talked"), ("no_answer", "No answer"), ("promised", "Promised to pay"), ("paid", "Paid"),
-            ("complaint", "Complaint"), ("switched_off", "Phone off"), ("other", "Other")]
+            ("complaint", "Complaint"), ("switched_off", "Phone off"), ("other", "Other"),
+            # a bill collector's door visits (mod_collect.collect_visit)
+            ("visit_not_home", "Visited: not home"), ("visit_later", "Visited: will pay later"),
+            ("visit_refused", "Visited: refused"), ("visit_no_addr", "Visited: address not found")]
 PHOTO_TYPES = {b"\x89PNG\r\n\x1a\n": "png", b"\xff\xd8\xff": "jpg"}
 PHOTO_MAX = 5 * 1024 * 1024
 

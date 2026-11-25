@@ -2,59 +2,73 @@
 {% from "_macros.html" import icon %}
 {% block title %}Due list{% endblock %}
 {% block content %}
-{% set keep = {'q': term} if term else {} %}{% set tk = currency or '৳' %}
-<div class="cl">
-  <div class="cl-head">
-    <div><h1>Due list <small>বকেয়া তালিকা</small></h1>
-      <p class="sub">Customers who owe, the longest expired first. Press <b>Collect</b> at the door.</p></div>
-  </div>
+{% set tk = currency or 'BDT' %}
+{% set keep = {} %}{% for k in ('q', 'show', 'area', 'sort', 'lat', 'lng') %}{% if request.args.get(k) %}{% set _ = keep.update({k: request.args.get(k)}) %}{% endif %}{% endfor %}
+<div class="cl" data-cur="{{ tk }}">
+  <header class="cl-head">
+    <div><p class="cx-crumb">Bill Collection</p><h1>Due list</h1>
+      <p class="sub">Customers who owe now{% if area %} in <b>{{ area }}</b>{% endif %}. Search a name or an area, or open the map to see who owes around you.</p></div>
+    <div class="cx-actions">
+      <a class="btn" href="{{ url_for('collect_map') }}">{{ icon('pin') }}Map</a>
+      {% if can_fn('col.own_report') %}<a class="btn" href="{{ url_for('collect_report') }}">{{ icon('file') }}My collections</a>{% endif %}
+    </div>
+  </header>
 
   <div class="cl-stats">
-    <div class="cl-stat"><b><span class="cl-tk">{{ tk }}</span>{{ owed|money }}</b><span>Owed by {{ rows|length }} customer{{ '' if rows|length == 1 else 's' }}</span></div>
-    <div class="cl-stat"><b><span class="cl-tk">{{ tk }}</span>{{ today.t|money }}</b><span>Taken today · {{ today.n }} receipt{{ '' if today.n == 1 else 's' }}</span></div>
+    <div class="cl-stat"><b><span class="cl-tk">{{ tk }}</span>{{ owed|money }}</b><span>Owed by {{ rows|length }}{% if more %}+{% endif %} customer{{ '' if rows|length == 1 else 's' }}</span></div>
+    <div class="cl-stat"><b><span class="cl-tk">{{ tk }}</span>{{ today.t|money }}</b><span>Collected today · {{ today.n }} receipt{{ '' if today.n == 1 else 's' }}</span></div>
     {% if can_fn('col.own_report') %}<a class="cl-stat {{ 'hero' if hand.hand > 0 }}" href="{{ url_for('collect_report') }}">{% else %}<div class="cl-stat {{ 'hero' if hand.hand > 0 }}">{% endif %}
-      <b><span class="cl-tk">{{ tk }}</span>{{ hand.hand|money }}</b><span>Cash in hand{% if hand.pending %} · {{ hand.pending|money }} waiting{% endif %}</span>
+      <b><span class="cl-tk">{{ tk }}</span>{{ hand.hand|money }}</b><span>Cash on hand{% if hand.pending %} · {{ hand.pending|money }} awaiting{% endif %}</span>
     {% if can_fn('col.own_report') %}</a>{% else %}</div>{% endif %}
-    <div class="cl-stat {{ 'warn' if counts.expired }}"><b>{{ counts.expired }}</b><span>Expired packages</span></div>
+    <div class="cl-stat {{ 'warn' if counts.promised }}"><b>{{ counts.promised }}</b><span>Promised for today · {{ visited_today }} visited</span></div>
   </div>
 
   <form class="cl-bar" method="get" role="search">
-    <div class="cl-search">{{ icon('search') }}<input name="q" value="{{ term }}" placeholder="Name, username, phone or area" aria-label="Search customers" autocomplete="off" enterkeyhint="search"></div>
+    <div class="cl-search">{{ icon('search') }}<input name="q" value="{{ term }}" placeholder="Search name, username, phone, ID or area" aria-label="Search customers or areas" data-suggest="{{ url_for('collect_suggest') }}" enterkeyhint="search"></div>
     <div class="cl-filters">
-      {% for k, label in (('all', 'All'), ('expired', 'Expired'), ('charges', 'Charges only')) %}
-      <a class="cl-chip {{ 'on' if show == k }}" href="{{ url_for('collect', show=k if k != 'all' else none, area=area or none, **keep) }}"{% if show == k %} aria-current="true"{% endif %}>{{ label }} <em>{{ counts[k] }}</em></a>
+      {% for k, label in (('all', 'All'), ('expired', 'Package due'), ('charges', 'Charges only'), ('promised', 'Promised today')) %}
+      <a class="cl-chip {{ 'on' if show == k }}" href="{{ url_for('collect', **dict(keep, show=k if k != 'all' else none)) }}"{% if show == k %} aria-current="true"{% endif %}>{{ label }} <em>{{ counts[k] }}</em></a>
       {% endfor %}
-      {% if areas|length > 1 %}<select name="area" aria-label="Area" onchange="this.form.submit()">
-        <option value="">All areas</option>{% for a in areas %}<option value="{{ a }}" {{ 'selected' if a == area }}>{{ a }}</option>{% endfor %}</select>{% endif %}
+      <span class="cl-filter-r">
+        {% if areas|length > 1 %}<select name="area" aria-label="Area" onchange="this.form.submit()"><option value="">All areas</option>{% for a in areas %}<option value="{{ a }}" {{ 'selected' if a == area }}>{{ a }}</option>{% endfor %}</select>{% endif %}
+        <select name="sort" aria-label="Sort by" data-cl-sort>{% for k, label in sorts.items() %}<option value="{{ k }}" {{ 'selected' if sort == k }}>{{ label }}</option>{% endfor %}</select>
+      </span>
       {% if show != 'all' %}<input type="hidden" name="show" value="{{ show }}">{% endif %}
+      {% if me_at %}<input type="hidden" name="lat" value="{{ me_at[0] }}"><input type="hidden" name="lng" value="{{ me_at[1] }}">{% endif %}
     </div>
+    {% if term or area %}<div class="cl-active">Showing {% if term %}“<b>{{ term }}</b>”{% endif %}{% if term and area %} in {% endif %}{% if area %}<b>{{ area }}</b>{% endif %} · <a href="{{ url_for('collect', **dict(keep, q=none, area=none)) }}">Clear</a></div>{% endif %}
   </form>
 
   {% if rows %}
   <div class="cl-list">
-    {% for s in rows %}{% set paid = s.id in paid_today %}
-    <article class="cl-card {{ 'done' if paid else ('late' if s.due.package else 'fee') }}">
-      <div class="cl-ava" aria-hidden="true">{{ (s.full_name or s.username)[:1] }}</div>
+    {% for s in rows %}{% set paid = s.id in paid_today %}{% set v = s.visit %}
+    <article class="cl-card {{ 'done' if paid else ('late' if s.pkg else 'fee') }}">
+      <div class="cl-ava" aria-hidden="true">{{ (s.full_name or s.username)[:2]|upper }}</div>
       <div class="cl-who"><b>{{ s.full_name or s.username }}</b><small>{{ s.code }} · {{ s.username }}</small></div>
-      <div class="cl-owe"><b><span class="cl-tk">{{ tk }}</span>{{ s.due.total|money }}</b><small>due</small></div>
+      <div class="cl-owe"><b><span class="cl-tk">{{ tk }}</span>{{ s.owed|money }}</b><small>{% if s.dist is not none %}{{ (s.dist / 1000)|round(1) ~ ' km' if s.dist >= 1000 else s.dist|int ~ ' m' }} away{% else %}due{% endif %}</small></div>
       <div class="cl-meta">
-        {% if s.due.package %}<span class="cl-tag late">Expired {{ s.late }} day{{ '' if s.late == 1 else 's' }}</span>{% else %}<span class="cl-tag fee">Charges</span>{% endif %}
+        {% if s.pkg %}<span class="cl-tag late">{{ s.late }} day{{ '' if s.late == 1 else 's' }} overdue</span>{% else %}<span class="cl-tag fee">Charges</span>{% endif %}
         {% if paid %}<span class="cl-tag ok">Paid today</span>{% endif %}
+        {% if s.promise %}<span class="cl-tag {{ 'late' if s.promise < now else 'promise' }}">{{ 'Promised today' if s.promise == now else ('Promise missed ' ~ s.promise.strftime('%d %b') if s.promise < now else 'Promised ' ~ s.promise.strftime('%d %b')) }}</span>{% endif %}
         {% if s.area %}<span>{{ icon('pin') }}{{ s.area }}</span>{% endif %}
         {% if s.plan_label %}<span>{{ icon('layers') }}{{ s.plan_label }}</span>{% endif %}
       </div>
+      {% if v %}<div class="cl-last">{{ icon('clock') }}{{ all_outcomes.get(v.outcome, v.outcome) }} · {{ v.created_at|ago }}{% if v.note %} · “{{ v.note[:60] }}{{ '…' if v.note|length > 60 }}”{% endif %}</div>{% endif %}
       <div class="cl-acts">
-        {% if s.phone %}<a class="btn icon" href="tel:{{ s.phone|replace(' ', '') }}" aria-label="Call {{ s.full_name or s.username }}" title="Call {{ s.phone }}">{{ icon('phone') }}</a>{% else %}<span></span>{% endif %}
-        {% if s.lat is not none and s.lng is not none %}<a class="btn icon" href="https://www.google.com/maps/dir/?api=1&amp;destination={{ s.lat }},{{ s.lng }}" target="_blank" rel="noopener" aria-label="Directions to {{ s.full_name or s.username }}" title="Directions">{{ icon('pin') }}</a>{% else %}<span></span>{% endif %}
+        {% if s.phone %}<a class="btn icon" href="tel:{{ s.phone|replace(' ', '') }}" aria-label="Call {{ s.full_name or s.username }}" title="Call {{ s.phone }}">{{ icon('phone') }}</a>{% else %}<span class="btn icon" aria-hidden="true" style="visibility:hidden"></span>{% endif %}
+        {% if s.lat is not none and s.lng is not none %}<a class="btn icon" href="https://www.google.com/maps/dir/?api=1&amp;destination={{ s.lat }},{{ s.lng }}" target="_blank" rel="noopener" aria-label="Directions to {{ s.full_name or s.username }}" title="Directions">{{ icon('pin') }}</a>{% else %}<span class="btn icon" aria-hidden="true" style="visibility:hidden"></span>{% endif %}
+        <button class="btn" type="button" data-visit="{{ url_for('collect_visit', sid=s.id) }}" data-who="{{ s.full_name or s.username }}">{{ icon('note') }}Visit</button>
         <a class="btn primary" href="{{ url_for('collect_one', sid=s.id) }}">{{ icon('wallet') }}Collect</a>
       </div>
     </article>
     {% endfor %}
   </div>
-  {% if rows|length >= 300 %}<p class="muted">Showing the first 300. Search to find someone else.</p>{% endif %}
+  {% if more %}<p class="muted">{{ more }} more not shown. Search or pick an area to narrow the list.</p>{% endif %}
   {% else %}
   <div class="cl-empty">{{ icon('check') }}<h3>{{ 'No match' if term or area or show != 'all' else 'Nobody owes right now' }}</h3>
-    <p>{% if term or area or show != 'all' %}No customer who owes matches this. <a href="{{ url_for('collect') }}">Show everyone</a>{% else %}Every customer you see is paid up.{% endif %}</p></div>
+    <p>{% if term or area or show != 'all' %}No customer who owes matches this. <a href="{{ url_for('collect') }}">Show everyone</a>{% else %}Every customer you can see is paid up.{% endif %}</p></div>
   {% endif %}
 </div>
+{% include "_collect_visit.html" %}
 {% endblock %}
+{% block scripts %}<script src="{{ asset('js/collect.js') }}"></script>{% endblock %}

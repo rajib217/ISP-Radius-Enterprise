@@ -14,6 +14,7 @@
   var centre = null; try { centre = JSON.parse(el.dataset.centre || "null"); } catch (e) {}
   var view = { lat: centre ? centre[0] : 23.8103, lng: centre ? centre[1] : 90.4125, z: centre ? 13 : 7 };
   var all = [], shown = [];
+  var meAt = null, ring = null;           // "you are here" and the search circle (window.cmap.me / .ring)
 
   /* Web Mercator: degrees <-> world pixels at zoom z */
   function project(lat, lng, z) {
@@ -56,12 +57,24 @@
       html.push('<button type="button" class="cmap-dot s-' + p.s + '" data-i="' + i + '" style="transform:translate(' +
         Math.round(x) + 'px,' + Math.round(y) + 'px)" aria-label="' + esc(p.n || p.u) + '"></button>');
     });
+    if (ring) {                           // metres -> pixels at this latitude and zoom
+      var rc = project(ring.lat, ring.lng, view.z), mpp = 156543.03392 * Math.cos(ring.lat * Math.PI / 180) / Math.pow(2, view.z);
+      var rp = Math.max(6, ring.r / mpp);
+      html.unshift('<span class="cmap-ring" style="width:' + (rp * 2) + 'px;height:' + (rp * 2) + 'px;transform:translate(' +
+        Math.round(rc.x - o.x - rp) + 'px,' + Math.round(rc.y - o.y - rp) + 'px)"></span>');
+    }
+    if (meAt) {
+      var mq = project(meAt.lat, meAt.lng, view.z);
+      html.push('<span class="cmap-me" title="You are here" style="transform:translate(' + Math.round(mq.x - o.x) + 'px,' + Math.round(mq.y - o.y) + 'px)"></span>');
+    }
     dotsLayer.innerHTML = html.join("");
   }
   function draw() { drawTiles(); drawDots(); if (!card.hidden && card._p) placeCard(card._p); }
 
   function esc(t) { return String(t == null ? "" : t).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   var STATE = { online: "Online", offline: "Offline", expired: "Expired", suspended: "Suspended" };
+  try { var custom = JSON.parse(el.dataset.states || "{}"); Object.keys(custom).forEach(function (k) { STATE[k] = custom[k]; }); } catch (e) {}
+  var CTA = el.dataset.cta || "Open", CUR = el.dataset.cur || "";
   function placeCard(p) {
     var o = origin(), q = project(p.lat, p.lng, view.z);
     card.style.transform = "translate(" + Math.round(q.x - o.x) + "px," + Math.round(q.y - o.y) + "px)";
@@ -71,13 +84,20 @@
     card.innerHTML = '<button type="button" class="cmap-x" aria-label="Close">×</button><b>' + esc(p.n || p.u) + '</b>' +
       '<small>' + esc(p.code) + ' · ' + esc(p.u) + '</small>' +
       '<span class="cmap-st s-' + p.s + '">' + STATE[p.s] + '</span>' +
+      (p.due > 0 ? '<span class="cmap-due">Due ' + esc(CUR) + ' ' + Number(p.due).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</span>' : '') +
       (p.p ? '<small>' + esc(p.p) + (p.a ? ' · ' + esc(p.a) : '') + '</small>' : (p.a ? '<small>' + esc(p.a) + '</small>' : '')) +
-      '<span class="cmap-acts"><a class="btn sm primary" href="' + esc(p.url) + '">Open</a>' +
+      '<span class="cmap-acts"><a class="btn sm primary" href="' + esc(p.url) + '">' + esc(CTA) + '</a>' +
+      (el.dataset.near ? '<button type="button" class="btn sm" data-cmap-near>Dues nearby</button>' : '') +
       (p.ph ? '<a class="btn sm" href="tel:' + esc(p.ph) + '">Call</a>' : '') +
       '<a class="btn sm" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=' + p.lat + ',' + p.lng + '">Directions</a></span>';
     card.hidden = false; placeCard(p);
   }
-  card.addEventListener("click", function (e) { if (e.target.closest(".cmap-x")) { card.hidden = true; card._p = null; } });
+  card.addEventListener("click", function (e) {
+    if (e.target.closest(".cmap-x")) { card.hidden = true; card._p = null; }
+    if (e.target.closest("[data-cmap-near]") && card._p) {   // the page (collect-map.js) lists who owes around this door
+      el.dispatchEvent(new CustomEvent("cmap:near", { detail: { lat: card._p.lat, lng: card._p.lng, p: card._p } }));
+    }
+  });
   dotsLayer.addEventListener("click", function (e) { var b = e.target.closest(".cmap-dot"); if (b) { e.stopPropagation(); openCard(shown[+b.dataset.i]); } });
 
   function zoomAt(dz, px, py) {
@@ -160,6 +180,23 @@
   if (areaSel) areaSel.addEventListener("change", function () { filter(true); });
   document.querySelectorAll("[data-cmap-s]").forEach(function (c) { c.addEventListener("change", function () { filter(false); }); });
   window.addEventListener("resize", draw);
+
+  /* for the page around the map: fly to a place, open a customer, mark "you are here", draw the search circle */
+  window.cmap = {
+    focus: function (lat, lng, z) { view = { lat: lat, lng: lng, z: z || Math.max(view.z, 16) }; draw(); },
+    open: function (id) {
+      var p = all.filter(function (x) { return x.id === id; })[0];
+      if (!p) return false;
+      view = { lat: p.lat, lng: p.lng, z: Math.max(view.z, 17) }; draw(); openCard(p); return true;
+    },
+    me: function (lat, lng) { meAt = lat == null ? null : { lat: lat, lng: lng }; drawDots(); },
+    ring: function (lat, lng, r) { ring = lat == null ? null : { lat: lat, lng: lng, r: r }; drawDots(); },
+    fitAround: function (lat, lng, r) {   // zoom so a circle of r metres fits
+      var sz = size(), z = MAXZ;
+      for (; z > MINZ; z--) { var mpp = 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, z); if (2 * r / mpp < Math.min(sz.w, sz.h) - 60) break; }
+      view = { lat: lat, lng: lng, z: z }; draw();
+    }
+  };
 
   draw();
   fetch(el.dataset.src, { credentials: "same-origin" }).then(function (r) { return r.json(); }).then(function (rows) {

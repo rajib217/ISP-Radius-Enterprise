@@ -57,7 +57,7 @@
     {{ csrf_input() }}<input type="hidden" name="id"><input type="hidden" name="kind" value="collector">
     <div class="modal-head"><h2 id="col-title" data-title data-title-new="Add bill collector" data-title-edit="Edit bill collector">Add bill collector</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack">
-      <p class="muted" style="margin:0">Your bill collector (বিল কালেক্টর) signs in with this username. They see only your customers and what they owe, take payments (cash, POS or bKash) and give receipts. Cash they take stays "in hand" until they deposit it to you and you confirm it under Bill Collection &gt; Collectors.</p>
+      <p class="muted" style="margin:0">Your bill collector signs in with this username. They see only your customers and what they owe, take payments (cash, POS or bKash) and give receipts. Cash they take stays "in hand" until they deposit it to you and you confirm it under Bill Collection &gt; Collectors.</p>
       <div class="grid-2">
         <div class="field"><label class="lbl" for="c-name">Full Name <b class="req">*</b></label><input id="c-name" name="full_name" required maxlength="128"></div>
         <div class="field"><label class="lbl" for="c-user">Username <b class="req">*</b></label><input id="c-user" name="username" data-lock-on-edit required spellcheck="false"></div>

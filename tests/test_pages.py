@@ -1890,7 +1890,8 @@ def check_rules(flask_app, ids):
         _gate[_it["key"]] = _g[0] if _g else None
     _deps = {"net.live": ["sub.module"], "cfc.module": ["cf.module"], "cfc.add": ["cf.module"], "cfc.edit": ["cf.module"], "cfc.delete": ["cf.module"]}
     _seller_only = {"my_users", "my_user_packages", "add_balance",
-                    "collect", "collect_one", "collect_report"}      # sellers only / a Bill Collector only
+                    "collect", "collect_one", "collect_report", "collect_suggest", "collect_map", "collect_map_data",
+                    "collect_near"}      # sellers only / a Bill Collector only
     st = client(ids["staff"])
     _get_rules = {r.endpoint: r for r in flask_app.url_map.iter_rules() if "GET" in r.methods}
     _closed, _shut = [], []
@@ -3214,7 +3215,7 @@ def check_rules(flask_app, ids):
     _cl_r = _rc2.get("/collections?collector=%d" % _col["id"]).get_data(as_text=True)
     _cl_bad = _rc2.get("/collections?collector=%d" % _col2).status_code
     _bn = _cc.get("/collect").get_data(as_text=True)
-    check('class="cl-card done"' in _dl and "Paid today" in _dl and "Expired 5 days" in _dl and 'href="tel:' in _dl and "cl-chip on" in _dl
+    check('class="cl-card done"' in _dl and "Paid today" in _dl and "5 days overdue" in _dl and 'href="tel:' in _dl and "cl-chip on" in _dl
           and _rsub["username"] in _dl_exp and _rsub["username"] not in _dl_fee
           and "data-cl-pay" in _pf and 'class="cl-method' in _pf and "data-cl-effect" in _pf and "Full due" in _pf
           and 'data-cf-for="pos"' in _pf and 'data-cf-for="bkash"' in _pf and "Receive" in _pf
@@ -3478,6 +3479,38 @@ def check_rules(flask_app, ids):
           and "CIBK0001" in _res_sees and "bkadd-dlg" not in _res_sees,
           "bKash Payments: the office adds bKash money a reseller sent (Trx ID, note): their balance and ledger go up, it is "
           "listed and found by Trx ID or note; a Trx ID is used once; resellers cannot add; filters by tier and account")
+    # ===== Bill collector tools: search suggestions, the map, dues nearby, door visits; no Bangla on their pages
+    run("UPDATE subscribers SET status = 'active', balance = 0, net_disabled = 0, grace_until = NULL, expiry_date = CURDATE() - INTERVAL 4 DAY, "
+        "expiry_time = NULL, area = 'CI-Lane', lat = 23.810000, lng = 90.410000 WHERE id = %s", (_dsub["id"],))
+    run("UPDATE subscribers SET lat = 23.900000, lng = 90.500000 WHERE id = %s", (_rsub["id"],))
+    _sg_area = json.loads(_cc.get("/collect/suggest?q=CI-La").get_data(as_text=True))
+    _sg_name = json.loads(_cc.get("/collect/suggest?q=%s" % _dsub["username"]).get_data(as_text=True))
+    _sg_other = json.loads(_cc.get("/collect/suggest?q=%s" % _asub["username"]).get_data(as_text=True))
+    _mp = _cc.get("/collect/map").get_data(as_text=True)
+    _md = json.loads(_cc.get("/collect/map/data").get_data(as_text=True))
+    _mine_pt = next((p for p in _md if p["id"] == _dsub["id"]), None)
+    _nr = json.loads(_cc.get("/collect/near?lat=23.8101&lng=90.4101&r=500").get_data(as_text=True))
+    _nr_far = [r["id"] for r in _nr.get("rows", [])]
+    _near_sort = _cc.get("/collect?sort=near&lat=23.8101&lng=90.4101").get_data(as_text=True)
+    # a visit with a promise for today puts them under Promised today
+    _vs = _cc.post("/collect/%d/visit" % _dsub["id"], data={"_csrf": "ci", "outcome": "promised", "follow_up": _dt.date.today().isoformat(),
+                                                          "note": "pays after salary"})
+    _vrow = one("SELECT outcome, follow_up, created_by FROM sub_calls WHERE subscriber_id = %s ORDER BY id DESC LIMIT 1", (_dsub["id"],))
+    _prom = _cc.get("/collect?show=promised").get_data(as_text=True)
+    _bad_visit = _cc.post("/collect/%d/visit" % _dsub["id"], data={"_csrf": "ci", "outcome": "promised"}, follow_redirects=True).get_data(as_text=True)
+    _office_visit = _cc.post("/collect/%d/visit" % _asub["id"], data={"_csrf": "ci", "outcome": "visit_not_home"}).status_code
+    _pages = [_cc.get(u).get_data(as_text=True) for u in ("/collect", "/collect/map", "/collect/%d" % _dsub["id"], "/collect/report")]
+    _bn_free = not any(re.search("[ঀ-৿]", h.split("<main", 1)[-1]) for h in _pages)
+    check(any(a["name"] == "CI-Lane" for a in _sg_area["areas"]) and any(s["id"] == _dsub["id"] and s["due"] > 0 for s in _sg_name["subs"])
+          and not _sg_other["subs"] and 'data-suggest-mode="map"' in _mp and "Dues near me" in _mp
+          and _mine_pt and _mine_pt["s"] == "expired" and _mine_pt["due"] > 0 and _mine_pt["url"].endswith("/collect/%d" % _dsub["id"])
+          and _nr["ok"] and _dsub["id"] in _nr_far and _rsub["id"] not in _nr_far and "m away" in _near_sort
+          and _vs.status_code == 302 and _vrow["outcome"] == "promised" and _vrow["created_by"] == "ci_col"
+          and ("/collect/%d\"" % _dsub["id"]) in _prom and "Promised today" in _prom and "promised to pay" in _bad_visit.lower()
+          and _office_visit in (403, 404) and _bn_free,
+          "Bill collector: search suggests areas and customers (their own only) as they type; the map shows who owes and "
+          "finds dues near a point; Nearest to me sorts by distance; a door visit with a promise date shows under Promised "
+          "today; no Bangla text on their pages " + repr((_sg_area, _nr.get("n"), _vrow)))
     return bad
 
 

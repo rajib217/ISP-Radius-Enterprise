@@ -114,6 +114,7 @@ STRUCTURE = [
     ]),
     _g("collect", "Bill Collection", "wallet", items=[
         _i("Due list", "collect", ["collect", "collect_one", "collect_receipt"], allow="collector"),
+        _i("Collection map", "collect_map", ["collect_map"], allow="collector"),
         _i("My collections", "collect_report", ["collect_report"], allow="collector"),
         _i("Collectors", "collections", ["collections"], allow="collections"),
     ]),
@@ -255,8 +256,8 @@ _BOTTOM = {
               ("online", "Online", "activity"), ("payments", "Payments", "dollar")],
     "tech": [("dashboard", "Home", "home"), ("jobs", "My jobs", "ticket"),
              ("customer_map", "Map", "pin"), ("subscribers", "Customers", "users3")],
-    "collector": [("collect", "Due list", "wallet"), ("collect_report", "My cash", "dollar"),
-                  ("subscribers", "Customers", "users3"), ("tickets", "Tickets", "ticket")],
+    "collector": [("collect", "Due list", "wallet"), ("collect_map", "Map", "pin"),
+                  ("collect_report", "My cash", "dollar"), ("subscribers", "Customers", "users3")],
     "seller": [("dashboard", "Home", "home"), ("subscribers", "Subscribers", "users3"),
                ("subscriber_activation", "Activate", "bolt"), ("add_balance", "Balance", "wallet")],
 }
