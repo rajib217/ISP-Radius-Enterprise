@@ -330,10 +330,15 @@ def gate():
     if not uid:
         nxt = request.full_path.rstrip("?") if request.method == "GET" else None
         return redirect(url_for("login", next=nxt))
-    me = q("SELECT id, username, full_name, role, is_active, balance, photo, parent_id FROM panel_admins WHERE id = %s",
+    me = q("SELECT id, username, full_name, role, is_active, balance, photo, parent_id, session_ver FROM panel_admins WHERE id = %s",
            (uid,), one=True)
     if not me or not me["is_active"] or core.user_blocked(me["id"]):
         session.clear()
+        return redirect(url_for("login"))
+    # the account's password was changed on another device after this one signed in: sign this one out
+    if int(session.get("sv", 0)) != int(me.get("session_ver") or 0) and not session.get("real_uid"):
+        session.clear()
+        flash("Your password was changed, so you were signed out. Sign in with the new password.", "warn")
         return redirect(url_for("login"))
     if session.get("ep", "") != (cfg().get("session_epoch") or ""):
         session.clear()                   # after Backup > Restore: the restored user ids may be other people now
@@ -420,6 +425,7 @@ def login():
                     return redirect(url_for("login_2fa"))
                 session.clear()
                 session["uid"] = user["id"]
+                session["sv"] = int(user.get("session_ver") or 0)
                 session["ep"] = cfg().get("session_epoch") or ""
                 session["csrf"] = secrets.token_hex(16)
                 session.permanent = True
@@ -476,6 +482,7 @@ def login_2fa():
             nxt = session.get("pending_next") or ""
             session.clear()
             session["uid"] = user["id"]
+            session["sv"] = int(user.get("session_ver") or 0)
             session["ep"] = cfg().get("session_epoch") or ""
             session["csrf"] = secrets.token_hex(16)
             session.permanent = True

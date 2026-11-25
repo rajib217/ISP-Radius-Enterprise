@@ -18,10 +18,18 @@ from core import (EMAIL_RE, LEVELS, MODULES, PHONE_RE, ROLES, USERNAME_RE, admin
 
 
 # ===================================================================== My Profile
+# the forms on My Profile and the tick each needs (None: everyone may)
+PROFILE_SECTIONS = {"details": "prof.edit", "password": "prof.password", "2fa_start": None, "2fa_confirm": None,
+                    "2fa_disable": None}
+
+
 @route("/profile", methods=["GET", "POST"])
 def profile():
     if request.method == "POST":
-        need = {"password": "prof.password", "details": "prof.edit"}.get(request.form.get("section") or "details")
+        section = request.form.get("section") or "details"
+        if section not in PROFILE_SECTIONS:
+            abort(400)                    # only the forms on this page; anything else would skip the permission check
+        need = PROFILE_SECTIONS[section]
         if need and not core.can_fn(need):
             abort(403)
         if request.form.get("section") == "2fa_start":
@@ -58,7 +66,7 @@ def profile():
                 audit("2fa_disabled", g.me["username"])
                 commit()
                 flash("Two-factor is off.", "success")
-        elif request.form.get("section") == "password":
+        elif section == "password":
             row = q("SELECT password_hash FROM panel_admins WHERE id = %s", (g.me["id"],), one=True)
             new, again = request.form.get("new", ""), request.form.get("again", "")
             if not check_password_hash(row["password_hash"], request.form.get("current", "")):
@@ -68,11 +76,13 @@ def profile():
             elif new != again:
                 flash("The two new passwords do not match.", "error")
             else:
-                x("UPDATE panel_admins SET password_hash = %s WHERE id = %s",
+                # a new session version signs this account out everywhere else; this device keeps the new one
+                x("UPDATE panel_admins SET password_hash = %s, session_ver = session_ver + 1 WHERE id = %s",
                   (generate_password_hash(new), g.me["id"]))
-                audit("password_changed", g.me["username"])
+                session["sv"] = int(q("SELECT session_ver FROM panel_admins WHERE id = %s", (g.me["id"],), one=True)["session_ver"])
+                audit("password_changed", g.me["username"], "other devices signed out")
                 commit()
-                flash("Password changed.", "success")
+                flash("Password changed. Every other device signed in to this account has been signed out.", "success")
         else:
             name = request.form.get("full_name", "").strip()[:128]
             phone, email = request.form.get("phone", "").strip(), request.form.get("email", "").strip()

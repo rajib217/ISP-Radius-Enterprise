@@ -1072,3 +1072,6 @@ CREATE TABLE IF NOT EXISTS collection_deposits (
   KEY idx_collector (collector_id, status),
   KEY idx_parent (parent_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Changing the password signs the account out on every other device (sql/migrations/0003_session_version.sql)
+ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS session_ver INT UNSIGNED NOT NULL DEFAULT 0;

@@ -3558,6 +3558,25 @@ def check_rules(flask_app, ids):
           "Auto renew charges the customer's own price (a reseller's price, as Activation) and can be reverted (expiry, "
           "balance and the reseller's cost back); the Home Expired counter matches the Expired list "
           + repr((_want_price, _arp and _arp["amount"], _dash_exp, _n_list)))
+    # ===== My Profile: an unknown form section is refused; a new password signs the account out everywhere else
+    _sp_row = one("SELECT id, full_name, password_hash FROM panel_admins WHERE id = %s", (ids["staff"],))
+    run("INSERT INTO role_funcs (role, fkey, allowed) VALUES ('support', 'prof.edit', 0) ON DUPLICATE KEY UPDATE allowed = 0")
+    _pa, _pb = client(ids["staff"]), client(ids["staff"])
+    _sec = _pa.post("/profile", data={"_csrf": "ci", "section": "anything", "full_name": "CI bypass", "phone": "", "email": ""}).status_code
+    _name_kept = one("SELECT full_name FROM panel_admins WHERE id = %s", (ids["staff"],))["full_name"] == _sp_row["full_name"]
+    run("DELETE FROM role_funcs WHERE role = 'support' AND fkey = 'prof.edit'")
+    run("UPDATE panel_admins SET password_hash = %s WHERE id = %s", (generate_password_hash("OldPass123!"), ids["staff"]))
+    _b_before = _pb.get("/").status_code
+    _chg = _pa.post("/profile", data={"_csrf": "ci", "section": "password", "current": "OldPass123!", "new": "NewPass456!",
+                                      "again": "NewPass456!"}, follow_redirects=True).get_data(as_text=True)
+    _a_after = _pa.get("/")
+    _b_after = _pb.get("/")
+    _sv = one("SELECT session_ver FROM panel_admins WHERE id = %s", (ids["staff"],))["session_ver"]
+    run("UPDATE panel_admins SET password_hash = %s WHERE id = %s", (_sp_row["password_hash"], ids["staff"]))
+    check(_sec == 400 and _name_kept and _b_before == 200 and "signed out" in _chg and _a_after.status_code == 200
+          and _b_after.status_code == 302 and "/login" in _b_after.headers.get("Location", "") and int(_sv) >= 1,
+          "My Profile: an unknown form section is refused (no way around the Edit tick); changing the password signs the "
+          "account out on every other device and keeps this one signed in")
     return bad
 
 
