@@ -363,8 +363,11 @@ def collect_one(sid):
         trx = f.get("trx_id", "").strip().upper()
         if not TRX_RE.match(trx):
             err = "Enter the bKash TrxID (8-12 letters / digits)."
-        elif q("SELECT 1 AS x FROM collections WHERE trx_id = %s", (trx,), one=True):
-            err = "This bKash TrxID was already used for another collection."
+        else:
+            import mod_bkash_report          # anywhere in the panel: a collection, an SMS payment, a top-up, the portal
+            used = mod_bkash_report.trx_used(trx)
+            if used:
+                err = "This bKash TrxID is already booked as %s. The same payment cannot be taken twice." % used
     token = (f.get("form_token") or "").strip()[:48]
     if not err and (not token or q("SELECT receipt_no FROM collections WHERE form_token = %s", (token,), one=True)):
         err = "This payment form was already submitted (the receipt was made once). Open the customer again for a new one."

@@ -148,6 +148,31 @@ def safe_next(target):
     return None
 
 
+class _SafeCsv:
+    """csv.writer whose cells can never run as a spreadsheet formula: text starting with = + - @ (that is not a number)
+    gets a leading ' (a customer name typed as =HYPERLINK(...) stays text when the export is opened in Excel)."""
+    def __init__(self, out):
+        import csv
+        self._w = csv.writer(out)
+
+    @staticmethod
+    def cell(v):
+        if isinstance(v, str) and v[:1] in ("=", "+", "-", "@", chr(9), chr(13)) and not re.match(r"^-?[0-9]", v):
+            return "'" + v
+        return v
+
+    def writerow(self, row):
+        return self._w.writerow([self.cell(v) for v in row])
+
+    def writerows(self, rows):
+        for r in rows:
+            self.writerow(r)
+
+
+def csv_writer(out):
+    return _SafeCsv(out)
+
+
 def parse_date(text):
     text = (text or "").strip()
     if not text:

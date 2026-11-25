@@ -207,9 +207,18 @@ def user_transfer():
     if not ok:
         flash("Your balance (%.2f) is lower than %.2f. Add balance to yourself first. Nothing was changed." % (have, amount), "error")
         return redirect(url_for("my_users"))
-    x("UPDATE panel_admins SET balance = %s WHERE id = %s", (new, row["id"]))
+    # added in the database (not the balance read above written back): a renewal charging them at the same moment
+    # is never lost; a take-back never takes them below zero
+    with get_db().cursor() as cur:
+        cur.execute("UPDATE panel_admins SET balance = balance + %s WHERE id = %s AND balance + %s >= 0", (amount, row["id"], amount))
+        if cur.rowcount != 1:
+            get_db().rollback()
+            flash("%s's balance changed meanwhile. Nothing was changed; try again." % row["username"], "error")
+            return redirect(url_for("my_users"))
+        cur.execute("SELECT balance FROM panel_admins WHERE id = %s", (row["id"],))
+        new = float(cur.fetchone()["balance"])
     insert("INSERT INTO user_ledger (user_id, amount, balance_after, method, note, created_by) VALUES (%s, %s, %s, %s, %s, %s)",
-           (row["id"], amount, new, request.form.get("method"),
+           (row["id"], amount, new, (request.form.get("method") or "")[:32],
             ("From %s. %s" % (g.me["username"], request.form.get("note", "").strip()))[:255], g.me["username"]))
     audit("user_balance", row["username"], "%+.2f -> %.2f (from %s)" % (amount, new, g.me["username"]))
     commit()

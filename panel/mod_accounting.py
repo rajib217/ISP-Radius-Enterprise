@@ -122,7 +122,7 @@ def payments_export():
              " ORDER BY p.id DESC LIMIT 100000", params)
     out = io.StringIO()
     out.write("﻿")
-    w = csv.writer(out)
+    w = core.csv_writer(out)
     w.writerow(["receipt", "paid_at", "username", "name", "amount", "method", "days_added", "valid_until",
                 "received_by", "note"])
     for r in rows:
@@ -480,7 +480,7 @@ def cashflow_csv():
     head, data = _cf_export()
     out = io.StringIO()
     out.write("﻿")
-    w = csv.writer(out)
+    w = core.csv_writer(out)
     w.writerow(head)
     for r in data:
         w.writerow([("'" + v) if isinstance(v, str) and v[:1] in ("=", "+", "-", "@") else v for v in r])

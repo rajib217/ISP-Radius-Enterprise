@@ -193,10 +193,15 @@ def _can_add():
     return core.can("accounting", "edit") or core.can_fn("bkp.add")
 
 
-def trx_used(trx):
-    """Where this bKash Trx ID was already booked (a top-up, a portal payment, an SMS payment, a collection), or ''."""
+def trx_used(trx, skip=()):
+    """Where this bKash Trx ID was already booked (a top-up, a portal payment, an SMS payment, a collection), or ''.
+    skip: tables not to look in (the caller's own, which has its own duplicate guard)."""
+    if not trx:
+        return ""
     for table, label in (("topups", "a top-up"), ("portal_payments", "a customer's portal payment"),
                          ("sms_payments", "a bKash SMS payment"), ("collections", "a bill collection")):
+        if table in skip:
+            continue
         try:
             if q("SELECT 1 AS x FROM " + table + " WHERE trx_id = %s LIMIT 1", (trx,), one=True):
                 return label

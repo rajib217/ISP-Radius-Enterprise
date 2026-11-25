@@ -148,18 +148,25 @@ def _kind():
     return "email" if request.values.get("kind") == "email" else "sms"
 
 
+def can_edit_templates(kind):
+    """Templates are the whole ISP's messages (every customer gets them): only the office changes them, never a
+    reseller / sub-reseller / retailer or their own staff, whatever their SMS / Email level."""
+    return core.my_downline() is None and core.can(kind, "edit")
+
+
 @route("/templates", module=("sms", "email"))
 def templates_page():
     kind = _kind()
     if not core.can(kind):
         abort(403)
-    return render_template("templates_page.html", kind=kind, rows=_templates(kind), variables=msglib.VARIABLES)
+    return render_template("templates_page.html", kind=kind, rows=_templates(kind), variables=msglib.VARIABLES,
+                           can_edit=can_edit_templates(kind))
 
 
 @route("/templates/save", module=("sms", "email"), methods=["POST"])
 def template_save():
     kind = _kind()
-    if not core.can(kind, "edit"):
+    if not can_edit_templates(kind):
         abort(403)
     f = request.form
     name, subject, body = f.get("name", "").strip(), f.get("subject", "").strip()[:200], f.get("body", "").strip()
@@ -179,7 +186,7 @@ def template_save():
 @route("/templates/<int:tid>/delete", module=("sms", "email"), methods=["POST"])
 def template_delete(tid):
     row = q("SELECT kind, name FROM message_templates WHERE id = %s", (tid,), one=True) or abort(404)
-    if not core.can(row["kind"], "edit"):
+    if not can_edit_templates(row["kind"]):
         abort(403)
     x("DELETE FROM message_templates WHERE id = %s", (tid,))
     audit("template_deleted", "%s/%s" % (row["kind"], row["name"]))

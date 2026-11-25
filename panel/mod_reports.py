@@ -204,7 +204,7 @@ def profit_csv():
     start, end = core.date_range(29)
     chosen, ids, below = _pick(_sellers())
     buf = io.StringIO()
-    w = csv.writer(buf)
+    w = core.csv_writer(buf)
     clean = lambda v: str(v or "").lstrip("=+-@")
     if chosen:
         w.writerow(["date", "seller", "customer", "days", "method", "customer_paid", "seller_paid", "profit", "note"])
@@ -232,7 +232,7 @@ def collection_csv():
     rows = q("SELECT paid_at, username, amount, method, days_added, period_to, received_by, note FROM payments "
              "WHERE paid_at >= %s AND paid_at < %s + INTERVAL 1 DAY" + sc + " ORDER BY paid_at", [start, end] + sa)
     buf = io.StringIO()
-    w = csv.writer(buf)
+    w = core.csv_writer(buf)
     w.writerow(["paid_at", "username", "amount", "method", "days_added", "valid_until", "received_by", "note"])
     for r in rows:
         w.writerow([r["paid_at"], r["username"], r["amount"], r["method"], r["days_added"], r["period_to"] or "",

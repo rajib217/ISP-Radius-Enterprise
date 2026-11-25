@@ -32,7 +32,7 @@ def _seller():
 def _csv(name, header, rows):
     """A CSV download (Excel-friendly BOM); cells that would start a formula are defused."""
     buf = io.StringIO()
-    w = csv.writer(buf)
+    w = core.csv_writer(buf)
     w.writerow(header)
     for r in rows:
         w.writerow([("'" + v) if isinstance(v, str) and v[:1] in ("=", "+", "-", "@") else ("" if v is None else v) for v in r])

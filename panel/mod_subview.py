@@ -272,7 +272,16 @@ def subscriber_balance(sid):
         if not ok:
             flash("Your balance (%.2f) is lower than %.2f. Add balance to yourself first. Nothing was changed." % (have, amount), "error")
             return _back(sid)
-    x("UPDATE subscribers SET balance = %s WHERE id = %s", (new, sid))
+    # added in the database (not the balance read above written back): a renewal taking from it at the same moment is
+    # never lost, and it never goes below zero
+    with get_db().cursor() as cur:
+        cur.execute("UPDATE subscribers SET balance = balance + %s WHERE id = %s AND balance + %s >= 0", (amount, sid, amount))
+        if cur.rowcount != 1:
+            get_db().rollback()
+            flash("The customer's balance changed meanwhile. Nothing was changed; try again.", "error")
+            return _back(sid)
+        cur.execute("SELECT balance FROM subscribers WHERE id = %s", (sid,))
+        new = float(cur.fetchone()["balance"])
     insert("INSERT INTO sub_ledger (subscriber_id, amount, balance_after, note, created_by) VALUES (%s, %s, %s, %s, %s)",
            (sid, amount, new, request.form.get("note", "").strip()[:255], g.me["username"]))
     audit("balance_changed", sub["username"], "%+.2f -> %.2f" % (amount, new))

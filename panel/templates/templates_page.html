@@ -5,7 +5,7 @@
 {% block content %}
 <div class="page-head">
   <div><h1>{{ 'SMS' if is_sms else 'Email' }} templates</h1><p class="sub">Ready-made messages. <b>welcome</b>, <b>payment</b> and <b>expiry</b> are also used for automatic messages.</p></div>
-  {% if can(kind, 'edit') %}<div class="actions"><button class="btn primary" data-open="tpl-dlg" data-new>{{ icon('plus') }}New template</button></div>{% endif %}
+  {% if can_edit %}<div class="actions"><button class="btn primary" data-open="tpl-dlg" data-new>{{ icon('plus') }}New template</button></div>{% endif %}
 </div>
 <p class="muted">Variables you can use: {% for v in variables %}<span class="mono">{{ '{' + v + '}' }}</span>{{ ', ' if not loop.last }}{% endfor %}</p>
 <div class="stack">
@@ -14,14 +14,14 @@
   <div class="panel-head"><h2>{{ t.name }}</h2>{% if t.system %}<span class="badge info">Automatic</span>{% endif %}{% if t.system and not t.custom %}<span class="badge mute">Built-in text</span>{% endif %}
     <span class="aside"></span>
     <a class="btn sm" href="{{ url_for('sms_compose' if is_sms else 'email_compose') }}">Use</a>
-    {% if can(kind, 'edit') %}
+    {% if can_edit %}
     <button class="btn sm icon" data-open="tpl-dlg" data-edit='{{ {"name": t.name, "subject": t.subject, "body": t.body}|tojson }}' aria-label="Edit {{ t.name }}" title="Edit {{ t.name }}">{{ icon('edit') }}</button>
     {% if t.id %}<form method="post" action="{{ url_for('template_delete', tid=t.id, kind=kind) }}" data-confirm="{{ 'Go back to the built-in text for ' + t.name + '?' if t.system else 'Delete template ' + t.name + '?' }}">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ t.name }}" title="Delete {{ t.name }}">{{ icon('trash') }}</button></form>{% endif %}{% endif %}</div>
   <div class="panel-body">{% if not is_sms and t.subject %}<div><b>{{ t.subject }}</b></div>{% endif %}<div class="pre" style="margin-top:6px">{{ t.body }}</div></div>
 </section>
 {% endfor %}
 </div>
-{% if can(kind, 'edit') %}
+{% if can_edit %}
 <dialog class="modal" id="tpl-dlg" aria-labelledby="tpl-title">
   <form method="post" action="{{ url_for('template_save', kind=kind) }}">
     {{ csrf_input() }}

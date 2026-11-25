@@ -3577,6 +3577,63 @@ def check_rules(flask_app, ids):
           and _b_after.status_code == 302 and "/login" in _b_after.headers.get("Location", "") and int(_sv) >= 1,
           "My Profile: an unknown form section is refused (no way around the Edit tick); changing the password signs the "
           "account out on every other device and keeps this one signed in")
+    # ===== Review fixes: templates office-only; import only own customers; one bKash TrxID once; safe CSV; login limit
+    _tpl_before = one("SELECT body FROM message_templates WHERE kind = 'sms' AND name = 'payment'")
+    _tr_page = _rc2.get("/templates?kind=sms").get_data(as_text=True)
+    _tr_save = _rc2.post("/templates/save", data={"_csrf": "ci", "kind": "sms", "name": "payment", "body": "CI reseller text"}).status_code
+    _tpl_after = one("SELECT body FROM message_templates WHERE kind = 'sms' AND name = 'payment'")
+    _ta_save = adm.post("/templates/save", data={"_csrf": "ci", "kind": "sms", "name": "ci_office_tpl", "body": "CI office text"}).status_code
+    _ta_row = one("SELECT id FROM message_templates WHERE kind = 'sms' AND name = 'ci_office_tpl'")
+    _tr_del = _rc2.post("/templates/%d/delete" % _ta_row["id"], data={"_csrf": "ci"}).status_code if _ta_row else 0
+    # CSV import: a reseller's "update" touches only their own customers
+    import io as _io2
+    _off = one("SELECT id, username, full_name FROM subscribers WHERE created_by NOT IN (SELECT username FROM panel_admins WHERE role IN "
+               "('reseller', 'subreseller', 'retailer')) ORDER BY id LIMIT 1")
+    _own = one("SELECT id, username, full_name FROM subscribers WHERE created_by = %s ORDER BY id LIMIT 1", (_rname2,))
+    _csv = "username,full_name" + chr(10) + "%s,CI taken over" % _off["username"] + chr(10) + "%s,CI own rename" % _own["username"] + chr(10)
+    _imp = _rc2.post("/import", data={"_csrf": "ci", "mode": "update", "file": (_io2.BytesIO(_csv.encode()), "x.csv")},
+                     content_type="multipart/form-data").get_data(as_text=True)
+    _off_name = one("SELECT full_name FROM subscribers WHERE id = %s", (_off["id"],))["full_name"]
+    _own_name = one("SELECT full_name FROM subscribers WHERE id = %s", (_own["id"],))["full_name"]
+    run("UPDATE subscribers SET full_name = %s WHERE id = %s", (_own["full_name"], _own["id"]))
+    # one bKash TrxID, one booking: the collector cannot reuse an SMS payment's TrxID; an SMS for a collected TrxID is not booked
+    run("INSERT IGNORE INTO sms_payments (trx_id, amount, payer, ref, sms_text, status, source) VALUES ('CIDUP0001', 100, '017', '', '', 'renewed', 'phone')")
+    run("UPDATE subscribers SET status = 'active', balance = 0, expiry_date = CURDATE() - INTERVAL 3 DAY WHERE id = %s", (_dsub["id"],))
+    _fd = _cc.get("/collect/%d" % _dsub["id"]).get_data(as_text=True)
+    _dup_c = _cc.post("/collect/%d" % _dsub["id"], data={"_csrf": "ci", "form_token": _tok(_fd), "method": "bkash", "amount": "10",
+                                                        "trx_id": "CIDUP0001", "repeat_ok": "1"}, follow_redirects=True).get_data(as_text=True)
+    _dup_n = one("SELECT COUNT(*) AS c FROM collections WHERE trx_id = 'CIDUP0001'")["c"]
+    run("INSERT INTO collections (receipt_no, subscriber_id, username, collector_id, amount, method, trx_id) VALUES "
+        "('CI-DUP-2', %s, %s, %s, 100, 'bkash', 'CIDUP0002')", (_dsub["id"], _dsub["username"], _col["id"]))
+    setv("bksms_on", "1")
+    import mod_bksms as _bk2, core as _core2
+    with flask_app.test_request_context():
+        _code = _core2.sub_code(_dsub["id"])
+        _ing = _bk2.ingest("You have received Tk 100.00 from 01700000000. Ref %s. Fee Tk 0.00. Balance Tk 1.00. TrxID CIDUP0002 "
+                           "at 01/12/2026 09:05" % _code, "bKash", "phone")
+    _sms_row = one("SELECT status, message FROM sms_payments WHERE trx_id = 'CIDUP0002'")
+    # exports: a name typed as a formula stays text
+    run("UPDATE subscribers SET full_name = '=HYPERLINK(\"http://x\")' WHERE id = %s", (_own["id"],))
+    _exp = adm.get("/subscribers/export.csv?q=%s" % _own["username"]).get_data(as_text=True)
+    run("UPDATE subscribers SET full_name = %s WHERE id = %s", (_own["full_name"], _own["id"]))
+    # sign-in: many failures for one account from different addresses stop it for a while
+    for k in range(20):
+        run("INSERT INTO audit_log (admin, action, target, detail, ip) VALUES ('ci_target', 'login_failed', 'ci_target', '', %s)",
+            ("10.9.%d.%d" % (k // 200, k % 200),))
+    _lgc = flask_app.test_client()
+    with _lgc.session_transaction() as _ls:
+        _ls["csrf"] = "ci"
+    _lg = _lgc.post("/login", data={"_csrf": "ci", "username": "ci_target", "password": "x"})
+    _lg_txt = _lg.get_data(as_text=True)
+    run("DELETE FROM audit_log WHERE target = 'ci_target'")
+    check("New template" not in _tr_page and _tr_save == 403 and (_tpl_after or {}).get("body") == (_tpl_before or {}).get("body")
+          and _ta_save == 302 and _ta_row and _tr_del == 403
+          and _off_name == _off["full_name"] and _own_name == "CI own rename" and "belongs to another account" in _imp
+          and "already booked" in _dup_c and _dup_n == 0 and _ing.get("status") == "duplicate" and _sms_row and _sms_row["status"] == "ignored"
+          and "'=HYPERLINK" in _exp and "for this account" in _lg_txt,
+          "Review fixes: only the office edits message templates; a reseller's CSV update leaves other owners' customers alone; "
+          "one bKash TrxID books once (collector / SMS); exports never run formulas; sign-in limited per account "
+          + repr((_tr_save, _tr_del, _off_name, _ing, _sms_row, _lg.status_code)))
     return bad
 
 

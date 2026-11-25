@@ -267,6 +267,14 @@ def ingest(text, sender, source):
     commit()
     if not new_id:
         return {"ok": True, "status": "duplicate", "trx": p["trx"]}
+    import mod_bkash_report              # booked already another way (a collector, the portal, by hand): never twice
+    used = mod_bkash_report.trx_used(p["trx"], skip=("sms_payments",))
+    if used:
+        core.x("UPDATE sms_payments SET status = 'ignored', message = %s WHERE id = %s",
+               (("Already booked as %s; not booked again." % used)[:255], new_id))
+        audit("bkash_sms_duplicate", p["trx"], "%.2f: already booked as %s" % (p["amount"], used), who="bkash-sms")
+        commit()
+        return {"ok": True, "status": "duplicate", "trx": p["trx"], "why": "already booked as %s" % used}
     row = q("SELECT * FROM sms_payments WHERE id = %s", (new_id,), one=True)
     sub, how, sure = find(p)
     if not sure:
@@ -390,6 +398,13 @@ def bksms_apply(pid):
     row = _row(pid)
     if not row:
         flash("This payment was already booked or ignored.", "error")
+        return _back()
+    import mod_bkash_report
+    used = mod_bkash_report.trx_used(row["trx_id"], skip=("sms_payments",))
+    if used:
+        core.x("UPDATE sms_payments SET status = 'unmatched' WHERE id = %s", (pid,))     # back in the list, untouched
+        commit()
+        flash("Trx ID %s is already booked as %s, so it was not booked again. Ignore this one." % (row["trx_id"], used), "error")
         return _back()
     try:
         status, msg = settle(row, sub, g.me["username"])

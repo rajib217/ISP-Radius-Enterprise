@@ -395,6 +395,9 @@ def server_error(err):
 # ====================================================================
 #  login / logout / account
 # ====================================================================
+LOGIN_PER_ACCOUNT = 20                   # failed sign-ins for one username in 10 minutes, from any addresses
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     error = None
@@ -403,8 +406,13 @@ def login():
         username = request.form.get("username", "").strip()[:64]
         recent = q("SELECT COUNT(*) AS c FROM audit_log WHERE action = 'login_failed' "
                    "AND ip = %s AND created_at > NOW() - INTERVAL 10 MINUTE", (ip,), one=True)["c"]
+        # the same account tried from many addresses (password guessing spread over IPs): a higher limit per account
+        per_user = q("SELECT COUNT(*) AS c FROM audit_log WHERE action = 'login_failed' AND target = %s "
+                     "AND created_at > NOW() - INTERVAL 10 MINUTE", (username,), one=True)["c"] if username else 0
         if recent >= 8:
             error = "Too many failed attempts from this address. Try again in 10 minutes."
+        elif per_user >= LOGIN_PER_ACCOUNT:
+            error = "Too many failed attempts for this account. Try again in 10 minutes."
         else:
             user = q("SELECT * FROM panel_admins WHERE username = %s", (username,), one=True)
             if user and user["is_active"] and check_password_hash(user["password_hash"],
@@ -1387,7 +1395,7 @@ def subscribers_export():
              where + " ORDER BY s.username", params)
     out = io.StringIO()
     out.write("﻿")
-    writer = csv.writer(out)
+    writer = core.csv_writer(out)
     cols = EXPORT_COLUMNS if with_pw else [c for c in EXPORT_COLUMNS if c != "password"]
     writer.writerow(cols)
     for r in rows:
@@ -1488,6 +1496,10 @@ def import_csv():
                             continue
                         cur.execute("SELECT * FROM subscribers WHERE username = %s", (user,))
                         old = cur.fetchone()
+                        mine = core.my_downline()
+                        if mine is not None and old["created_by"] not in mine:
+                            # a reseller updates only their own (and their downline's) customers, never another's
+                            raise ValueError("this username belongs to another account, so it was not changed")
                         if not core.can_fn("svc.packages"):
                             plan = None
                         if not core.can_fn("svc.profile_status"):

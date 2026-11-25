@@ -118,7 +118,7 @@ def statements():
     rows = _statement_rows(first, nxt)
     if request.args.get("csv") == "1":
         buf = io.StringIO()
-        w = csv.writer(buf)
+        w = core.csv_writer(buf)
         w.writerow(["Username", "Name", "Type", "Parent", "Opening balance", "Balance added", "Balance used", "Closing balance",
                     "Payments", "Renewals", "Collected", "New customers", "Active customers", "All customers"])
         for r in rows:
