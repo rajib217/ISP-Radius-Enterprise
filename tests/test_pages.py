@@ -3219,7 +3219,8 @@ def check_rules(flask_app, ids):
           and "data-cl-pay" in _pf and 'class="cl-method' in _pf and "data-cl-effect" in _pf and "Full due" in _pf
           and 'data-cf-for="pos"' in _pf and 'data-cf-for="bkash"' in _pf and "Receive" in _pf
           and "cl-cash" in _rp_c and "No collections in this period" in _rp_c and "cl-mix" in _rp_c
-          and 'class="cl-member on' in _cl_r and _cl_bad == 403 and 'href="/collect/report"' in _bn,
+          and 'class="cx-sel"' in _cl_r and "Daily collections" in _cl_r and "Payment methods" in _cl_r
+          and "ব" not in _cl_r and _cl_bad == 403 and 'href="/collect/report"' in _bn,
           "Bill Collector pages: due cards (expired / charges filters, call, directions), the payment form with method tiles, "
           "quick amounts and a live preview, cash in hand with deposit; the hirer filters by collector (only their own)")
     # ===== Backup & Restore: one .tar holds the database and the photos / documents / ticket photos / logo

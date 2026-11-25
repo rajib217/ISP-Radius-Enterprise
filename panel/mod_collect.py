@@ -452,13 +452,37 @@ def collections():
         deps = q("SELECT d.*, a.username AS collector_user FROM collection_deposits d JOIN panel_admins a ON a.id = d.collector_id "
                  "WHERE d.collector_id IN (" + mark + ") AND (d.status = 'pending' OR d.created_at >= %s) "
                  "ORDER BY d.status = 'pending' DESC, d.id DESC LIMIT 100", ids + [lo])
-    total = sum(float(r["amount"]) for r in rows if r["status"] == "posted")
+    posted = [r for r in rows if r["status"] == "posted"]
+    total = round(sum(float(r["amount"]) for r in posted), 2)
+    # how the money came in, and day by day (for the period and the chosen collector, before the table's filters)
+    mix = {k: {"amount": round(sum(float(r["amount"]) for r in posted if r["method"] == k), 2),
+               "n": sum(1 for r in posted if r["method"] == k)} for k, _ in METHODS}
+    days = (end - start).days + 1
+    trend = []
+    if days <= 62:
+        per = {}
+        for r in posted:
+            per[r["created_at"].date()] = per.get(r["created_at"].date(), 0) + float(r["amount"])
+        trend = [{"day": start + timedelta(days=i), "amount": round(per.get(start + timedelta(days=i), 0), 2)} for i in range(days)]
+    top = max([d["amount"] for d in trend] or [0])
+    # the table's own filters: a receipt, customer or Trx ID; the method; posted or void
+    fq = (request.args.get("q") or "").strip()[:64]
+    fm = request.args.get("method") if request.args.get("method") in METHOD_KEY else ""
+    fs = request.args.get("status") if request.args.get("status") in ("posted", "void") else ""
+    shown = [r for r in rows if (not fm or r["method"] == fm) and (not fs or r["status"] == fs) and (
+        not fq or any(fq.lower() in str(r.get(k) or "").lower() for k in ("receipt_no", "username", "full_name", "trx_id",
+                                                                          "pos_ref", "collector_user")))]
     max_txn, max_day = caps()
     pending = [d for d in deps if d["status"] == "pending"]
-    return render_template("collections.html", people=people, rows=rows, deps=deps, total=total, start=start, end=end,
-                           methods=dict(METHODS), max_txn=max_txn, max_day=max_day, pick=pick, pending=pending,
-                           waiting=round(sum(float(d["amount"]) for d in pending), 2),
-                           in_hand=round(sum(p["hand"] for p in people), 2))
+    today = date.today()
+    presets = [("Today", today, today), ("7 days", today - timedelta(days=6), today),
+               ("30 days", today - timedelta(days=29), today), ("This month", today.replace(day=1), today)]
+    return render_template("collections.html", people=people, rows=shown, all_n=len(rows), deps=deps, total=total,
+                           start=start, end=end, methods=dict(METHODS), max_txn=max_txn, max_day=max_day, pick=pick,
+                           pending=pending, waiting=round(sum(float(d["amount"]) for d in pending), 2),
+                           in_hand=round(sum(p["hand"] for p in people), 2), mix=mix, trend=trend, top=top,
+                           receipts=len(posted), voids=sum(1 for r in rows if r["status"] == "void"),
+                           fq=fq, fm=fm, fs=fs, presets=presets)
 
 
 @route("/collections/<int:cid>/void", methods=["POST"])

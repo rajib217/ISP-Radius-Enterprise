@@ -1,100 +1,208 @@
 {% extends "base.html" %}
 {% from "_macros.html" import icon %}
-{% block title %}Collectors{% endblock %}
+{% block title %}Bill Collectors{% endblock %}
 {% block content %}
-{% set tk = currency or '৳' %}{% set admin = me.role == 'admin' %}
-{% set pay_icons = {'cash': 'dollar', 'pos': 'card', 'bkash': 'wallet'} %}
+{% set tk = currency or 'BDT' %}{% set admin = me.role == 'admin' %}
 {% set keep = {'from': start.isoformat(), 'to': end.isoformat()} %}
-<div class="cl">
-  <div class="cl-head">
-    <div><h1>Bill collectors <small>বিল কালেক্টর</small></h1>
-      <p class="sub">{% if admin %}Every bill collector{% else %}The bill collectors you added under My Users{% endif %}: cash in their hands, deposits to confirm, and what they took from {{ start|d }} to {{ end|d }}.</p></div>
-    {% if not admin %}<a class="btn" href="{{ url_for('my_users') }}">{{ icon('plus') }}Add bill collector</a>{% endif %}
-  </div>
+{% set keep_pick = dict(keep, collector=pick) if pick else keep %}
+{% set pay_icons = {'cash': 'dollar', 'pos': 'card', 'bkash': 'wallet'} %}
+{% set active_n = people|selectattr('is_active')|list|length %}
+{% set picked = (people|selectattr('id', 'equalto', pick)|first) if pick else none %}
+<div class="cx">
+  <header class="cx-head">
+    <div>
+      <p class="cx-crumb">Accounting <span aria-hidden="true">/</span> Bill Collection</p>
+      <h1>Bill Collectors</h1>
+      <p class="cx-sub">{% if admin %}All bill collectors{% else %}The bill collectors you added{% endif %} · cash on hand, deposits and receipts for {{ start|d }}{% if end != start %} – {{ end|d }}{% endif %}</p>
+    </div>
+    <div class="cx-actions">
+      <button class="btn" type="button" onclick="window.print()">{{ icon('printer') }}Print</button>
+      {% if not admin %}<a class="btn primary" href="{{ url_for('my_users') }}">{{ icon('plus') }}Add collector</a>
+      {% else %}<a class="btn primary" href="{{ url_for('admins') }}">{{ icon('plus') }}Add collector</a>{% endif %}
+    </div>
+  </header>
 
-  <div class="cl-stats">
-    <div class="cl-stat"><b><span class="cl-tk">{{ tk }}</span>{{ total|money }}</b><span>Collected{% if pick %} by this collector{% endif %}</span></div>
-    <div class="cl-stat {{ 'hero' if in_hand > 0 }}"><b><span class="cl-tk">{{ tk }}</span>{{ in_hand|money }}</b><span>Cash still in their hands</span></div>
-    <div class="cl-stat {{ 'warn' if pending }}"><b><span class="cl-tk">{{ tk }}</span>{{ waiting|money }}</b><span>{{ pending|length }} deposit{{ '' if pending|length == 1 else 's' }} to confirm</span></div>
-    <div class="cl-stat"><b>{{ people|length }}</b><span>Collector{{ '' if people|length == 1 else 's' }}</span></div>
-  </div>
+  <form class="cx-range" method="get" aria-label="Period">
+    {% if pick %}<input type="hidden" name="collector" value="{{ pick }}">{% endif %}
+    <div class="cx-seg" role="group" aria-label="Quick ranges">
+      {% for label, a, b in presets %}<a class="{{ 'on' if a == start and b == end }}" href="{{ url_for('collections', collector=pick, **{'from': a.isoformat(), 'to': b.isoformat()}) }}">{{ label }}</a>{% endfor %}
+    </div>
+    <div class="cx-dates">
+      <label class="sr-only" for="cx-from">From</label><input id="cx-from" type="date" name="from" value="{{ start.isoformat() }}">
+      <span class="muted" aria-hidden="true">–</span>
+      <label class="sr-only" for="cx-to">To</label><input id="cx-to" type="date" name="to" value="{{ end.isoformat() }}">
+      <button class="btn" type="submit">Apply</button>
+    </div>
+  </form>
+
+  <section class="cx-kpis" aria-label="Summary">
+    <article class="cx-kpi">
+      <span class="cx-ic ok">{{ icon('trend-up') }}</span>
+      <div><span class="cx-k">Collected{% if picked %} · {{ picked.username }}{% endif %}</span>
+        <b class="cx-v"><small>{{ tk }}</small>{{ total|money }}</b>
+        <span class="cx-s">{{ receipts }} receipt{{ '' if receipts == 1 else 's' }}{% if voids %} · {{ voids }} void{% endif %}</span></div>
+    </article>
+    <article class="cx-kpi">
+      <span class="cx-ic warn">{{ icon('wallet') }}</span>
+      <div><span class="cx-k">Cash on hand</span>
+        <b class="cx-v"><small>{{ tk }}</small>{{ in_hand|money }}</b>
+        <span class="cx-s">not yet handed over</span></div>
+    </article>
+    <article class="cx-kpi {{ 'attn' if pending }}">
+      <span class="cx-ic info">{{ icon('clock') }}</span>
+      <div><span class="cx-k">Awaiting confirmation</span>
+        <b class="cx-v"><small>{{ tk }}</small>{{ waiting|money }}</b>
+        <span class="cx-s">{{ pending|length }} deposit{{ '' if pending|length == 1 else 's' }}</span></div>
+    </article>
+    <article class="cx-kpi">
+      <span class="cx-ic">{{ icon('users') }}</span>
+      <div><span class="cx-k">Collectors</span>
+        <b class="cx-v">{{ active_n }}<small class="cx-of">/ {{ people|length }}</small></b>
+        <span class="cx-s">active</span></div>
+    </article>
+  </section>
 
   {% if pending %}
-  <section class="cl-alert" aria-label="Deposits to confirm">
-    <h2>{{ icon('bell') }}Cash handed to you: confirm when you have it</h2>
-    <ul class="cl-rows">{% for d in pending %}
-      <li><span class="cl-mic cash" aria-hidden="true">{{ icon('dollar') }}</span>
-        <div style="min-width:0"><b>{{ d.collector_user }}</b><small>{{ d.created_at.strftime('%d %b, %I:%M %p') }}{% if d.note %} · {{ d.note }}{% endif %}</small></div>
-        <div class="cl-side"><span class="cl-num">{{ d.amount|money }}</span>
-          <form method="post" action="{{ url_for('collect_deposit_confirm') }}" class="row-gap">{{ csrf_input() }}<input type="hidden" name="deposit_id" value="{{ d.id }}">
-            <button class="btn sm primary" name="act" value="confirm">{{ icon('check') }}Got it</button>
-            <button class="btn sm" name="act" value="reject" data-confirm="Turn this deposit down? The cash stays in {{ d.collector_user }}'s hand.">Not received</button></form></div>
-      </li>{% endfor %}</ul>
+  <section class="cx-card cx-attn" aria-label="Deposits awaiting confirmation">
+    <div class="cx-card-head"><h2>{{ icon('bell') }}Deposits awaiting your confirmation</h2><span class="cx-count">{{ pending|length }}</span></div>
+    <div class="tbl-wrap"><table class="tbl cx-tbl">
+      <thead><tr><th>Collector</th><th>Submitted</th><th>Note</th><th class="num">Amount</th><th class="num">Action</th></tr></thead>
+      <tbody>{% for d in pending %}<tr>
+        <td><b>{{ d.collector_user }}</b></td>
+        <td class="nowrap">{{ d.created_at.strftime('%d %b %Y, %I:%M %p') }}</td>
+        <td class="muted">{{ d.note or '—' }}</td>
+        <td class="num"><b>{{ d.amount|money }}</b></td>
+        <td class="num nowrap"><form method="post" action="{{ url_for('collect_deposit_confirm') }}" class="cx-inline">{{ csrf_input() }}<input type="hidden" name="deposit_id" value="{{ d.id }}">
+          <button class="btn sm primary" name="act" value="confirm">{{ icon('check') }}Got it</button>
+          <button class="btn sm" name="act" value="reject" data-confirm="Mark this deposit as not received? The cash stays with {{ d.collector_user }}.">Not received</button></form></td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
   </section>
   {% endif %}
 
-  <form class="rep-filter" method="get" style="margin:0">
-    {% if pick %}<input type="hidden" name="collector" value="{{ pick }}">{% endif %}
-    <div class="rep-dates" style="margin-left:0"><label class="lbl" for="cl-from">From</label><input id="cl-from" type="date" name="from" value="{{ start.isoformat() }}">
-      <label class="lbl" for="cl-to">To</label><input id="cl-to" type="date" name="to" value="{{ end.isoformat() }}"><button class="btn primary" type="submit">Show</button></div>
-  </form>
-
-  {% if people %}
-  <div class="cl-team">
-    {% for p in people %}
-    <a class="cl-member {{ 'on' if pick == p.id }} {{ 'off' if not p.is_active }}" href="{{ url_for('collections', collector=none if pick == p.id else p.id, **keep) }}"{% if pick == p.id %} aria-current="true"{% endif %}>
-      <header><div class="cl-ava" aria-hidden="true">{{ (p.full_name or p.username)[:1] }}</div>
-        <div><b>{{ p.full_name or p.username }}</b><small>{{ p.username }}{% if p.phone %} · {{ p.phone }}{% endif %}{% if admin %} · {{ p.boss or 'Office' }}{% endif %}{% if not p.is_active %} · disabled{% endif %}</small></div></header>
-      <dl>
-        <div><dt>In hand</dt><dd class="{{ 'hot' if p.hand > 0 }}">{{ p.hand|money }}</dd></div>
-        <div><dt>Collected</dt><dd>{{ (p.took or 0)|money }}</dd></div>
-        <div><dt>Receipts</dt><dd>{{ p.n or 0 }}</dd></div>
-      </dl>
-      <small class="muted">{% if p.last %}Last {{ p.last|ago }}{% else %}Nothing in this period{% endif %}{% if p.pending %} · {{ p.pending|money }} waiting{% endif %}</small>
-    </a>
-    {% endfor %}
+  <div class="cx-grid">
+    <section class="cx-card">
+      <div class="cx-card-head"><h2>{{ icon('chart') }}Daily collections</h2><span class="cx-aside">{{ tk }} {{ total|money }}</span></div>
+      {% if trend and top > 0 %}
+      <div class="cx-bars" role="img" aria-label="Collections per day">
+        {% for d in trend %}<div class="cx-bar" title="{{ d.day.strftime('%d %b') }}: {{ d.amount|money }}"><i style="height:{{ ((d.amount * 100 / top)|round(1)) if d.amount else 0 }}%"></i><span>{{ d.day.strftime('%d') if trend|length <= 16 or loop.first or loop.last or d.day.day == 1 else '' }}</span></div>{% endfor %}
+      </div>
+      {% else %}<div class="cx-empty">{% if trend %}No collections in this period.{% else %}Pick 62 days or fewer to see the daily chart.{% endif %}</div>{% endif %}
+    </section>
+    <section class="cx-card">
+      <div class="cx-card-head"><h2>{{ icon('card') }}Payment methods</h2></div>
+      <ul class="cx-mix">
+        {% for k, label in methods.items() %}{% set m = mix[k] %}
+        <li><span class="cx-mic {{ k }}">{{ icon(pay_icons[k]) }}</span>
+          <div><div class="cx-mix-top"><b>{{ label }}</b><span>{{ tk }} {{ m.amount|money }}</span></div>
+            <div class="cx-meter"><i class="{{ k }}" style="width:{{ ((m.amount * 100 / total)|round(1)) if total else 0 }}%"></i></div>
+            <small>{{ m.n }} receipt{{ '' if m.n == 1 else 's' }} · {{ ((m.amount * 100 / total)|round|int) if total else 0 }}%</small></div></li>
+        {% endfor %}
+      </ul>
+    </section>
   </div>
-  {% else %}
-  <div class="cl-empty">{{ icon('users') }}<h3>No bill collectors yet</h3><p>{% if admin %}Add one under Users with the role Bill Collector.{% else %}Add one under My Users &gt; Add bill collector.{% endif %}</p></div>
-  {% endif %}
 
-  <section class="cl-box">
-    <h2>{{ icon('file') }}Receipts{% if pick %} · {{ (people|selectattr('id', 'equalto', pick)|first).username }}{% endif %}<span class="aside">{{ rows|length }}</span></h2>
-    {% if rows %}<ul class="cl-rows">{% for r in rows %}
-      <li class="{{ 'void' if r.status == 'void' }}">
-        <span class="cl-mic {{ r.method }}" aria-hidden="true">{{ icon(pay_icons.get(r.method, 'dollar')) }}</span>
-        <div style="min-width:0"><b>{{ r.full_name or r.username }}</b>
-          <small><a class="mono" href="{{ url_for('collect_receipt', cid=r.id) }}">{{ r.receipt_no }}</a> · {{ r.created_at.strftime('%d %b, %I:%M %p') }} · {{ r.collector_user }} · {{ methods.get(r.method, r.method) }}{% if r.pos_ref or r.trx_id %} <span class="mono">{{ r.pos_ref or r.trx_id }}</span>{% endif %}</small>
-          {% if r.result %}<small>{{ r.result }}</small>{% endif %}
-          {% if r.status == 'void' %}<small>Void: {{ r.void_reason }} ({{ r.void_by }})</small>{% endif %}</div>
-        <div class="cl-side"><span class="cl-num">{{ r.amount|money }}</span>
-          {% if r.status == 'void' %}<span class="cl-tag late">void</span>
-          {% elif admin %}<form method="post" action="{{ url_for('collection_void', cid=r.id) }}" class="cl-void" data-confirm="Void receipt {{ r.receipt_no }}? Its renewal, the charges it paid and the money it put in the balance are undone, and the payment leaves the reports.">{{ csrf_input() }}<label class="sr-only" for="vr-{{ r.id }}">Why</label><input id="vr-{{ r.id }}" name="reason" placeholder="Why (required)" maxlength="255" required><button class="btn sm red">Void</button></form>{% endif %}</div>
-      </li>{% endfor %}</ul>
-    {% else %}<div class="cl-pad"><p class="muted" style="margin:0">No collections in this period.</p></div>{% endif %}
+  <section class="cx-card">
+    <div class="cx-card-head"><h2>{{ icon('users') }}Collectors</h2>{% if pick %}<a class="cx-aside" href="{{ url_for('collections', **keep) }}">Show all collectors</a>{% endif %}</div>
+    {% if people %}
+    <div class="tbl-wrap"><table class="tbl cx-tbl">
+      <thead><tr><th>Collector</th>{% if admin %}<th>Added by</th>{% endif %}<th>Status</th><th class="num">Collected</th><th class="num">Receipts</th><th class="num">Cash on hand</th><th class="num">Awaiting</th><th>Last receipt</th><th></th></tr></thead>
+      <tbody>{% for p in people %}<tr class="{{ 'cx-sel' if pick == p.id }}">
+        <td><div class="cx-who"><span class="cx-ava" aria-hidden="true">{{ (p.full_name or p.username)[:2]|upper }}</span>
+          <div><b>{{ p.full_name or p.username }}</b><small>{{ p.username }}{% if p.phone %} · {{ p.phone }}{% endif %}</small></div></div></td>
+        {% if admin %}<td>{{ p.boss or 'Office' }}</td>{% endif %}
+        <td><span class="cx-pill {{ 'ok' if p.is_active else 'off' }}">{{ 'Active' if p.is_active else 'Disabled' }}</span></td>
+        <td class="num">{{ (p.took or 0)|money }}</td>
+        <td class="num">{{ p.n or 0 }}</td>
+        <td class="num"><b class="{{ 'cx-hot' if p.hand > 0 }}">{{ p.hand|money }}</b></td>
+        <td class="num">{{ p.pending|money if p.pending else '—' }}</td>
+        <td class="nowrap muted">{{ p.last|ago if p.last else '—' }}</td>
+        <td class="num"><a class="btn sm" href="{{ url_for('collections', collector=none if pick == p.id else p.id, **keep) }}"{% if pick == p.id %} aria-current="true"{% endif %}>{{ 'Selected' if pick == p.id else 'Receipts' }}</a></td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}<div class="cx-empty">No bill collectors yet. {% if admin %}Add one under Users with the role Bill Collector.{% else %}Add one under My Users.{% endif %}</div>{% endif %}
+  </section>
+
+  <section class="cx-card" id="receipts">
+    <div class="cx-card-head"><h2>{{ icon('file') }}Receipts{% if picked %} · {{ picked.username }}{% endif %}</h2><span class="cx-count">{{ rows|length }}{% if rows|length != all_n %} of {{ all_n }}{% endif %}</span></div>
+    <form class="cx-filter" method="get" action="{{ url_for('collections') }}#receipts">
+      {% for k, v in keep_pick.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+      <div class="search">{{ icon('search') }}<input type="search" name="q" value="{{ fq }}" placeholder="Receipt, customer or Trx ID" aria-label="Search receipts"></div>
+      <select name="method" aria-label="Method"><option value="">All methods</option>{% for k, label in methods.items() %}<option value="{{ k }}" {{ 'selected' if fm == k }}>{{ label }}</option>{% endfor %}</select>
+      <select name="status" aria-label="Status"><option value="">All statuses</option><option value="posted" {{ 'selected' if fs == 'posted' }}>Posted</option><option value="void" {{ 'selected' if fs == 'void' }}>Void</option></select>
+      <button class="btn" type="submit">{{ icon('filter') }}Filter</button>
+      {% if fq or fm or fs %}<a class="btn" href="{{ url_for('collections', **keep_pick) }}#receipts">Clear</a>{% endif %}
+    </form>
+    {% if rows %}
+    <div class="tbl-wrap"><table class="tbl cx-tbl">
+      <thead><tr><th>Receipt</th><th>Date</th><th>Collector</th><th>Customer</th><th>Method</th><th>Applied to</th><th class="num">Amount</th>{% if admin %}<th></th>{% endif %}</tr></thead>
+      <tbody>{% for r in rows %}<tr class="{{ 'cx-void' if r.status == 'void' }}">
+        <td class="nowrap"><a class="mono" href="{{ url_for('collect_receipt', cid=r.id) }}">{{ r.receipt_no }}</a>{% if r.status == 'void' %} <span class="cx-pill bad" title="{{ r.void_reason }} ({{ r.void_by }})">Void</span>{% endif %}</td>
+        <td class="nowrap">{{ r.created_at.strftime('%d %b %Y') }}<small class="muted cx-block">{{ r.created_at.strftime('%I:%M %p') }}</small></td>
+        <td>{{ r.collector_user }}</td>
+        <td><b>{{ r.full_name or r.username }}</b><small class="muted cx-block mono">{{ r.username }}</small></td>
+        <td class="nowrap"><span class="cx-method {{ r.method }}">{{ icon(pay_icons.get(r.method, 'dollar')) }}{{ methods.get(r.method, r.method) }}</span>{% if r.pos_ref or r.trx_id %}<small class="muted cx-block mono">{{ r.pos_ref or r.trx_id }}</small>{% endif %}</td>
+        <td class="cx-applied"><small>{{ r.result or '—' }}</small>{% if r.status == 'void' %}<small class="cx-block cx-voidwhy">Void: {{ r.void_reason }}</small>{% endif %}</td>
+        <td class="num"><b class="cx-amt">{{ r.amount|money }}</b></td>
+        {% if admin %}<td class="num">{% if r.status == 'posted' %}<button class="btn sm ghost" type="button" data-void="{{ url_for('collection_void', cid=r.id) }}" data-receipt="{{ r.receipt_no }}" data-amount="{{ r.amount|money }}">Void</button>{% endif %}</td>{% endif %}
+      </tr>{% endfor %}</tbody>
+      <tfoot><tr><td colspan="{{ 6 }}" class="muted">Posted total{% if fq or fm or fs %} (filtered){% endif %}</td><td class="num"><b>{{ rows|selectattr('status', 'equalto', 'posted')|map(attribute='amount')|map('float')|sum|money }}</b></td>{% if admin %}<td></td>{% endif %}</tr></tfoot>
+    </table></div>
+    {% else %}<div class="cx-empty">{% if fq or fm or fs %}No receipts match these filters.{% else %}No receipts in this period.{% endif %}</div>{% endif %}
   </section>
 
   {% set past = deps|rejectattr('status', 'equalto', 'pending')|list %}
-  {% if past %}
-  <section class="cl-box">
-    <h2>{{ icon('archive') }}Deposits</h2>
-    <ul class="cl-rows">{% for d in past %}
-      <li><span class="cl-mic" aria-hidden="true">{{ icon('send') }}</span>
-        <div style="min-width:0"><b>{{ d.collector_user }}</b><small>{{ d.created_at.strftime('%d %b, %I:%M %p') }}{% if d.confirmed_by %} · {{ d.confirmed_by }}{% endif %}{% if d.note %} · {{ d.note }}{% endif %}</small></div>
-        <div class="cl-side"><span class="cl-num">{{ d.amount|money }}</span><span class="cl-tag {{ 'ok' if d.status == 'confirmed' else 'late' }}">{{ d.status }}</span></div>
-      </li>{% endfor %}</ul>
-  </section>
-  {% endif %}
-
-  {% if admin %}
-  <details class="cl-box cl-limits">
-    <summary>{{ icon('sliders') }}Limits · per collection {{ max_txn|money }}, per collector per day {{ max_day|money }}</summary>
-    <form method="post">{{ csrf_input() }}
-      <div class="field"><label class="lbl" for="lm-txn">Most per collection</label><input id="lm-txn" name="col_max_txn" type="number" step="0.01" min="1" value="{{ '%.2f' % max_txn }}"></div>
-      <div class="field"><label class="lbl" for="lm-day">Most per collector per day</label><input id="lm-day" name="col_max_day" type="number" step="0.01" min="1" value="{{ '%.2f' % max_day }}"></div>
-      <button class="btn primary" type="submit">Save limits</button>
-    </form>
-  </details>
-  {% endif %}
+  <div class="cx-grid">
+    <section class="cx-card">
+      <div class="cx-card-head"><h2>{{ icon('archive') }}Deposit history</h2></div>
+      {% if past %}<div class="tbl-wrap"><table class="tbl cx-tbl">
+        <thead><tr><th>Collector</th><th>Date</th><th>Handled by</th><th>Status</th><th class="num">Amount</th></tr></thead>
+        <tbody>{% for d in past %}<tr><td>{{ d.collector_user }}</td><td class="nowrap">{{ d.created_at.strftime('%d %b %Y') }}</td><td>{{ d.confirmed_by or '—' }}</td>
+          <td><span class="cx-pill {{ 'ok' if d.status == 'confirmed' else 'bad' }}">{{ 'Confirmed' if d.status == 'confirmed' else 'Not received' }}</span></td>
+          <td class="num">{{ d.amount|money }}</td></tr>{% endfor %}</tbody>
+      </table></div>{% else %}<div class="cx-empty">No deposits in this period.</div>{% endif %}
+    </section>
+    {% if admin %}
+    <section class="cx-card">
+      <div class="cx-card-head"><h2>{{ icon('sliders') }}Collection limits</h2></div>
+      <form class="cx-limits" method="post">{{ csrf_input() }}
+        <div class="field"><label class="lbl" for="lm-txn">Maximum per receipt</label><div class="cx-money"><span>{{ tk }}</span><input id="lm-txn" name="col_max_txn" type="number" step="0.01" min="1" value="{{ '%.2f' % max_txn }}"></div></div>
+        <div class="field"><label class="lbl" for="lm-day">Maximum per collector per day</label><div class="cx-money"><span>{{ tk }}</span><input id="lm-day" name="col_max_day" type="number" step="0.01" min="1" value="{{ '%.2f' % max_day }}"></div></div>
+        <p class="help" style="margin:0">A collection above either limit is refused at the door.</p>
+        <div><button class="btn primary" type="submit">Save limits</button></div>
+      </form>
+    </section>
+    {% endif %}
+  </div>
 </div>
+
+{% if admin %}
+<dialog class="modal" id="void-dlg" aria-labelledby="void-title">
+  <form method="post" action="" id="void-form">
+    {{ csrf_input() }}
+    <div class="modal-head"><h2 id="void-title">Void receipt <span class="mono" data-void-no></span></h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <div class="note-box" style="align-items:flex-start">{{ icon('alert') }}<span>Voiding <b>{{ tk }} <span data-void-amt></span></b> undoes everything this receipt did: the renewal goes back, paid charges become unpaid, money placed in the balance is removed, and the payment leaves Payments and the reports. It is refused if that is no longer safe.</span></div>
+      <div class="field"><label class="lbl" for="void-reason">Reason <b class="req">*</b></label><input id="void-reason" name="reason" required minlength="3" maxlength="255" placeholder="e.g. entered for the wrong customer"></div>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn danger" type="submit">Void receipt</button></div>
+  </form>
+</dialog>
+<script>
+(function () {
+  var dlg = document.getElementById("void-dlg"), form = document.getElementById("void-form");
+  if (!dlg || !form) return;
+  document.querySelectorAll("[data-void]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      form.action = b.dataset.void;
+      dlg.querySelector("[data-void-no]").textContent = b.dataset.receipt;
+      dlg.querySelector("[data-void-amt]").textContent = b.dataset.amount;
+      form.reason.value = "";
+      if (dlg.showModal) dlg.showModal(); else dlg.setAttribute("open", "");
+      setTimeout(function () { form.reason.focus(); }, 50);
+    });
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}
