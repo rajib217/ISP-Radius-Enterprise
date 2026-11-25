@@ -334,6 +334,9 @@ def gate():
     if not me or not me["is_active"] or core.user_blocked(me["id"]):
         session.clear()
         return redirect(url_for("login"))
+    if session.get("ep", "") != (cfg().get("session_epoch") or ""):
+        session.clear()                   # after Backup > Restore: the restored user ids may be other people now
+        return redirect(url_for("login"))
     g.me = me
     core.apply_timezone(cfg().get("timezone"))
     core.upgrade_role_funcs()
@@ -416,6 +419,7 @@ def login():
                     return redirect(url_for("login_2fa"))
                 session.clear()
                 session["uid"] = user["id"]
+                session["ep"] = cfg().get("session_epoch") or ""
                 session["csrf"] = secrets.token_hex(16)
                 session.permanent = True
                 x("UPDATE panel_admins SET last_login = NOW() WHERE id = %s", (user["id"],))
@@ -471,6 +475,7 @@ def login_2fa():
             nxt = session.get("pending_next") or ""
             session.clear()
             session["uid"] = user["id"]
+            session["ep"] = cfg().get("session_epoch") or ""
             session["csrf"] = secrets.token_hex(16)
             session.permanent = True
             x("UPDATE panel_admins SET last_login = NOW() WHERE id = %s", (user["id"],))

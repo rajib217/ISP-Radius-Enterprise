@@ -36,6 +36,9 @@ if os.name == "nt":                      # only for running it on a Windows work
         os.getloadavg = lambda: (0.5, 0.4, 0.3)
     for _m in ("fcntl", "pwd", "grp", "resource"):
         sys.modules.setdefault(_m, types.ModuleType(_m))
+    _f = sys.modules["fcntl"]                       # backup locks: no other worker runs here
+    _f.LOCK_EX, _f.LOCK_NB, _f.LOCK_UN = 2, 4, 8
+    _f.flock = getattr(_f, "flock", lambda fd, op: None)
 
 import db          # noqa: E402
 import radius      # noqa: E402
@@ -3219,6 +3222,114 @@ def check_rules(flask_app, ids):
           and 'class="cl-member on' in _cl_r and _cl_bad == 403 and 'href="/collect/report"' in _bn,
           "Bill Collector pages: due cards (expired / charges filters, call, directions), the payment form with method tiles, "
           "quick amounts and a live preview, cash in hand with deposit; the hirer filters by collector (only their own)")
+    # ===== Backup & Restore: one .tar holds the database and the photos / documents / ticket photos / logo
+    import backuplib as _bl
+    import gzip as _gz
+    import tarfile as _tf
+    import io as _io
+    _data = os.environ["PANEL_DATA_DIR"]
+    for _fd in _bl.FILE_DIRS:
+        os.makedirs(os.path.join(_data, _fd), exist_ok=True)
+    open(os.path.join(_data, "photos", "ci-face.jpg"), "wb").write(b"jpeg-bytes")
+    os.makedirs(os.path.join(_data, "documents", "7"), exist_ok=True)
+    open(os.path.join(_data, "documents", "7", "nid.pdf"), "wb").write(b"pdf-bytes")
+    _keep_dump = _bl.make_dump
+
+    def _fake_dump(label=""):                       # mariadb-dump is not on this machine: a small complete dump
+        _bl.ensure_dir()
+        nm = "%s-radius-%s.sql.gz" % (label or "manual", _dt.datetime.now().strftime("%Y%m%d-%H%M%S%f"))
+        with _gz.open(os.path.join(_bl.DIR, nm), "wb") as _o:
+            _o.write(b"-- MariaDB dump 10.19\nCREATE TABLE x (a int);\n-- Dump completed on 2026-11-25\n")
+        return nm
+    _bl.make_dump = _fake_dump
+    try:
+        _full = _bl.make_backup("")
+    finally:
+        _bl.make_dump = _keep_dump
+    _fp = os.path.join(_bl.DIR, _full)
+    with _tf.open(_fp, "r:") as _t:
+        _names = set(_t.getnames())
+    _man = _bl.backup_contents(_fp)
+    _bl.check_backup(_fp, deep=True)
+    # the files come back after they are lost
+    import shutil as _sh
+    _sh.rmtree(os.path.join(_data, "photos"))
+    open(os.path.join(_data, "documents", "7", "nid.pdf"), "wb").write(b"changed")
+    _back_files = _bl.restore_files(_fp)
+    _photo_back = open(os.path.join(_data, "photos", "ci-face.jpg"), "rb").read() == b"jpeg-bytes"
+    _doc_back = open(os.path.join(_data, "documents", "7", "nid.pdf"), "rb").read() == b"pdf-bytes"
+
+    def _evil(member):
+        p = os.path.join(_bl.DIR, "uploaded-ci-evil.tar")
+        with _tf.open(p, "w") as _t:
+            ti = _tf.TarInfo(member); ti.size = 3; _t.addfile(ti, _io.BytesIO(b"bad"))
+            with open(_fp, "rb"):
+                pass
+        try:
+            _bl.check_backup(p)
+            return False
+        except _bl.BackupError:
+            return True
+        finally:
+            os.remove(p)
+    _refused = [_evil(m) for m in ("../../etc/passwd", "files/other/x", "/abs/path", "database.sql.gz")]
+    # uploading the .tar and the page around it
+    _up = adm.post("/settings/backup/upload", data={"_csrf": "ci", "file": (open(_fp, "rb"), "my-backup.tar")},
+                   content_type="multipart/form-data")
+    _bk_page = adm.get("/settings/backup").get_data(as_text=True)
+    _bad_up = adm.post("/settings/backup/upload", data={"_csrf": "ci", "file": (_io.BytesIO(b"not a backup"), "x.tar")},
+                       content_type="multipart/form-data")
+    _bad_left = [n for n in os.listdir(_bl.DIR) if n.startswith("uploaded-") and n.endswith("x.tar")]
+    _run_wait = adm.get("/settings/backup?wait=1").get_data(as_text=True)
+    # old uploaded copies go after 30 days (the newest 3 always stay)
+    _olds = []
+    for k in range(5):
+        nm = "uploaded-20200101-00000%d-old.tar" % k
+        _sh.copy(_fp, os.path.join(_bl.DIR, nm))
+        os.utime(os.path.join(_bl.DIR, nm), (time.time() - 86400 * (40 + k), time.time() - 86400 * (40 + k)))
+        _olds.append(nm)
+    _bl.prune_local(7)
+    _left_old = [n for n in _olds if os.path.exists(os.path.join(_bl.DIR, n))]
+    _left_up = [n for n in os.listdir(_bl.DIR) if n.startswith("uploaded-")]     # the newest 3 uploads stay
+    # a failed daily backup is tried again (3 times, 30 minutes apart); a good one closes the day
+    _keep_job, _keep_busy = _bl.job_backup, _bl.busy
+    _calls = []
+    _bl.busy = lambda: False
+    setv("backup_on", "1"); setv("backup_hour", "0"); setv("backup_last_day", ""); setv("backup_tries", ""); setv("backup_try_at", "")
+    try:
+        _bl.job_backup = lambda label="": (_calls.append(label), setv("backup_last_ok", "0"))
+        _bl.job_scheduled()
+        _bl.job_scheduled()                         # too soon for a retry
+        setv("backup_try_at", "0")
+        _bl.job_scheduled()
+        _after_fail = one("SELECT svalue FROM settings WHERE skey = 'backup_last_day'")
+        _bl.job_backup = lambda label="": (_calls.append(label), setv("backup_last_ok", "1"))
+        setv("backup_try_at", "0")
+        _bl.job_scheduled()
+        _closed = one("SELECT svalue FROM settings WHERE skey = 'backup_last_day'")["svalue"] == _dt.date.today().strftime("%Y-%m-%d")
+    finally:
+        _bl.job_backup, _bl.busy = _keep_job, _keep_busy
+        setv("backup_on", "0")
+    # a dump names root as the creator of the trigger; the panel's database user may not, so that part is dropped
+    _def = _bl.DEFINER_RE.sub(b"", b"/*!50017 DEFINER=`root`@`localhost`*/ /*!50003 TRIGGER radpostauth_pass BEFORE")
+    # after a restore everyone signs in again
+    _sc = client(ids["admin"])
+    _before_ep = _sc.get("/settings/backup").status_code
+    setv("session_epoch", "123")
+    _after_ep = _sc.get("/settings/backup")
+    setv("session_epoch", "")
+    check({"database.sql.gz", "manifest.json", "files/photos", "files/photos/ci-face.jpg", "files/documents/7/nid.pdf",
+           "files/ticket_photos", "files/branding"} <= _names and _man.get("files", {}).get("photos") == 1
+          and _back_files.get("photos") == 1 and _photo_back and _doc_back and all(_refused)
+          and _up.status_code == 302 and "my-backup.tar" in _bk_page and "Database + files" in _bk_page
+          and "What a backup holds" in _bk_page and "panel.env" in _bk_page and _bad_left == []
+          and "seen = false" in _run_wait and len(_left_up) == 3 and _left_old == _olds[:2] and _bl._sql_dir() is not None
+          and _calls == ["auto", "auto", "auto"] and (_after_fail is None or _after_fail["svalue"] == "") and _closed
+          and b"DEFINER" not in _def and b"TRIGGER radpostauth_pass" in _def
+          and _before_ep == 200 and _after_ep.status_code == 302 and "/login" in _after_ep.headers.get("Location", ""),
+          "Backup: one file holds the database and the photos, documents, ticket photos and logo; restore puts the files "
+          "back; a tampered archive is refused; .tar uploads work; old uploads are cleaned up; a failed daily backup is "
+          "retried; after a restore everyone signs in again " + repr((_refused, _calls, _left_old)))
     return bad
 
 

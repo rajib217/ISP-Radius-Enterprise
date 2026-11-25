@@ -5,8 +5,14 @@ Used three ways:
   * run by the panel as a detached worker:  python3 backuplib.py backup | restore NAME | fetch FILE_ID
   * run by the systemd timer every 10 minutes:  python3 backuplib.py scheduled
 
-A backup is one gzip-compressed SQL dump of the whole panel + RADIUS database (subscribers, packages, payments,
-settings, RADIUS users and accounting). Nothing outside the database is included.
+A backup is one .tar file holding everything needed to bring the panel back:
+  database.sql.gz      a gzip-compressed SQL dump of the whole panel + RADIUS database (customers, ledgers, payments,
+                       packages, users, every setting, tickets, RADIUS users and accounting)
+  files/photos/ ...    the files the panel keeps outside the database: customer photos, documents, ticket work photos
+                       and the logo / branding images (FILE_DIRS)
+  manifest.json        what is inside
+Older backups are a bare .sql.gz (database only); they still restore. Not included on purpose: /etc/isp-panel/panel.env
+(PANEL_SETTINGS_KEY reads the encrypted secret settings; keep a copy of it apart from the backups).
 """
 import glob
 import gzip
@@ -16,6 +22,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import fcntl
@@ -28,7 +35,10 @@ DATA_DIR = os.environ.get("PANEL_DATA_DIR", "/var/lib/isp-panel")
 DIR = os.path.join(DATA_DIR, "backups")
 STATUS = os.path.join(DIR, "status.json")
 LOCK = os.path.join(DIR, ".lock")
-NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,118}\.sql\.gz$")
+NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,118}\.(sql\.gz|tar)$")
+FILE_DIRS = ("photos", "documents", "ticket_photos", "branding")     # folders in DATA_DIR that go into a backup
+DB_MEMBER = "database.sql.gz"
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
 MAX_UPLOAD = 4 * 1024 ** 3
 SCOPE = "https://www.googleapis.com/auth/drive.file"
 FOLDER_NAME = "ISP Panel Backups"
@@ -63,12 +73,13 @@ def kind_of(name):
 def list_backups():
     ensure_dir()
     out = []
-    for p in glob.glob(os.path.join(DIR, "*.sql.gz")):
+    for p in glob.glob(os.path.join(DIR, "*.sql.gz")) + glob.glob(os.path.join(DIR, "*.tar")):
         name = os.path.basename(p)
         if not valid_name(name):
             continue
         st = os.stat(p)
-        out.append({"name": name, "size": st.st_size, "mtime": datetime.fromtimestamp(st.st_mtime), "kind": kind_of(name)})
+        out.append({"name": name, "size": st.st_size, "mtime": datetime.fromtimestamp(st.st_mtime), "kind": kind_of(name),
+                    "full": name.endswith(".tar")})
     out.sort(key=lambda r: r["mtime"], reverse=True)
     return out
 
@@ -200,10 +211,10 @@ def make_dump(label=""):
 
 
 def check_dump(path, deep=False):
-    """Raise BackupError unless the file looks like a complete dump. deep reads the whole file."""
+    """Raise BackupError unless the file (a path or an open binary file) looks like a complete dump. deep reads it all."""
     import zlib
     try:
-        with gzip.open(path, "rb") as f:
+        with gzip.open(path, "rb") if isinstance(path, str) else gzip.GzipFile(fileobj=path, mode="rb") as f:
             head = f.read(65536)
             if not re.search(rb"(MariaDB|MySQL) dump", head[:4096]):
                 raise BackupError("This is not a database dump made by this panel.")
@@ -220,6 +231,12 @@ def check_dump(path, deep=False):
         raise BackupError("The file is not a valid .sql.gz archive or is damaged.")
 
 
+# "DEFINER=`root`@`localhost`" on triggers / views / routines: the dump names who created them (root, when install.sh
+# or update.sh loaded the schema). The panel's own database user may not create objects in someone else's name (that
+# needs SUPER), so the restore would stop there. Dropped, the panel user owns them; they work the same.
+DEFINER_RE = re.compile(rb"DEFINER\s*=\s*(`[^`]*`|'[^']*'|[^\s@]+)@(`[^`]*`|'[^']*'|[^\s*]+)\s*")
+
+
 def load_dump(path):
     """Replace the database contents with the dump."""
     with _Creds() as cnf:
@@ -228,11 +245,10 @@ def load_dump(path):
         proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         try:
             with gzip.open(path, "rb") as f:
-                while True:
-                    chunk = f.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    proc.stdin.write(chunk)
+                for line in f:                  # line by line, so a DEFINER clause is never split between two reads
+                    if b"DEFINER" in line and not line.startswith(b"INSERT "):     # never touch the data rows
+                        line = DEFINER_RE.sub(b"", line)
+                    proc.stdin.write(line)
             proc.stdin.close()
         except (BrokenPipeError, OSError):
             pass
@@ -242,18 +258,242 @@ def load_dump(path):
 
 
 def prune_local(keep):
+    """Keep the newest `keep` automatic / manual backups and the newest 3 made before a restore. Uploaded and
+    Drive-downloaded files stay 30 days (the newest 3 always stay), so they cannot fill the disk."""
     rows = [r for r in list_backups() if r["kind"] in ("auto", "manual")]
-    for r in rows[max(keep, 1):]:
+    gone = rows[max(keep, 1):]
+    gone += [r for r in list_backups() if r["kind"] == "pre-restore"][3:]
+    other = [r for r in list_backups() if r["kind"] in ("uploaded", "drive")]
+    gone += [r for r in other[3:] if (datetime.now() - r["mtime"]).days > 30]
+    for r in gone:
         try:
             os.remove(os.path.join(DIR, r["name"]))
         except OSError:
             pass
-    pre = [r for r in list_backups() if r["kind"] == "pre-restore"]
-    for r in pre[3:]:
+
+
+def clean_leftovers():
+    """Remove what a killed job can leave behind: the temporary database option file (it holds the password),
+    half-written parts and unpacked folders older than an hour."""
+    ensure_dir()
+    now = time.time()
+    for pat in (".my-*.cnf", "*.part", ".restore-*", ".unpack-*"):
+        for p in glob.glob(os.path.join(DIR, pat)) + glob.glob(os.path.join(DATA_DIR, pat)):
+            try:
+                if now - os.path.getmtime(p) > 3600:
+                    shutil.rmtree(p) if os.path.isdir(p) else os.remove(p)
+            except OSError:
+                pass
+
+
+# ------------------------------------------------------------------ the full backup (.tar: database + files)
+def _add_file(tar, path, arcname):
+    """One plain file into the archive (no owner names, no links: only the bytes, its size, time and mode)."""
+    st = os.stat(path)
+    ti = tarfile.TarInfo(arcname)
+    ti.size, ti.mtime, ti.mode = st.st_size, int(st.st_mtime), 0o640
+    with open(path, "rb") as f:
+        tar.addfile(ti, f)
+
+
+def make_backup(label=""):
+    """Dump the database, then pack it with the file folders (FILE_DIRS) into one .tar. Returns its name."""
+    db_name = make_dump(label)
+    db_path = os.path.join(DIR, db_name)
+    name = db_name[:-len(".sql.gz")] + ".tar"
+    final, part = os.path.join(DIR, name), os.path.join(DIR, name + ".part")
+    counts = {}
+    try:
+        with tarfile.open(part, "w", format=tarfile.PAX_FORMAT) as tar:
+            _add_file(tar, db_path, DB_MEMBER)
+            for folder in FILE_DIRS:
+                src = os.path.join(DATA_DIR, folder)
+                d = tarfile.TarInfo("files/" + folder)
+                d.type, d.mode, d.mtime = tarfile.DIRTYPE, 0o750, int(time.time())
+                tar.addfile(d)                    # always there: a restore then knows to replace this folder
+                n = 0
+                for root, dirs, names in os.walk(src):
+                    dirs[:] = [x for x in dirs if not x.startswith(".")]
+                    for fn in names:
+                        p = os.path.join(root, fn)
+                        if fn.startswith(".") or os.path.islink(p) or not os.path.isfile(p):
+                            continue
+                        rel = os.path.relpath(p, src).replace(os.sep, "/")
+                        _add_file(tar, p, "files/%s/%s" % (folder, rel))
+                        n += 1
+                counts[folder] = n
+            info = json.dumps({"format": 1, "created": datetime.now().isoformat(timespec="seconds"), "database": DBNAME(),
+                               "files": counts}).encode()
+            m = tarfile.TarInfo("manifest.json")
+            m.size, m.mtime, m.mode = len(info), int(time.time()), 0o640
+            import io
+            tar.addfile(m, io.BytesIO(info))
+        os.chmod(part, 0o640)
+        os.replace(part, final)
+    finally:
+        for p in (part, db_path):
+            if os.path.exists(p):
+                os.remove(p)
+    return name
+
+
+def _members(tar):
+    """The archive's members, refused unless every one is a plain file or folder inside the known layout."""
+    out = []
+    for m in tar.getmembers():
+        n = m.name
+        parts = n.split("/")
+        if n.startswith("/") or "\\" in n or any(p in ("", ".", "..") for p in parts) or not (m.isfile() or m.isdir()):
+            raise BackupError("The backup file holds something unexpected (%s) and was not used." % n[:80])
+        if not (n in ("manifest.json", DB_MEMBER, "files") or (parts[0] == "files" and parts[1] in FILE_DIRS)):
+            raise BackupError("The backup file holds something unexpected (%s) and was not used." % n[:80])
+        out.append(m)
+    return out
+
+
+def check_backup(path, deep=False, as_name=None):
+    """Raise BackupError unless `path` is a usable backup (.sql.gz, or a .tar with the database inside).
+    as_name: the name the file will have (an upload is checked while it is still a .part file)."""
+    if not (as_name or path).endswith(".tar"):
+        return check_dump(path, deep)
+    try:
+        with tarfile.open(path, "r:") as tar:
+            ms = {m.name: m for m in _members(tar)}
+            if DB_MEMBER not in ms or not ms[DB_MEMBER].isfile():
+                raise BackupError("This archive has no database in it, so it is not a panel backup.")
+            check_dump(tar.extractfile(ms[DB_MEMBER]), deep)
+    except (tarfile.TarError, OSError, EOFError):
+        raise BackupError("The file is not a valid backup archive or is damaged.")
+
+
+def backup_contents(path):
+    """{'files': {folder: count}} from a .tar backup's manifest; {} for a database-only backup."""
+    if not path.endswith(".tar"):
+        return {}
+    try:
+        with tarfile.open(path, "r:") as tar:
+            return json.loads(tar.extractfile("manifest.json").read().decode() or "{}")
+    except (tarfile.TarError, OSError, KeyError, ValueError, AttributeError):
+        return {}
+
+
+def _db_file(path):
+    """A path to the database dump of a backup: the file itself, or the dump unpacked from a .tar (temporary)."""
+    if not path.endswith(".tar"):
+        return path, False
+    fd, tmp = tempfile.mkstemp(prefix=".restore-db-", suffix=".sql.gz", dir=DIR)
+    with os.fdopen(fd, "wb") as out, tarfile.open(path, "r:") as tar:
+        _members(tar)
+        shutil.copyfileobj(tar.extractfile(DB_MEMBER), out, 1024 * 1024)
+    return tmp, True
+
+
+def restore_files(path):
+    """Put the file folders of a .tar backup back: each folder in the archive replaces the one on disk. Returns
+    {folder: count}. A database-only backup changes no files."""
+    if not path.endswith(".tar"):
+        return {}
+    done = {}
+    with tarfile.open(path, "r:") as tar:
+        ms = _members(tar)
+        for folder in FILE_DIRS:
+            prefix = "files/%s" % folder
+            if not any(m.name == prefix for m in ms):
+                continue
+            tmp = tempfile.mkdtemp(prefix=".unpack-%s-" % folder, dir=DATA_DIR)
+            n = 0
+            for m in ms:
+                if not m.isfile() or not m.name.startswith(prefix + "/"):
+                    continue
+                dest = os.path.join(tmp, *m.name[len(prefix) + 1:].split("/"))
+                if not os.path.abspath(dest).startswith(os.path.abspath(tmp) + os.sep):
+                    raise BackupError("The backup file holds an unsafe path and was not used.")
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                with tar.extractfile(m) as src, open(dest, "wb") as out:
+                    shutil.copyfileobj(src, out, 1024 * 1024)
+                n += 1
+            live = os.path.join(DATA_DIR, folder)
+            old = None
+            if os.path.exists(live):
+                old = os.path.join(DATA_DIR, ".restore-old-%s-%d" % (folder, int(time.time())))
+                os.replace(live, old)
+            os.replace(tmp, live)
+            os.chmod(live, 0o750)
+            if old:
+                shutil.rmtree(old, ignore_errors=True)
+            done[folder] = n
+    return done
+
+
+def _sql_dir():
+    for d in (os.path.join(APP_DIR, "sql"), os.path.join(APP_DIR, "..", "sql")):
+        if os.path.isfile(os.path.join(d, "panel_schema.sql")):
+            return d
+    return None
+
+
+def apply_schema():
+    """After a restore: bring the tables up to this version of the panel (panel_schema.sql, then the migrations not
+    recorded yet), so an older backup does not miss tables or columns newer pages need. Returns a warning or ''."""
+    d = _sql_dir()
+    if not d:
+        return "The schema files were not found next to the panel; run update.sh to bring the tables up to date."
+    try:
+        _run_sql_file(os.path.join(d, "panel_schema.sql"))
+        import db
+        conn = db.connect()
         try:
-            os.remove(os.path.join(DIR, r["name"]))
-        except OSError:
-            pass
+            with conn.cursor() as cur:
+                cur.execute("CREATE TABLE IF NOT EXISTS schema_migrations (version INT UNSIGNED NOT NULL PRIMARY KEY, "
+                            "name VARCHAR(128) NOT NULL DEFAULT '', applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP) "
+                            "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4")
+                cur.execute("SELECT version FROM schema_migrations")
+                done = {int(r["version"]) for r in cur.fetchall()}
+            conn.commit()
+            for f in sorted(glob.glob(os.path.join(d, "migrations", "[0-9]*.sql"))):
+                base = os.path.basename(f)
+                ver = int(base.split("_", 1)[0])
+                if ver in done:
+                    continue
+                _run_sql_file(f)
+                with conn.cursor() as cur:
+                    cur.execute("INSERT IGNORE INTO schema_migrations (version, name) VALUES (%s, %s)", (ver, base[:-4][:128]))
+                conn.commit()
+        finally:
+            conn.close()
+    except BackupError as e:
+        return "The data was restored, but bringing the tables up to date failed (%s). Run update.sh." % e
+    except Exception as e:                         # the database connection itself
+        return "The data was restored, but bringing the tables up to date failed (%s). Run update.sh." % e
+    return ""
+
+
+def _run_sql_file(path):
+    with _Creds() as cnf, open(path, "rb") as f:
+        proc = subprocess.run([_tool("mariadb", "mysql"), "--defaults-extra-file=" + cnf, "--default-character-set=utf8mb4",
+                               DBNAME()], stdin=f, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    if proc.returncode != 0:
+        raise BackupError("%s: %s" % (os.path.basename(path), proc.stderr.decode("utf-8", "replace").strip()[-300:]))
+
+
+def after_restore():
+    """Sign everyone in again (the user ids in the restored data may belong to other people now) and say whether
+    saved secrets can be read with this server's key. Returns a warning or ''."""
+    import db
+    conn = db.connect()
+    try:
+        with conn.cursor() as cur:
+            db.save_setting(cur, "session_epoch", "%d" % int(time.time() * 1000))
+            cur.execute("SELECT skey, svalue FROM settings WHERE svalue LIKE 'enc:v1:%%'")
+            bad = [r["skey"] for r in cur.fetchall() if db._try_decrypt(r["svalue"]) is None]
+        conn.commit()
+    finally:
+        conn.close()
+    if bad:
+        return ("%d saved secret setting(s) cannot be read with this server's key (the backup is from another server, or "
+                "PANEL_SETTINGS_KEY changed): %s. Copy that server's PANEL_SETTINGS_KEY into panel.env, or type them again."
+                % (len(bad), ", ".join(bad[:8])))
+    return ""
 
 
 # ------------------------------------------------------------------ Google Drive (OAuth for devices)
@@ -422,7 +662,7 @@ def drive_fetch(s, file_id):
         raise BackupError("The download from Google Drive failed.")
     os.replace(dest + ".part", dest)
     try:
-        check_dump(dest, deep=True)
+        check_backup(dest, deep=True)
     except BackupError:
         os.remove(dest)
         raise
@@ -447,10 +687,11 @@ def _note(cur, conn, msg, ok):
 
 def job_backup(label="manual"):
     with Lock():
-        write_status(state="running", kind="backup", started=int(time.time()), msg="Dumping the database…")
+        write_status(state="running", kind="backup", started=int(time.time()), msg="Dumping the database and packing the files…")
+        clean_leftovers()
         conn = cur = None
         try:
-            name = make_dump("auto" if label == "auto" else "")
+            name = make_backup("auto" if label == "auto" else "")
             conn, cur, s = _settings()
             prune_local(int(s.get("backup_keep") or 7))
             msg = "Backup %s saved." % name
@@ -480,28 +721,52 @@ def job_restore(name):
     with Lock():
         path = path_of(name)
         write_status(state="running", kind="restore", started=int(time.time()), msg="Checking the file…", file=name)
-        safety = None
+        clean_leftovers()
+        safety, temps = None, []
         try:
-            check_dump(path, deep=True)
-            write_status(msg="Saving the current data first…")
-            safety = make_dump("pre-restore")
+            check_backup(path, deep=True)
+            write_status(msg="Saving the current data and files first…")
+            safety = make_backup("pre-restore")
             write_status(msg="Restoring %s… the panel may show errors for a short while." % name)
+            db_path, tmp = _db_file(path)
+            if tmp:
+                temps.append(db_path)
             try:
-                load_dump(path)
+                load_dump(db_path)
             except BackupError as e:
                 write_status(msg="The restore failed (%s). Putting the previous data back…" % e)
                 try:
-                    load_dump(os.path.join(DIR, safety))
+                    back, tmp2 = _db_file(os.path.join(DIR, safety))
+                    if tmp2:
+                        temps.append(back)
+                    load_dump(back)
                     raise BackupError("The restore failed and the previous data was put back. Reason: %s" % e)
                 except BackupError as inner:
                     if "previous data was put back" in str(inner):
                         raise
                     raise BackupError("The restore failed and putting the old data back also failed. The old data is in "
                                       "%s. Reason: %s" % (safety, e))
-            write_status(state="ok", msg="Restored from %s. Sign in again if the panel asks. The data before the restore "
-                                         "is kept as %s." % (name, safety), finished=int(time.time()))
+            notes = []
+            try:
+                files = restore_files(path)
+                if files:
+                    notes.append("Files put back: %s." % ", ".join("%s %d" % (k.replace("_", " "), v) for k, v in files.items()))
+            except (BackupError, OSError, tarfile.TarError) as e:
+                notes.append("The database was restored but the files were not (%s); they are in %s." % (e, safety))
+            write_status(msg="Bringing the tables up to date…")
+            notes += [w for w in (apply_schema(), after_restore()) if w]
+            bad = any("failed" in n or "cannot be read" in n or "were not" in n for n in notes)
+            write_status(state="error" if bad else "ok",
+                         msg="Restored from %s. %s Everyone signs in again. The data before the restore is kept as %s."
+                             % (name, " ".join(notes), safety), finished=int(time.time()))
         except BackupError as e:
             write_status(state="error", msg=str(e), finished=int(time.time()))
+        finally:
+            for p in temps:
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
 
 
 def job_fetch(file_id):
@@ -520,8 +785,14 @@ def job_fetch(file_id):
                 conn.close()
 
 
+RETRY_MIN = 30          # a failed daily backup is tried again after this many minutes...
+RETRY_MAX = 3           # ...up to this many tries a day
+
+
 def job_scheduled():
+    """The daily backup, from the timer every 10 minutes. A failed one is tried again (30 minutes apart, 3 a day)."""
     import core
+    import db
     conn, cur, s = _settings()
     try:
         core.apply_timezone(s.get("timezone"))
@@ -529,14 +800,25 @@ def job_scheduled():
         today = now.strftime("%Y-%m-%d")
         if s.get("backup_on") != "1" or now.hour < int(s.get("backup_hour") or 4) or s.get("backup_last_day") == today:
             return
+        day, _sep, tries = (s.get("backup_tries") or "").partition(":")
+        tries = int(tries) if day == today and tries.isdigit() else 0
+        if tries >= RETRY_MAX or (tries and time.time() - float(s.get("backup_try_at") or 0) < RETRY_MIN * 60):
+            return
         if busy():
             return
-        import db
-        db.save_setting(cur, "backup_last_day", today)
+        db.save_setting(cur, "backup_tries", "%s:%d" % (today, tries + 1))
+        db.save_setting(cur, "backup_try_at", "%d" % int(time.time()))
         conn.commit()
     finally:
         conn.close()
     job_backup("auto")
+    conn, cur, s = _settings()
+    try:
+        if s.get("backup_last_ok") == "1":           # done for today only when it worked
+            db.save_setting(cur, "backup_last_day", today)
+            conn.commit()
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":

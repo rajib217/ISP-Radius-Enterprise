@@ -1,7 +1,7 @@
 {% extends "settings_base.html" %}
 {% from "_macros.html" import icon %}
 {% block title %}Backup &amp; Restore{% endblock %}
-{% block ssub %}Database backups, restore from a file, and the copy kept in Google Drive.{% endblock %}
+{% block ssub %}Full backups (every customer, ledger, payment and setting, plus photos, documents and the logo), restore from a file, and the copy kept in Google Drive.{% endblock %}
 {% block sbody %}
 
 <section class="panel set-card">
@@ -21,6 +21,7 @@
       <div><span>Free disk space</span><b>{{ free|bytes }}</b></div>
     </div>
     {% if last.time and not last.ok %}<p class="help" style="margin:0">{{ last.msg }}</p>{% endif %}
+    <div class="note-box" style="align-items:flex-start">{{ icon('info') }}<span><b>What a backup holds:</b> the whole database (customers, ledgers, payments, invoices, packages, users and resellers, every setting, tickets, RADIUS) and the folders {{ folders|join(', ')|replace('_', ' ') }}. <b>Keep a copy of <code>/etc/isp-panel/panel.env</code> yourself</b>, apart from the backups: its PANEL_SETTINGS_KEY is needed to read the saved bKash / SMTP / Telegram secrets on a new server.</span></div>
     <div class="row-gap">
       <form method="post" action="{{ url_for('backup_run') }}">{{ csrf_input() }}<button class="btn primary" type="submit" {{ 'disabled' if running }}>{{ icon('archive') }}Back up now</button></form>
       <button class="btn violet" type="button" data-open="up-dlg" {{ 'disabled' if running }}>{{ icon('upload') }}Upload a backup file</button>
@@ -95,10 +96,11 @@
     <thead><tr><th>File</th><th class="hide-sm">Type</th><th class="num">Size</th><th class="hide-sm">Created</th><th></th></tr></thead>
     <tbody>{% for f in files %}<tr>
       <td class="mono" style="word-break:break-all">{{ f.name }}</td>
-      <td class="hide-sm"><span class="pill {{ {'auto': 'ok', 'manual': 'info', 'uploaded': 'violet', 'drive': 'violet', 'pre-restore': 'warn'}[f.kind] }}">{{ {'auto': 'Automatic', 'manual': 'Manual', 'uploaded': 'Uploaded', 'drive': 'From Drive', 'pre-restore': 'Before a restore'}[f.kind] }}</span></td>
+      <td class="hide-sm"><span class="pill {{ {'auto': 'ok', 'manual': 'info', 'uploaded': 'violet', 'drive': 'violet', 'pre-restore': 'warn'}[f.kind] }}">{{ {'auto': 'Automatic', 'manual': 'Manual', 'uploaded': 'Uploaded', 'drive': 'From Drive', 'pre-restore': 'Before a restore'}[f.kind] }}</span>
+        <small class="muted" style="display:block">{{ 'Database + files' if f.full else 'Database only' }}</small></td>
       <td class="num">{{ f.size|bytes }}</td><td class="hide-sm nowrap">{{ f.mtime|dt }}</td>
       <td class="act">
-        <button class="btn sm" type="button" data-open="rs-dlg" data-restore="{{ f.name }}" {{ 'disabled' if running }}>{{ icon('refresh') }}Restore</button>
+        <button class="btn sm" type="button" data-open="rs-dlg" data-restore="{{ f.name }}" data-full="{{ 1 if f.full else 0 }}" {{ 'disabled' if running }}>{{ icon('refresh') }}Restore</button>
         <a class="btn sm icon" href="{{ url_for('backup_download', name=f.name) }}" aria-label="Download {{ f.name }}" title="Download">{{ icon('download') }}</a>
         <form method="post" action="{{ url_for('backup_delete', name=f.name) }}" data-confirm="Delete {{ f.name }} from this server?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ f.name }}" title="Delete {{ f.name }}" {{ 'disabled' if running }}>{{ icon('trash') }}</button></form>
       </td></tr>{% endfor %}</tbody>
@@ -111,7 +113,7 @@
     {{ csrf_input() }}
     <div class="modal-head"><h2 id="up-title">Upload a backup file</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack">
-      <div class="field"><label class="lbl" for="up-file">Backup file (.sql.gz)</label><input id="up-file" name="file" type="file" accept=".gz,.sql.gz" required><div class="help">Only a file made by this panel. It is checked, then added to the list; nothing changes until you press Restore. For files over about 1 GB, copy them into the folder above with scp instead.</div></div>
+      <div class="field"><label class="lbl" for="up-file">Backup file (.sql.gz)</label><input id="up-file" name="file" type="file" accept=".tar,.gz,.sql.gz" required><div class="help">Only a file made by this panel: a full backup (.tar) or an older database-only one (.sql.gz). It is checked, then added to the list; nothing changes until you press Restore. For files over about 1 GB, copy them into the folder above with scp instead.</div></div>
     </div>
     <div class="modal-foot"><span style="flex:1"></span><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">Upload</button></div>
   </form>
@@ -122,7 +124,7 @@
     {{ csrf_input() }}
     <div class="modal-head"><h2 id="rs-title">Restore this backup</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
     <div class="modal-body stack">
-      <div class="note-box" style="align-items:flex-start">{{ icon('alert') }}<span>This <b>replaces everything</b> in the database with the contents of <b class="mono" id="rs-name" style="word-break:break-all"></b>: subscribers, payments, packages, RADIUS users and settings. Anything entered after that backup is lost. The current data is saved first as a "Before a restore" backup. Customers cannot log in for the minute or two it takes, so do it at a quiet time.</span></div>
+      <div class="note-box" style="align-items:flex-start">{{ icon('alert') }}<span>This <b>replaces everything</b> in the database with the contents of <b class="mono" id="rs-name" style="word-break:break-all"></b>: customers, ledgers, payments, packages, users, RADIUS and settings<span data-rs-files>, and the photos, documents and logo folders</span>. Anything entered after that backup is lost. The current data and files are saved first as a "Before a restore" backup, and the tables are brought up to this version of the panel afterwards. Customers cannot log in for the minute or two it takes, and everyone signs in to the panel again, so do it at a quiet time.</span></div>
       <div class="field"><label class="lbl" for="rs-conf">Type RESTORE to confirm</label><input id="rs-conf" name="confirm" autocomplete="off" required></div>
       <div class="field"><label class="lbl" for="rs-pw">Your password</label><input id="rs-pw" name="password" type="password" autocomplete="current-password" required></div>
     </div>
@@ -137,14 +139,24 @@
     b.addEventListener("click", function () {
       document.getElementById("rs-form").action = base + encodeURIComponent(b.dataset.restore);
       document.getElementById("rs-name").textContent = b.dataset.restore;
+      document.querySelector("[data-rs-files]").hidden = b.dataset.full !== "1";
       document.getElementById("rs-conf").value = ""; document.getElementById("rs-pw").value = "";
     });
   });
-  {% if running %}
+  {% if running or wait %}
+  /* watch the job: reload when it ends. Right after "Back up now" the worker may not have started yet, so wait
+     until it has been seen running (or 20 seconds passed) before treating "not running" as finished. */
+  var seen = {{ 'true' if running else 'false' }}, began = Date.now();
   var timer = setInterval(function () {
-    fetch("{{ url_for('backup_status') }}", {credentials: "same-origin"}).then(function (r) { return r.json(); })
-      .then(function (d) { if (!d.running) { clearInterval(timer); location.reload(); } }).catch(function () {});
-  }, 4000);
+    fetch("{{ url_for('backup_status') }}", {credentials: "same-origin"}).then(function (r) {
+        /* a finished restore signs everyone out: the check lands on the sign-in page, so go there */
+        if (r.redirected || !r.ok) { clearInterval(timer); location.replace("{{ url_for('settings_backup') }}"); throw new Error("moved"); }
+        return r.json(); })
+      .then(function (d) {
+        if (d.running) { seen = true; return; }
+        if (seen || Date.now() - began > 20000) { clearInterval(timer); location.replace("{{ url_for('settings_backup') }}"); }
+      }).catch(function () {});
+  }, 3000);
   {% endif %}
 })();
 </script>

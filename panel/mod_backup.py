@@ -1,4 +1,5 @@
-"""Settings > Backup & Restore: database backups, restore from a file, and the Google Drive copy."""
+"""Settings > Backup & Restore: full backups (the database plus customer photos, documents, ticket photos and the
+logo, in one .tar), restore from a file, and the Google Drive copy. Older database-only .sql.gz backups still restore."""
 import json
 import os
 import re
@@ -60,6 +61,7 @@ def settings_backup():
         except bl.BackupError as e:
             drive_err = str(e)
     return render_template("settings_backup.html", s=s, tab="backup", files=bl.list_backups(), st=st, running=running,
+                           wait=request.args.get("wait") == "1" and not running, folders=bl.FILE_DIRS,
                            free=bl.disk_free(), device=_device(s), drive_ready=_drive_ready(s),
                            drive_files=drive_files, drive_err=drive_err, folder=bl.DIR, hours=range(24),
                            last={"msg": s.get("backup_last_msg"), "ok": s.get("backup_last_ok") == "1",
@@ -114,8 +116,9 @@ def backup_run():
     commit()
     bl.start_worker("backup")
     time.sleep(0.4)
-    flash("Backup started. This page updates when it finishes.", "success")
-    return _back()
+    flash("Backup started: the database and the photos, documents and logo go into one file. This page updates when it finishes.",
+          "success")
+    return redirect(url_for(PAGE, wait=1))       # the page watches for the job even if it had not started yet
 
 
 @route("/settings/backup/download/<name>")
@@ -125,7 +128,8 @@ def backup_download(name):
         abort(404)
     audit("backup_downloaded", name)
     commit()
-    return send_file(bl.path_of(name), as_attachment=True, download_name=name, mimetype="application/gzip")
+    return send_file(bl.path_of(name), as_attachment=True, download_name=name,
+                     mimetype="application/x-tar" if name.endswith(".tar") else "application/gzip")
 
 
 @route("/settings/backup/delete/<name>", methods=["POST"])
@@ -148,14 +152,14 @@ def backup_delete(name):
 def backup_upload():
     up = request.files.get("file")
     if not up or not up.filename:
-        flash("Choose a .sql.gz backup file.", "error")
+        flash("Choose a backup file (.tar, or an older .sql.gz).", "error")
         return _back()
     if _running():
         flash("Wait for the running backup or restore to finish.", "warn")
         return _back()
     base = re.sub(r"[^A-Za-z0-9._-]", "_", os.path.basename(up.filename))[-90:]
-    if not base.endswith(".sql.gz"):
-        flash("The file must end with .sql.gz (a backup made by this panel).", "error")
+    if not (base.endswith(".tar") or base.endswith(".sql.gz")):
+        flash("The file must end with .tar or .sql.gz (a backup made by this panel).", "error")
         return _back()
     bl.ensure_dir()
     name = "uploaded-%s-%s" % (datetime.now().strftime("%Y%m%d-%H%M%S"), base.lstrip(".-"))
@@ -168,7 +172,7 @@ def backup_upload():
                 if not chunk:
                     break
                 out.write(chunk)
-        bl.check_dump(part)
+        bl.check_backup(part, as_name=dest)
         os.replace(part, dest)
     except (bl.BackupError, OSError) as e:
         if os.path.exists(part):
@@ -198,8 +202,8 @@ def backup_restore(name):
     commit()
     bl.start_worker("restore", name)
     time.sleep(0.4)
-    flash("Restore started. The panel may show errors for a short while; reload in a minute.", "warn")
-    return _back()
+    flash("Restore started. The panel may show errors for a short while; when it is done everyone signs in again.", "warn")
+    return redirect(url_for(PAGE, wait=1))
 
 
 # ----------------------------------------------------------------- Google Drive

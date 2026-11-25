@@ -78,6 +78,7 @@ fi
 c_ok "Staging the new code"
 rm -rf "$NEW_DIR"
 cp -a "$SRC_DIR/panel/." "$NEW_DIR/"
+cp -a "$SRC_DIR/sql" "$NEW_DIR/sql"          # Settings > Backup > Restore brings old backups up to date with it
 find "$NEW_DIR" -name '__pycache__' -type d -prune -exec rm -rf {} +
 printf '%s\n' "$REV" > "$NEW_DIR/REVISION"
 chown -R root:root "$NEW_DIR"; chmod -R a+rX "$NEW_DIR"

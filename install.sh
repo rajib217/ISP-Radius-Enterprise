@@ -655,6 +655,7 @@ c_ok "Installing the web panel to $APP_DIR"
 mkdir -p "$INSTALL_DIR"
 rm -rf "$APP_DIR"; mkdir -p "$APP_DIR"
 cp -a "$SRC_DIR/panel/." "$APP_DIR/"
+cp -a "$SRC_DIR/sql" "$APP_DIR/sql"          # Settings > Backup > Restore brings old backups up to date with it
 find "$APP_DIR" -name '__pycache__' -type d -prune -exec rm -rf {} +
 git -C "$SRC_DIR" rev-parse --short=12 HEAD > "$APP_DIR/REVISION" 2>/dev/null || echo "manual" > "$APP_DIR/REVISION"
 chown -R root:root "$INSTALL_DIR"; chmod -R a+rX "$INSTALL_DIR"
