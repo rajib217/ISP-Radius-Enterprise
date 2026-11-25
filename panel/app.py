@@ -588,7 +588,7 @@ def dashboard():
     if seller:
         # a seller's own customers (and their downline's) whose package ends within 7 days
         names = list(core.my_downline() or [])
-        where = ("WHERE s.status = 'active' AND s.expiry_date BETWEEN CURDATE() AND CURDATE() + INTERVAL 7 DAY "
+        where = ("WHERE " + db.expiring_sql(7) + " "
                  "AND s.created_by IN (" + ",".join(["%s"] * len(names)) + ") ") if names else ""
         total = q("SELECT COUNT(*) AS c FROM subscribers s " + where, names, one=True)["c"] if names else 0
         per = 20                                        # 20 customers a page (the owner's choice)
@@ -604,11 +604,11 @@ def dashboard():
                                notices=_notices(), my_expiring=my_expiring, exp_pg=exp_pg, off_onus=offline_onus(),
                                exp_keep={"tab": tab} if request.args.get("tab") else {}, today=date.today())
     st = q("SELECT COUNT(*) AS total, "
-           "SUM(status = 'suspended') AS suspended, "
-           "SUM(status = 'active' AND expiry_date IS NOT NULL AND expiry_date < CURDATE()) AS expired, "
-           "SUM(status = 'active' AND (expiry_date IS NULL OR expiry_date >= CURDATE())) AS active, "
-           "SUM(status = 'active' AND expiry_date BETWEEN CURDATE() AND CURDATE() + INTERVAL 7 DAY) AS expiring "
-           "FROM subscribers", one=True)
+           "SUM(s.status = 'suspended') AS suspended, "
+           "SUM(" + db.ENDED + ") AS expired, "
+           "SUM(" + db.RUNNING + ") AS active, "
+           "SUM(" + db.expiring_sql(7) + ") AS expiring "
+           "FROM subscribers s", one=True)
     stats = {k: n(v) for k, v in st.items()}
     online = q("SELECT COUNT(*) AS c FROM radacct WHERE acctstoptime IS NULL", one=True)["c"]
 
@@ -628,9 +628,8 @@ def dashboard():
                "WHERE ra.acctstoptime IS NULL GROUP BY ra.nasipaddress, nas.shortname ORDER BY c DESC")
     rejects = q("SELECT username, authdate FROM radpostauth WHERE reply = 'Access-Reject' "
                 "ORDER BY id DESC LIMIT 6")
-    expiring = q("SELECT id, username, full_name, expiry_date FROM subscribers WHERE status = 'active' "
-                 "AND expiry_date BETWEEN CURDATE() AND CURDATE() + INTERVAL 7 DAY "
-                 "ORDER BY expiry_date, username LIMIT 6")
+    expiring = q("SELECT s.id, s.username, s.full_name, s.expiry_date FROM subscribers s WHERE " + db.expiring_sql(7) +
+                 " ORDER BY s.expiry_date, s.username LIMIT 6")
     month_start = date.today().replace(day=1)
     revenue = q("SELECT COALESCE(SUM(amount), 0) AS s, COUNT(*) AS c FROM payments WHERE paid_at >= %s",
                 (month_start,), one=True)
@@ -690,8 +689,8 @@ def decorate(rows):
     for r in rows:
         if r["status"] == "suspended":
             r["state"] = "suspended"
-        elif r["expiry_date"] and r["expiry_date"] < today:
-            r["state"] = "expired"
+        elif r.get("ended") if "ended" in r else (r["expiry_date"] and r["expiry_date"] < today):
+            r["state"] = "expired"           # at the package's real end time (the list query says), else by the date
         else:
             r["state"] = "active"
         r["days_left"] = (r["expiry_date"] - today).days if r["expiry_date"] else None
@@ -713,7 +712,7 @@ def subscribers():
         order += ", COALESCE(s.expiry_time, p.fixed_expire_time, '23:59') " + direction
     rows = q("SELECT s.id, s.username, s.full_name, s.phone, s.area, s.status, s.expiry_date, s.expiry_time, s.grace_until, "
              "s.mac_bind, s.static_ip, s.created_by, s.balance, s.photo, s.plan_id, p.label AS plan_label, p.download_mbps, p.upload_mbps, p.bandwidth_value, p.bandwidth_type, "
-             "p.fixed_expire_time, "
+             "p.fixed_expire_time, s.expiry_date IS NOT NULL AND " + db.PKG_END + " <= NOW() AS ended, "
              "p.price AS plan_price, p.validity_days AS plan_days, "
              "a.full_name AS seller_name, a.role AS seller_role, "
              "(SELECT value FROM radcheck rc WHERE rc.username = s.username AND rc.attribute = 'Cleartext-Password' "
@@ -1301,7 +1300,9 @@ def subscribers_bulk():
             if why:
                 stopped = why
                 break
-            mod_subs.do_renew(s, int(p["validity_days"] or 30), float(p["price"] or 0), "cash", "Mass payment")
+            # the customer's own price (a reseller's price, taxes / fees), as with Activation
+            mod_subs.do_renew(s, int(p["validity_days"] or 30), mod_subs.customer_price(s, p, int(p["validity_days"] or 30)),
+                              "cash", "Mass payment")
             done += 1
         audit("bulk_renew", "%d subscribers" % done)
         commit()

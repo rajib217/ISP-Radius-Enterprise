@@ -3511,6 +3511,53 @@ def check_rules(flask_app, ids):
           "Bill collector: search suggests areas and customers (their own only) as they type; the map shows who owes and "
           "finds dues near a point; Nearest to me sorts by distance; a door visit with a promise date shows under Promised "
           "today; no Bangla text on their pages " + repr((_sg_area, _nr.get("n"), _vrow)))
+    # ===== Auto renew charges the customer's own price (as Activation), can be reverted; counts follow the real end time
+    _ar = one("SELECT s.id, s.username FROM subscribers s JOIN panel_admins a ON a.username = s.created_by JOIN user_plans up "
+              "ON up.user_id = a.id AND up.plan_id = s.plan_id JOIN plans p ON p.id = s.plan_id WHERE a.role = 'reseller' "
+              "AND up.price <> p.price ORDER BY s.id LIMIT 1")
+    run("UPDATE panel_admins SET balance = 100000 WHERE id = %s", (ids["reseller"],))
+    run("DELETE FROM payments WHERE subscriber_id = %s AND paid_at >= NOW() - INTERVAL 1 DAY", (_ar["id"],))
+    run("UPDATE subscribers SET auto_renew = 1, status = 'active', net_disabled = 0, grace_until = NULL, balance = 1000, "
+        "expiry_date = CURDATE() - INTERVAL 1 DAY, expiry_time = NULL WHERE id = %s", (_ar["id"],))
+    _ar_before = one("SELECT expiry_date, balance FROM subscribers WHERE id = %s", (_ar["id"],))
+    _rb_before = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
+    with flask_app.test_request_context():
+        import mod_subs as _ms2
+        _arsub = one("SELECT * FROM subscribers WHERE id = %s", (_ar["id"],))
+        _want_price = _ms2.customer_price(_arsub, _ms2._plan(_arsub["plan_id"]))
+    import maintenance as _mt2
+    _c7 = db.connect()
+    with _c7.cursor() as _cur:
+        _mt2.subscriber_automation(_c7, _cur)
+    _c7.close()
+    _arp = one("SELECT * FROM payments WHERE subscriber_id = %s ORDER BY id DESC LIMIT 1", (_ar["id"],))
+    _ar_mid = one("SELECT expiry_date, balance FROM subscribers WHERE id = %s", (_ar["id"],))
+    _rv2 = adm.post("/subscribers/%d/revert" % _ar["id"], data={"_csrf": "ci", "payment_id": str(_arp["id"])})
+    _ar_after = one("SELECT expiry_date, balance FROM subscribers WHERE id = %s", (_ar["id"],))
+    _rb_after = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
+    _gone2 = one("SELECT COUNT(*) AS c FROM payments WHERE id = %s", (_arp["id"],))["c"]
+    run("UPDATE subscribers SET auto_renew = 0 WHERE id = %s", (_ar["id"],))
+    # one rule for "expired" everywhere: the Home counters, the reports and the list agree, also on the day it ends
+    if _dt.datetime.now().hour >= 1:
+        run("UPDATE subscribers SET status = 'active', expiry_date = CURDATE(), expiry_time = %s, grace_until = NULL WHERE id = %s",
+            ((_dt.datetime.now() - _dt.timedelta(hours=1)).strftime("%H:%M"), _ar["id"]))
+    import dash as _dash
+    with flask_app.test_request_context():
+        from flask import g as _g2
+        _g2.me = {"id": ids["admin"], "username": "admin", "role": "admin", "parent_id": None}
+        _g2.perms = __import__("core").load_perms("admin")
+        _dsub_stats = _dash.subscriber()
+    _list_exp = adm.get("/subscribers?status=expired&per=500").get_data(as_text=True)
+    _n_list = int(re.search(r"<b>\(([0-9,]+)\)</b>", _list_exp).group(1).replace(",", ""))
+    _dash_exp = int(str(next((c[1] for c in _dsub_stats["cards"] if "xpired" in c[0] and "nline" not in c[0]), -1)).replace(",", ""))
+    check(_arp and _arp["received_by"] == "auto" and abs(float(_arp["amount"]) - _want_price) < 0.01
+          and abs(float(_ar_before["balance"]) - float(_ar_mid["balance"]) - _want_price) < 0.01
+          and _arp["prev_expiry"] == _ar_before["expiry_date"] and _rv2.status_code == 302 and _gone2 == 0
+          and _ar_after["expiry_date"] == _ar_before["expiry_date"] and float(_ar_after["balance"]) == float(_ar_before["balance"])
+          and abs(_rb_after - _rb_before) < 0.01 and _dash_exp == _n_list,
+          "Auto renew charges the customer's own price (a reseller's price, as Activation) and can be reverted (expiry, "
+          "balance and the reseller's cost back); the Home Expired counter matches the Expired list "
+          + repr((_want_price, _arp and _arp["amount"], _dash_exp, _n_list)))
     return bad
 
 

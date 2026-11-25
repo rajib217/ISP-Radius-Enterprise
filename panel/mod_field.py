@@ -18,6 +18,7 @@ from datetime import date, datetime, timedelta
 from flask import abort, flash, g, jsonify, redirect, render_template, request, send_file, url_for
 
 import core
+import db
 import mod_tickets
 from core import audit, commit, insert, pager, q, route, x
 
@@ -230,6 +231,7 @@ def customer_map():
 def customer_map_data():
     sc, sp = core.scope_sql("s")
     rows = q("SELECT s.id, s.username, s.full_name, s.phone, s.area, s.lat, s.lng, s.status, s.expiry_date, "
+             "s.expiry_date IS NOT NULL AND " + db.PKG_END + " <= NOW() AS ended, "
              "p.label AS plan FROM subscribers s LEFT JOIN plans p ON p.id = s.plan_id "
              "WHERE s.lat IS NOT NULL AND s.lng IS NOT NULL" + sc + " LIMIT 20000", sp)
     online = {r["username"] for r in q("SELECT DISTINCT username FROM radacct WHERE acctstoptime IS NULL")}
@@ -238,7 +240,7 @@ def customer_map_data():
     for r in rows:
         if r["status"] == "suspended":
             state = "suspended"
-        elif r["expiry_date"] and r["expiry_date"] < today:
+        elif r["ended"]:                  # at the package's real end time, as the lists and RADIUS
             state = "expired"
         else:
             state = "online" if r["username"] in online else "offline"

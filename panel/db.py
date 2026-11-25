@@ -211,8 +211,16 @@ PKG_END = "TIMESTAMP(s.expiry_date, COALESCE(NULLIF(s.expiry_time, ''), " + _PLA
 # a grace period still running: RADIUS lets them in until the grace day at the package's time
 GRACE_ON = ("(s.grace_until IS NOT NULL AND s.grace_until > s.expiry_date AND "
             "TIMESTAMP(s.grace_until, COALESCE(" + _PLAN_TIME + ", '23:59:59')) > NOW())")
-# an active customer whose package has ended (the Dues list)
+# an active customer whose package has ended (the Dues list, the Expired counts everywhere)
 ENDED = "s.status = 'active' AND s.expiry_date IS NOT NULL AND " + PKG_END + " <= NOW()"
+# an active customer whose package is still running (the Active counts); ENDED + RUNNING + suspended = every customer
+RUNNING = "s.status = 'active' AND (s.expiry_date IS NULL OR " + PKG_END + " > NOW())"
+
+
+def expiring_sql(days):
+    """Still running and ends within `days` days (days x 24 hours)."""
+    return "(s.status = 'active' AND s.expiry_date IS NOT NULL AND " + PKG_END + " > NOW() AND " + PKG_END + \
+        " <= NOW() + INTERVAL %d DAY)" % int(days)
 # what the customer pays for their package now: their seller's price (+ subscriber profit), else the package price,
 # plus the package's active taxes / fees (mod_subs.customer_price)
 _BASE = ("COALESCE(NULLIF((SELECT up.price + COALESCE(up.sub_profit, 0) FROM user_plans up JOIN panel_admins ua ON ua.id = up.user_id "

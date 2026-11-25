@@ -6,6 +6,7 @@ from datetime import timedelta
 from flask import Response, abort, g, render_template, request
 
 import core
+import db
 from core import fmt_money, n, pager, q, route
 
 SPAN_SQL = "acctstarttime >= %s AND acctstarttime < %s + INTERVAL 1 DAY"
@@ -68,10 +69,9 @@ def reports():
             "AND created_at < %s + INTERVAL 1 DAY GROUP BY DATE(created_at)", span)}
         ctx["chart"] = {"labels": labels, "unit": "number", "series": [{"name": "New customers",
                                                       "values": [n(daily.get(d)) for d in days]}]}
-        ctx["totals"] = q("SELECT COUNT(*) AS total, COALESCE(SUM(status = 'active' AND (expiry_date IS NULL "
-                          "OR expiry_date >= CURDATE())), 0) AS active, "
-                          "COALESCE(SUM(status = 'active' AND expiry_date < CURDATE()), 0) AS expired, "
-                          "COALESCE(SUM(status = 'suspended'), 0) AS suspended FROM subscribers", one=True)
+        ctx["totals"] = q("SELECT COUNT(*) AS total, COALESCE(SUM(" + db.RUNNING + "), 0) AS active, "
+                          "COALESCE(SUM(" + db.ENDED + "), 0) AS expired, "
+                          "COALESCE(SUM(s.status = 'suspended'), 0) AS suspended FROM subscribers s", one=True)
         ctx["by_area"] = q("SELECT COALESCE(NULLIF(area, ''), '(no area)') AS area, COUNT(*) AS c "
                            "FROM subscribers GROUP BY 1 ORDER BY c DESC LIMIT 12")
     return render_template("reports.html", **ctx)
@@ -244,8 +244,8 @@ def collection_csv():
 @route("/reports/plans", module="plans")
 def plan_report():
     rows = q("SELECT p.id, p.label, p.download_mbps, p.upload_mbps, p.bandwidth_value, p.bandwidth_type, p.price, COUNT(s.id) AS total, "
-             "COALESCE(SUM(s.status = 'active' AND (s.expiry_date IS NULL OR s.expiry_date >= CURDATE())), 0) AS active, "
-             "COALESCE(SUM(s.status = 'active' AND s.expiry_date < CURDATE()), 0) AS expired, "
+             "COALESCE(SUM(" + db.RUNNING + "), 0) AS active, "
+             "COALESCE(SUM(" + db.ENDED + "), 0) AS expired, "
              "COALESCE(SUM(s.status = 'suspended'), 0) AS suspended "
              "FROM plans p LEFT JOIN subscribers s ON s.plan_id = p.id GROUP BY p.id, p.label, p.download_mbps, "
              "p.upload_mbps, p.bandwidth_value, p.bandwidth_type, p.price ORDER BY total DESC, p.label")

@@ -219,13 +219,10 @@ def subscriber_automation(conn, cur):
         plan = plans.get(s["plan_id"])
         if not plan or not plan.get("validity_days"):
             continue
-        price = float(plan["price"] or 0)
-        amount = price
-        cur.execute("SELECT f.mode, f.value FROM fees f JOIN plan_fees pf ON pf.fee_id = f.id WHERE f.active = 1 AND pf.plan_id = %s",
-                    (plan["id"],))
-        for f in cur.fetchall():
-            amount += price * float(f["value"]) / 100.0 if f["mode"] == "percent" else float(f["value"])
-        amount = round(amount, 2)
+        # what the customer pays, as when they are activated by hand (mod_subs.customer_price): their reseller's price
+        # (with the subscriber profit) for a reseller's customer, else the package price; plus the package's taxes / fees
+        cur.execute("SELECT " + db.CUSTOMER_PRICE + " AS price FROM subscribers s WHERE s.id = %s", (s["id"],))
+        amount = round(float((cur.fetchone() or {}).get("price") or 0), 2)
         have = float(s["balance"] or 0)
         if have + 0.001 < amount:
             if cfgs.get("renew_fail_log") == "1":
@@ -257,9 +254,12 @@ def subscriber_automation(conn, cur):
                 continue
         left = round(have - amount, 2)
         cur.execute("UPDATE subscribers SET balance = %s, expiry_date = %s WHERE id = %s", (left, new_expiry, s["id"]))
+        # prev_* and from_balance: what this renewal changed, so Revert Last Invoice can undo it (as for one made by hand)
         cur.execute("INSERT INTO payments (subscriber_id, username, amount, days_added, method, note, period_to, received_by, "
-                    "payer_id, cost) VALUES (%s, %s, %s, %s, 'balance', 'Auto renew', %s, 'auto', %s, %s)",
-                    (s["id"], s["username"], amount, (new_expiry - base).days, new_expiry, paid_by, cost if paid_by else None))
+                    "payer_id, cost, prev_expiry, prev_expiry_time, prev_status, from_balance, prev_plan_id) "
+                    "VALUES (%s, %s, %s, %s, 'balance', 'Auto renew', %s, 'auto', %s, %s, %s, %s, %s, %s, %s)",
+                    (s["id"], s["username"], amount, (new_expiry - base).days, new_expiry, paid_by, cost if paid_by else None,
+                     s["expiry_date"], s.get("expiry_time"), s["status"], amount, s["plan_id"]))
         cur.execute("INSERT INTO sub_ledger (subscriber_id, amount, balance_after, note, created_by) VALUES (%s, %s, %s, %s, 'auto')",
                     (s["id"], -amount, left, "Auto renew +%d days" % (new_expiry - base).days))
         import appnotify

@@ -1322,7 +1322,7 @@ def zone_delete(rid):
 def areas():
     rows = q("SELECT a.id, a.name, a.note, a.zone_id, z.name AS zone_name, COUNT(s.id) AS total, "
              "COALESCE(SUM(s.status = 'suspended'), 0) AS suspended, "
-             "COALESCE(SUM(s.status = 'active' AND s.expiry_date < CURDATE()), 0) AS expired "
+             "COALESCE(SUM(" + db.ENDED + "), 0) AS expired "
              "FROM areas a LEFT JOIN zones z ON z.id = a.zone_id LEFT JOIN subscribers s ON s.area = a.name "
              "GROUP BY a.id, a.name, a.note, a.zone_id, z.name ORDER BY a.name")
     unassigned = q("SELECT COUNT(*) AS c FROM subscribers WHERE area = ''", one=True)["c"]
@@ -1370,8 +1370,8 @@ def area_report():
     start, end = core.date_range(default_days=(date.today().day - 1))
     span = (start, end)
     rows = q("SELECT s.area AS name, COUNT(*) AS total, "
-             "COALESCE(SUM(s.status = 'active' AND (s.expiry_date IS NULL OR s.expiry_date >= CURDATE())), 0) AS active, "
-             "COALESCE(SUM(s.status = 'active' AND s.expiry_date < CURDATE()), 0) AS expired, "
+             "COALESCE(SUM(" + db.RUNNING + "), 0) AS active, "
+             "COALESCE(SUM(" + db.ENDED + "), 0) AS expired, "
              "COALESCE(SUM(s.status = 'suspended'), 0) AS suspended FROM subscribers s "
              "GROUP BY s.area ORDER BY total DESC")
     online = {r["area"]: r["c"] for r in q(

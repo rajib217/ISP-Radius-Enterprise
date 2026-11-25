@@ -51,7 +51,7 @@ def build(cur, day):
     d["net"] = round(d["income"]["total"] + d["other_in"] - d["spent"], 2)
     c = _one(cur, "SELECT SUM(created_at >= %s AND created_at < %s) AS new_c, COUNT(*) AS total, "
                   "SUM(" + db.ENDED + ") AS dues_n, "
-                  "SUM(status = 'active' AND expiry_date = CURDATE()) AS exp_today, "
+                  "SUM(" + db.RUNNING + " AND s.expiry_date = CURDATE()) AS exp_today, "       # not those already ended today
                   "SUM(status = 'active' AND expiry_date = CURDATE() + INTERVAL 1 DAY) AS exp_tomorrow, "
                   "SUM(status = 'active' AND expiry_date BETWEEN CURDATE() + INTERVAL 2 DAY AND CURDATE() + INTERVAL 3 DAY) AS exp_3 "
                   "FROM subscribers s", (start, end))

@@ -4,6 +4,7 @@ import time
 from datetime import date, timedelta
 
 import core
+import db
 from core import n, q
 
 TABS = [("subscriber", "Subscriber", "subscribers"), ("accounting", "Accounting", "accounting"),
@@ -27,16 +28,16 @@ def _series(rows, days, key, field):
 def subscriber():
     sc, sp = core.scope_sql("s")
     st = q("SELECT COUNT(*) AS total, "
-           "COALESCE(SUM(s.status = 'active' AND (s.expiry_date IS NULL OR s.expiry_date >= CURDATE())), 0) AS active, "
-           "COALESCE(SUM(s.status = 'active' AND s.expiry_date < CURDATE()), 0) AS expired, "
+           "COALESCE(SUM(" + db.RUNNING + "), 0) AS active, "
+           "COALESCE(SUM(" + db.ENDED + "), 0) AS expired, "
            "COALESCE(SUM(s.status = 'suspended'), 0) AS disabled, "
            "COALESCE(SUM(s.username IN " + ONLINE + "), 0) AS online, "
-           "COALESCE(SUM(s.status = 'active' AND s.expiry_date < CURDATE() AND s.username IN " + ONLINE + "), 0) "
+           "COALESCE(SUM(" + db.ENDED + " AND s.username IN " + ONLINE + "), 0) "
            "AS expired_online, "
            "COALESCE(SUM(s.status = 'suspended' AND s.username IN " + ONLINE + "), 0) AS disabled_online, "
-           "COALESCE(SUM(s.status = 'active' AND s.expiry_date BETWEEN CURDATE() AND CURDATE() + INTERVAL 1 DAY), 0) AS exp1, "
-           "COALESCE(SUM(s.status = 'active' AND s.expiry_date BETWEEN CURDATE() AND CURDATE() + INTERVAL 3 DAY), 0) AS exp3, "
-           "COALESCE(SUM(s.status = 'active' AND s.expiry_date BETWEEN CURDATE() AND CURDATE() + INTERVAL 7 DAY), 0) AS exp7 "
+           "COALESCE(SUM(" + db.expiring_sql(1) + "), 0) AS exp1, "
+           "COALESCE(SUM(" + db.expiring_sql(3) + "), 0) AS exp3, "
+           "COALESCE(SUM(" + db.expiring_sql(7) + "), 0) AS exp7 "
            "FROM subscribers s WHERE 1 = 1" + sc, sp, one=True)
     v = {k: n(st[k]) for k in ("total", "active", "expired", "disabled", "online", "expired_online", "disabled_online",
                                    "exp1", "exp3", "exp7")}
@@ -80,8 +81,7 @@ def accounting():
             (today, first), one=True)
     exp = q("SELECT COALESCE(SUM(IF(kind = 'expense', amount, 0)), 0) AS month_total, "
             "COALESCE(SUM(IF(kind = 'income', amount, 0)), 0) AS other_income FROM expenses WHERE spent_on >= %s", (first,), one=True)
-    due = q("SELECT COUNT(*) AS c, COALESCE(SUM(p.price), 0) AS amount FROM subscribers s LEFT JOIN plans p "
-            "ON p.id = s.plan_id WHERE s.status = 'active' AND s.expiry_date < CURDATE()", one=True)
+    due = q("SELECT COUNT(*) AS c, COALESCE(SUM(" + db.DUE_SQL + "), 0) AS amount FROM subscribers s WHERE " + db.ENDED, one=True)
     by_method = q("SELECT method, COUNT(*) AS c, SUM(amount) AS total FROM payments WHERE paid_at >= %s "
                   "GROUP BY method ORDER BY total DESC", (first,))
     cards = [("Collected today", inc["today_total"], "payments received", "", "green", {}),
@@ -110,12 +110,12 @@ def user():
 def predictions():
     days = [date.today() + timedelta(days=i) for i in range(14)]
     rows = q("SELECT s.expiry_date AS d, COUNT(*) AS c, COALESCE(SUM(p.price), 0) AS amount FROM subscribers s "
-             "LEFT JOIN plans p ON p.id = s.plan_id WHERE s.status = 'active' AND s.expiry_date >= CURDATE() "
+             "LEFT JOIN plans p ON p.id = s.plan_id WHERE " + db.RUNNING + " AND s.expiry_date >= CURDATE() "
              "AND s.expiry_date < CURDATE() + INTERVAL 14 DAY GROUP BY s.expiry_date")
     tot = q("SELECT COALESCE(SUM(s.expiry_date <= CURDATE() + INTERVAL 7 DAY), 0) AS c7, "
             "COALESCE(SUM(CASE WHEN s.expiry_date <= CURDATE() + INTERVAL 7 DAY THEN p.price ELSE 0 END), 0) AS a7, "
             "COUNT(*) AS c30, COALESCE(SUM(p.price), 0) AS a30 FROM subscribers s LEFT JOIN plans p ON p.id = s.plan_id "
-            "WHERE s.status = 'active' AND s.expiry_date >= CURDATE() AND s.expiry_date <= CURDATE() + INTERVAL 30 DAY",
+            "WHERE " + db.RUNNING + " AND s.expiry_date >= CURDATE() AND s.expiry_date <= CURDATE() + INTERVAL 30 DAY",
             one=True)
     cards = [("Expiring in 7 days", tot["c7"], "customers to renew", "", "amber", {"status": "expiring"}),
              ("Expected in 7 days", tot["a7"], "if all renew", "", "green", {}),
@@ -284,10 +284,9 @@ def revenue_6m():
 def status_mix():
     """Non-overlapping split for the donut: every subscriber is in exactly one slice."""
     r = q("SELECT COUNT(*) AS total, "
-          "COALESCE(SUM(s.status = 'active' AND (s.expiry_date IS NULL OR s.expiry_date >= CURDATE())), 0) AS active, "
-          "COALESCE(SUM(s.status = 'active' AND (s.expiry_date IS NULL OR s.expiry_date >= CURDATE()) "
-          "AND s.username IN " + ONLINE + "), 0) AS active_online, "
-          "COALESCE(SUM(s.status = 'active' AND s.expiry_date < CURDATE()), 0) AS expired, "
+          "COALESCE(SUM(" + db.RUNNING + "), 0) AS active, "
+          "COALESCE(SUM(" + db.RUNNING + " AND s.username IN " + ONLINE + "), 0) AS active_online, "
+          "COALESCE(SUM(" + db.ENDED + "), 0) AS expired, "
           "COALESCE(SUM(s.status = 'suspended'), 0) AS disabled FROM subscribers s", one=True)
     v = {k: n(r[k]) for k in ("total", "active", "active_online", "expired", "disabled")}
     return {"center": "subscribers", "items": [
@@ -306,11 +305,10 @@ def growth_pct(total):
 
 
 def dues_total():
-    """Package price of active customers whose package has run out, plus unpaid extra service charges."""
-    a = q("SELECT COALESCE(SUM(p.price), 0) AS t, COUNT(*) AS c FROM subscribers s JOIN plans p ON p.id = s.plan_id "
-          "WHERE s.status = 'active' AND s.expiry_date < CURDATE()", one=True)
-    b = q("SELECT COALESCE(SUM(amount), 0) AS t FROM sub_charges WHERE paid = 0", one=True)
-    return {"amount": float(a["t"] or 0) + float(b["t"] or 0), "customers": n(a["c"])}
+    """What customers owe now (each one's own price and charges, less their balance: db.OWED_SQL, as on their page and
+    Dues), and how many have an ended package."""
+    a = q("SELECT COALESCE(SUM(" + db.OWED_SQL + "), 0) AS t, COALESCE(SUM(" + db.ENDED + "), 0) AS c FROM subscribers s", one=True)
+    return {"amount": float(a["t"] or 0), "customers": n(a["c"])}
 
 
 TAB_FN = {"subscriber": "home.subs", "accounting": "home.acc", "user": "home.users", "predictions": "home.pred",
