@@ -153,28 +153,20 @@ def revertable(sid):
     return dict(p, why="")
 
 
-@route("/subscribers/<int:sid>/revert", module="subscribers", methods=["POST"])
-def subscriber_revert(sid):
-    sub = q("SELECT * FROM subscribers WHERE id = %s", (sid,), one=True) or abort(404)
-    p = revertable(sid)
-    back = redirect(url_for("subscriber_view", sid=sid))
-    if not p or p["why"]:
-        flash("Nothing to revert%s." % ((": the last renewal was " + p["why"]) if p else ""), "error")
-        return back
-    if str(p["id"]) != request.form.get("payment_id", ""):
-        flash("The last renewal changed meanwhile. Reload the page and try again.", "error")
-        return back
+def undo_renewal(sub, p):
+    """Undo renewal payment p (from revertable()): expiry, status and package back, money it took from the balance back,
+    the reseller's cost refunded, the payment row removed, RADIUS rewritten. The caller commits.
+    Returns (back to the balance, refunded to the reseller); ValueError when the balance it added was already spent."""
     fb = float(p["from_balance"] or 0)
     new_bal = round(float(sub["balance"] or 0) + fb, 2)
     if new_bal < 0:
-        flash("Not reverted: the money this renewal added to the customer's balance (%.2f) has already been spent." % -fb, "error")
-        return back
+        raise ValueError("Not reverted: the money this renewal added to the customer's balance (%.2f) has already been spent." % -fb)
     plan_id = p["prev_plan_id"] or sub["plan_id"]
     x("UPDATE subscribers SET expiry_date = %s, expiry_time = %s, status = %s, plan_id = %s, balance = %s WHERE id = %s",
-      (p["prev_expiry"], p["prev_expiry_time"], p["prev_status"] or "active", plan_id, new_bal, sid))
+      (p["prev_expiry"], p["prev_expiry_time"], p["prev_status"] or "active", plan_id, new_bal, sub["id"]))
     if fb:
         insert("INSERT INTO sub_ledger (subscriber_id, amount, balance_after, note, created_by) VALUES (%s, %s, %s, %s, %s)",
-               (sid, fb, new_bal, "Reverted renewal #%d" % p["id"], g.me["username"]))
+               (sub["id"], fb, new_bal, "Reverted renewal #%d" % p["id"], g.me["username"]))
     refunded = 0.0
     if p["payer_id"] and p["cost"]:
         refunded = float(p["cost"])
@@ -197,6 +189,25 @@ def subscriber_revert(sid):
                 pass
     audit("renewal_reverted", sub["username"], "payment #%d %.2f, expiry back to %s%s" % (
         p["id"], float(p["amount"] or 0), p["prev_expiry"], ", refunded %.2f to the reseller" % refunded if refunded else ""))
+    return fb, refunded
+
+
+@route("/subscribers/<int:sid>/revert", module="subscribers", methods=["POST"])
+def subscriber_revert(sid):
+    sub = q("SELECT * FROM subscribers WHERE id = %s", (sid,), one=True) or abort(404)
+    p = revertable(sid)
+    back = redirect(url_for("subscriber_view", sid=sid))
+    if not p or p["why"]:
+        flash("Nothing to revert%s." % ((": the last renewal was " + p["why"]) if p else ""), "error")
+        return back
+    if str(p["id"]) != request.form.get("payment_id", ""):
+        flash("The last renewal changed meanwhile. Reload the page and try again.", "error")
+        return back
+    try:
+        fb, refunded = undo_renewal(sub, p)
+    except ValueError as e:
+        flash(str(e), "error")
+        return back
     commit()
     flash("Renewal reverted: expiry back to %s%s%s." % (
         p["prev_expiry"].strftime("%d %b %Y") if p["prev_expiry"] else "none",

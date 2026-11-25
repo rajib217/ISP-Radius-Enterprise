@@ -463,8 +463,9 @@ def collections():
 
 @route("/collections/<int:cid>/void", methods=["POST"])
 def collection_void(cid):
-    """Administrators only: mark a posted collection void (it leaves the collector's cash in hand and their report).
-    The customer's renewal / ledger is not undone here: reverse it on the customer's page if the money was not taken."""
+    """Administrators only: void a posted collection and undo what it did - the renewal (as Revert Last Invoice: expiry
+    back, the reseller's cost refunded), the charges it paid (unpaid again), the money it left in the balance - and drop
+    its payments, so Payments and the reports no longer count it. Refused (nothing changes) when that is no longer safe."""
     if g.me["role"] != "admin":
         abort(403)
     c = q("SELECT * FROM collections WHERE id = %s", (cid,), one=True) or abort(404)
@@ -472,10 +473,52 @@ def collection_void(cid):
     if c["status"] != "posted" or len(reason) < 3:
         flash("Write why the collection is void (a few words)." if c["status"] == "posted" else "Already void.", "error")
         return redirect(url_for("collections"))
+    err = _undo(c)
+    if err:
+        get_db().rollback()
+        flash("Receipt %s was not voided: %s Nothing was changed." % (c["receipt_no"], err), "error")
+        return redirect(url_for("collections"))
     x("UPDATE collections SET status = 'void', void_by = %s, void_reason = %s, void_at = NOW() WHERE id = %s AND status = 'posted'",
       (g.me["username"], reason, cid))
     audit("collection_void", c["username"], "%s %.2f: %s" % (c["receipt_no"], float(c["amount"]), reason))
     commit()
-    flash("Receipt %s is void. If the customer's renewal or balance must be undone too, do it on their page." % c["receipt_no"],
-          "warn")
+    flash("Receipt %s is void and everything it did was undone." % c["receipt_no"], "success")
     return redirect(url_for("collections"))
+
+
+def _undo(c):
+    """Reverse one collection inside the open transaction. Returns '' or why it cannot be undone."""
+    import mod_extras
+    tag = r"receipt %s([^0-9]|$)" % re.escape(c["receipt_no"])
+    sid = c["subscriber_id"]
+    # 1. what it left in (or, paying a charge, took from) the balance
+    net = float(q("SELECT COALESCE(SUM(amount), 0) AS t FROM sub_ledger WHERE subscriber_id = %s AND note REGEXP %s",
+                  (sid, tag), one=True)["t"] or 0)
+    if net:
+        with get_db().cursor() as cur:
+            cur.execute("UPDATE subscribers SET balance = balance - %s WHERE id = %s AND balance - %s >= 0", (net, sid, net))
+            if cur.rowcount != 1:
+                return "the %.2f it put into the customer's balance has already been spent." % net
+            cur.execute("SELECT balance FROM subscribers WHERE id = %s", (sid,))
+            cur.execute("INSERT INTO sub_ledger (subscriber_id, amount, balance_after, note, created_by) VALUES (%s, %s, %s, %s, %s)",
+                        (sid, -net, float(cur.fetchone()["balance"]), "Void receipt %s" % c["receipt_no"], g.me["username"]))
+    # 2. the charges it paid: unpaid again, their payments gone
+    for p in q("SELECT id, note FROM payments WHERE subscriber_id = %s AND days_added = 0 AND note REGEXP %s", (sid, tag)):
+        name = re.match(r"Extra fee: (.*?); ", p["note"] or "")
+        if name:
+            x("UPDATE sub_charges SET paid = 0, paid_at = NULL WHERE subscriber_id = %s AND name = %s AND paid = 1 "
+              "ORDER BY paid_at DESC LIMIT 1", (sid, name.group(1)))
+        x("DELETE FROM payments WHERE id = %s", (p["id"],))
+    # 3. the renewal: only while it is still the customer's last one (as Revert Last Invoice)
+    ren = q("SELECT id FROM payments WHERE subscriber_id = %s AND days_added > 0 AND note REGEXP %s", (sid, tag), one=True)
+    if ren:
+        last = mod_extras.revertable(sid)
+        if not last or last["id"] != ren["id"] or last["why"]:
+            return ("its renewal can no longer be undone (%s)." % (last["why"] if last and last["why"] and last["id"] == ren["id"]
+                                                                   else "the customer was renewed or paid again after it"))
+        sub = q("SELECT * FROM subscribers WHERE id = %s", (sid,), one=True)
+        try:
+            mod_extras.undo_renewal(sub, last)
+        except ValueError as e:
+            return str(e)
+    return ""

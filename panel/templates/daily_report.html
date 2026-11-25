@@ -13,7 +13,8 @@
 </div>
 
 <section class="kpis" style="margin-top:0">
-  <div class="kpi"><span class="k">Collected</span><span class="v">{{ d.pay.total|money }}</span><span class="s">{{ currency }} · {{ d.pay.n }} payment{{ '' if d.pay.n == 1 else 's' }} · {{ d.pay.renewals }} renewal{{ '' if d.pay.renewals == 1 else 's' }}</span></div>
+  <div class="kpi"><span class="k">Company income</span><span class="v">{{ d.income.total|money }}</span><span class="s" title="A reseller's customer pays the reseller; the company's income from resellers is the balance they buy">own customers {{ d.income.own|money }} · reseller balance {{ d.income.topups|money }}</span></div>
+  <div class="kpi"><span class="k">Payments recorded</span><span class="v">{{ d.pay.total|money }}</span><span class="s">{{ d.pay.n }} payment{{ '' if d.pay.n == 1 else 's' }} · {{ d.pay.renewals }} renewal{{ '' if d.pay.renewals == 1 else 's' }}, resellers' customers too</span></div>
   <div class="kpi"><span class="k">Expenses</span><span class="v">{{ d.spent|money }}</span><span class="s">other income {{ d.other_in|money }}</span></div>
   <div class="kpi"><span class="k">Net for the day</span><span class="v {{ 'g' if d.net >= 0 else 'r' }}">{{ d.net|money }}</span><span class="s">{{ currency }}</span></div>
   <div class="kpi"><span class="k">New customers</span><span class="v">{{ d.subs.new_c }}</span><span class="s">{{ '{:,}'.format(d.subs.total) }} in all · {{ '{:,}'.format(d.online) }} online now</span></div>

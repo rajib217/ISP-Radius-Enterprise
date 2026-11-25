@@ -38,7 +38,7 @@
       <td class="who-cell"><a href="{{ url_for('subscriber_view', sid=r.id) }}"><b>{{ r.full_name or r.username }}</b></a><small><span class="mono">{{ r.code }}</span> · {{ r.username }}{% if r.phone %} · <a href="tel:{{ r.phone }}">{{ r.phone }}</a>{% endif %}</small></td>
       <td class="hide-sm">{{ r.area or '—' }}</td><td>{{ r.plan_label or '—' }}</td>
       <td class="nowrap">{{ r.expiry_date|d }}<small class="{{ 'r' if r.days_over > 7 else 'muted' }}" style="display:block">{{ r.days_over }} day{{ '' if r.days_over == 1 else 's' }} ago</small></td>
-      <td class="num"><b>{{ r.price|money }}</b></td>
+      <td class="num"><b>{{ r.due|money }}</b></td>
       <td class="hide-sm">{% if r.last_call %}<span class="badge plain mute">{{ outcomes.get(r.last_call.outcome, r.last_call.outcome) }}</span>{% if r.last_call.follow_up %} <small>→ {{ r.last_call.follow_up|d }}</small>{% endif %}<small class="muted" style="display:block">{{ r.last_call.created_at|ago }}{% if r.last_call.note %} · {{ r.last_call.note|truncate(40) }}{% endif %}</small>{% else %}<span class="muted">—</span>{% endif %}</td>
       <td class="act nowrap"><a class="btn sm" href="{{ url_for('subscriber_view', sid=r.id) }}#calls" title="Note a call" aria-label="Note a call">{{ icon('phone') }}</a>{% if can('accounting', 'edit') %} <a class="btn sm primary" href="{{ url_for('subscriber_view', sid=r.id, renew=1) }}">{{ icon('card') }}Receive</a>{% endif %}</td>
     </tr>{% endfor %}</tbody>

@@ -6,6 +6,7 @@ from datetime import date, timedelta
 from flask import Response, abort, flash, g, redirect, render_template, request, url_for
 
 import core
+import db
 from core import admin_required, audit, commit, insert, pager, parse_date, q, route, x
 
 METHODS = ["cash", "bkash", "nagad", "rocket", "bank", "other"]
@@ -192,12 +193,11 @@ def receive():
         like = "%" + text + "%"
         names = core.my_downline()
         rows = q("SELECT s.id, s.username, s.full_name, s.phone, s.area, s.status, s.expiry_date, p.label AS plan_label, "
-                 "p.price FROM subscribers s LEFT JOIN plans p ON p.id = s.plan_id WHERE (s.username LIKE %s "
+                 "p.price, s.expiry_date IS NOT NULL AND " + db.PKG_END + " <= NOW() AS ended FROM subscribers s LEFT JOIN plans p ON p.id = s.plan_id WHERE (s.username LIKE %s "
                  "OR s.full_name LIKE %s OR s.phone LIKE %s)" + ("" if names is None else " AND s.created_by IN " + _in(names)) +
                  " ORDER BY s.username LIMIT 20", [like, like, like] + ([] if names is None else list(names)))
-        today = date.today()
         for r in rows:
-            r["expired"] = bool(r["expiry_date"] and r["expiry_date"] < today)
+            r["expired"] = bool(r["ended"])     # at the package's real end time, not just the date
     return render_template("receive.html", rows=rows, text=text)
 
 
@@ -576,9 +576,14 @@ def acct_summary():
             y -= 1
         months.append((y, m))
     first = date(months[0][0], months[0][1], 1)
+    # the company's income: payments of the office's own customers, the balance resellers buy (a reseller's customer
+    # pays the reseller, not the company), and income written in Cashflow
     inc = {r["ym"]: float(r["t"] or 0) for r in q(
-        "SELECT DATE_FORMAT(paid_at, '%%Y-%%m') AS ym, SUM(amount) AS t FROM payments WHERE paid_at >= %s "
-        "GROUP BY ym", (first,))}
+        "SELECT DATE_FORMAT(p.paid_at, '%%Y-%%m') AS ym, SUM(p.amount) AS t FROM payments p WHERE p.paid_at >= %s AND "
+        + db.OWN_PAYMENT + " GROUP BY ym", (first,))}
+    for r in q("SELECT DATE_FORMAT(ul.created_at, '%%Y-%%m') AS ym, SUM(" + db.TOPUP_AMOUNT + ") AS t " + db.TOPUP_FROM +
+               " AND ul.created_at >= %s GROUP BY ym", (first,)):
+        inc[r["ym"]] = inc.get(r["ym"], 0) + float(r["t"] or 0)
     exp = {r["ym"]: float(r["t"] or 0) for r in q(
         "SELECT DATE_FORMAT(spent_on, '%%Y-%%m') AS ym, SUM(amount) AS t FROM expenses WHERE kind = 'expense' AND spent_on >= %s "
         "GROUP BY ym", (first,))}
@@ -594,18 +599,24 @@ def acct_summary():
               "net": inc.get(k, 0) - exp.get(k, 0)} for i, k in enumerate(keys)]
     start, end = core.date_range(default_days=today.day - 1)
     span = (start, end)
-    income = q("SELECT COALESCE(SUM(amount), 0) AS total, COUNT(*) AS c FROM payments WHERE paid_at >= %s "
-               "AND paid_at < %s + INTERVAL 1 DAY", span, one=True)
+    own = q("SELECT COALESCE(SUM(p.amount), 0) AS total, COUNT(*) AS c FROM payments p WHERE p.paid_at >= %s "
+            "AND p.paid_at < %s + INTERVAL 1 DAY AND " + db.OWN_PAYMENT, span, one=True)
+    tops = q("SELECT COALESCE(SUM(" + db.TOPUP_AMOUNT + "), 0) AS total, COUNT(*) AS c " + db.TOPUP_FROM +
+             " AND ul.created_at >= %s AND ul.created_at < %s + INTERVAL 1 DAY", span, one=True)
     other = q("SELECT COALESCE(SUM(amount), 0) AS total, COUNT(*) AS c FROM expenses WHERE kind = 'income' AND spent_on >= %s "
               "AND spent_on <= %s", span, one=True)
-    income = {"total": float(income["total"] or 0) + float(other["total"] or 0), "c": income["c"] + other["c"]}
+    income = {"total": float(own["total"] or 0) + float(tops["total"] or 0) + float(other["total"] or 0),
+              "c": own["c"] + tops["c"] + other["c"], "own": float(own["total"] or 0), "topups": float(tops["total"] or 0),
+              "other": float(other["total"] or 0)}
     spent = q("SELECT COALESCE(SUM(amount), 0) AS total, COUNT(*) AS c FROM expenses WHERE kind = 'expense' AND spent_on >= %s "
               "AND spent_on <= %s", span, one=True)
     spent = {"total": float(spent["total"] or 0), "c": spent["c"]}
     by_cat = q("SELECT category, SUM(amount) AS total FROM expenses WHERE kind = 'expense' AND spent_on >= %s AND spent_on <= %s "
                "GROUP BY category ORDER BY total DESC", span)
-    by_method = q("SELECT method, SUM(amount) AS total FROM payments WHERE paid_at >= %s "
-                  "AND paid_at < %s + INTERVAL 1 DAY GROUP BY method ORDER BY total DESC", span)
+    by_method = q("SELECT p.method, SUM(p.amount) AS total FROM payments p WHERE p.paid_at >= %s "
+                  "AND p.paid_at < %s + INTERVAL 1 DAY AND " + db.OWN_PAYMENT + " GROUP BY p.method ORDER BY total DESC", span)
+    if income["topups"]:
+        by_method = list(by_method) + [{"method": "Reseller balance", "total": income["topups"]}]
     return render_template("acct_summary.html", chart=chart, table=table, income=income, spent=spent,
                            by_cat=by_cat, by_method=by_method, start=start, end=end)
 
@@ -617,10 +628,13 @@ def dues():
     import mod_ops
     where, params = mod_ops.dues_filter(request.args)      # the same filters choose who gets the reminder SMS
     cond = " WHERE " + " AND ".join(where)
-    tot = q("SELECT COUNT(*) AS c, COALESCE(SUM(p.price), 0) AS amount FROM subscribers s "
+    # what each one really owes: their own price (a reseller's price, taxes / fees) less their balance, plus unpaid
+    # charges - the same amount their page and the bill collector show
+    tot = q("SELECT COUNT(*) AS c, COALESCE(SUM(" + db.DUE_SQL + "), 0) AS amount FROM subscribers s "
             "LEFT JOIN plans p ON p.id = s.plan_id" + cond, params, one=True)
     pg = pager(tot["c"])
     rows = q("SELECT s.id, s.username, s.full_name, s.phone, s.area, s.expiry_date, p.label AS plan_label, p.price, "
+             + db.DUE_SQL + " AS due, "
              "DATEDIFF(CURDATE(), s.expiry_date) AS days_over FROM subscribers s LEFT JOIN plans p "
              "ON p.id = s.plan_id" + cond + " ORDER BY s.expiry_date ASC, s.username LIMIT %s OFFSET %s",
              params + [pg["per"], pg["offset"]])

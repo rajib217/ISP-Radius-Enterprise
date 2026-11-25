@@ -202,6 +202,43 @@ TIERS = [("reseller", "Reseller", "Resellers"), ("subreseller", "Sub-reseller", 
          ("retailer", "Retailer", "Retailers")]
 
 
+# ------------------------------------------------------------------ shared SQL (alias s = subscribers; no Flask, so the
+# pages, the daily report and the Telegram message all use the same rules)
+SELLERS_SQL = "SELECT username FROM panel_admins WHERE role IN ('reseller', 'subreseller', 'retailer')"
+_PLAN_TIME = "NULLIF((SELECT px.fixed_expire_time FROM plans px WHERE px.id = s.plan_id), '')"
+# when the package ends: the customer's own time, else the package's, else 23:59:59 (as RADIUS cuts them)
+PKG_END = "TIMESTAMP(s.expiry_date, COALESCE(NULLIF(s.expiry_time, ''), " + _PLAN_TIME + ", '23:59:59'))"
+# a grace period still running: RADIUS lets them in until the grace day at the package's time
+GRACE_ON = ("(s.grace_until IS NOT NULL AND s.grace_until > s.expiry_date AND "
+            "TIMESTAMP(s.grace_until, COALESCE(" + _PLAN_TIME + ", '23:59:59')) > NOW())")
+# an active customer whose package has ended (the Dues list)
+ENDED = "s.status = 'active' AND s.expiry_date IS NOT NULL AND " + PKG_END + " <= NOW()"
+# what the customer pays for their package now: their seller's price (+ subscriber profit), else the package price,
+# plus the package's active taxes / fees (mod_subs.customer_price)
+_BASE = ("COALESCE(NULLIF((SELECT up.price + COALESCE(up.sub_profit, 0) FROM user_plans up JOIN panel_admins ua ON ua.id = up.user_id "
+         "WHERE ua.username = s.created_by AND up.plan_id = s.plan_id LIMIT 1), 0), "
+         "(SELECT pz.price FROM plans pz WHERE pz.id = s.plan_id), 0)")
+CUSTOMER_PRICE = ("ROUND(" + _BASE + " + COALESCE((SELECT SUM(CASE WHEN f.mode = 'percent' THEN " + _BASE + " * f.value / 100 "
+                  "ELSE f.value END) FROM fees f JOIN plan_fees pf ON pf.fee_id = f.id WHERE f.active = 1 AND pf.plan_id = s.plan_id), 0), 2)")
+_CHARGES = "COALESCE((SELECT SUM(c.amount) FROM sub_charges c WHERE c.subscriber_id = s.id AND c.paid = 0), 0)"
+_BAL = "GREATEST(COALESCE(s.balance, 0), 0)"
+# what an ended customer owes now (as on their page and for the bill collector): the package less what is already in the
+# balance, plus unpaid charges less any balance left over
+DUE_SQL = ("(GREATEST(" + CUSTOMER_PRICE + " - " + _BAL + ", 0) + GREATEST(" + _CHARGES + " - GREATEST(" + _BAL + " - "
+           + CUSTOMER_PRICE + ", 0), 0))")
+# a payment that is the company's own income: from the office's own customers (a reseller's customer pays the reseller;
+# the company's income from them is the balance the reseller buys, counted from user_ledger)
+OWN_PAYMENT = ("(p.subscriber_id IS NULL OR p.subscriber_id NOT IN (SELECT id FROM subscribers WHERE created_by IN ("
+               + SELLERS_SQL + ")))")
+# money a reseller / sub-reseller / retailer paid the company for balance (bKash, or balance added by staff), after its
+# corrections; the same rule as Accounting > Cashflow "User Payment"
+TOPUP_FROM = ("FROM user_ledger ul JOIN panel_admins a ON a.id = ul.user_id LEFT JOIN (SELECT ref_id, SUM(amount) AS adj "
+              "FROM user_ledger WHERE method = 'correction' AND ref_id IS NOT NULL GROUP BY ref_id) cr ON cr.ref_id = ul.id "
+              "WHERE ul.amount > 0 AND ul.method NOT IN ('activation', 'correction') AND a.role IN ('reseller', 'subreseller', "
+              "'retailer') AND (ul.method = 'bkash' OR ul.created_by NOT IN (" + SELLERS_SQL + "))")
+TOPUP_AMOUNT = "(ul.amount + COALESCE(cr.adj, 0))"
+
+
 def tiers_off(s):
     """Roles that are switched off. A tier is also off while the tier above it is off."""
     off, above_off = set(), False

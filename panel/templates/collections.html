@@ -69,7 +69,7 @@
           {% if r.status == 'void' %}<small>Void: {{ r.void_reason }} ({{ r.void_by }})</small>{% endif %}</div>
         <div class="cl-side"><span class="cl-num">{{ r.amount|money }}</span>
           {% if r.status == 'void' %}<span class="cl-tag late">void</span>
-          {% elif admin %}<form method="post" action="{{ url_for('collection_void', cid=r.id) }}" class="cl-void" data-confirm="Void receipt {{ r.receipt_no }}? It cannot be undone.">{{ csrf_input() }}<label class="sr-only" for="vr-{{ r.id }}">Why</label><input id="vr-{{ r.id }}" name="reason" placeholder="Why (required)" maxlength="255" required><button class="btn sm red">Void</button></form>{% endif %}</div>
+          {% elif admin %}<form method="post" action="{{ url_for('collection_void', cid=r.id) }}" class="cl-void" data-confirm="Void receipt {{ r.receipt_no }}? Its renewal, the charges it paid and the money it put in the balance are undone, and the payment leaves the reports.">{{ csrf_input() }}<label class="sr-only" for="vr-{{ r.id }}">Why</label><input id="vr-{{ r.id }}" name="reason" placeholder="Why (required)" maxlength="255" required><button class="btn sm red">Void</button></form>{% endif %}</div>
       </li>{% endfor %}</ul>
     {% else %}<div class="cl-pad"><p class="muted" style="margin:0">No collections in this period.</p></div>{% endif %}
   </section>

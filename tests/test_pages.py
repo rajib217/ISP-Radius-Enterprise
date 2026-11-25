@@ -3198,7 +3198,7 @@ def check_rules(flask_app, ids):
           and _dep["status"] == "pending" and float(_dep["amount"]) == round(_hand, 2) and _hand > 0 and _too_much == 1
           and _wrong_boss == 403 and _after == "confirmed" and _left_hand["hand"] == 0 and _left_hand["pending"] == 0
           and "CI Collector" in _res_page and "Got it" not in _res_page and "Deposit cash" not in _rep_page
-          and _void_a == 302 and _void_row["status"] == "void" and _void_row["void_by"] == "admin"
+          and _void_a == 302 and _void_row["status"] == "posted"          # later payments: its renewal can no longer be undone
           and 'href="/collect/report"' in _menu_c and 'href="/my-users"' not in _menu_c,
           "Bill Collector: a reseller adds one; they see only that reseller's customers who owe, take cash / bKash / POS "
           "(never above the due or the cap, never a card number, a TrxID or a form only once, a quick repeat asks first), an "
@@ -3393,6 +3393,62 @@ def check_rules(flask_app, ids):
           "Subscribers menu: Online sessions shows and disconnects only a reseller's own customers (their technician too, "
           "no ISP-wide counter); Expired / Expiring count from the real end time; grace customers are not Expired Online; "
           "Recent Auto Renew is only automatic renewals " + repr((_ended_today, _soon, _grace, _no_grace_on, _manual_auto, _real_auto)))
+    # ===== Accounting: company income, real dues, statements, a void that undoes everything
+    _rname2 = one("SELECT username FROM panel_admins WHERE id = %s", (ids["reseller"],))["username"]
+    _sp = adm.get("/accounting/summary").get_data(as_text=True)
+    _dr = adm.get("/reports/daily").get_data(as_text=True)
+    _today_own = float(one("SELECT COALESCE(SUM(p.amount), 0) AS t FROM payments p WHERE p.paid_at >= CURDATE() AND (p.subscriber_id IS NULL OR "
+                           "p.subscriber_id NOT IN (SELECT id FROM subscribers WHERE created_by IN (SELECT username FROM panel_admins "
+                           "WHERE role IN ('reseller', 'subreseller', 'retailer'))))")["t"])
+    import dailyreport as _drep
+    with flask_app.app_context():
+        import core as _core
+        with _core.get_db().cursor() as _c:
+            _d = _drep.build(_c, _dt.date.today())
+    _all_today = float(one("SELECT COALESCE(SUM(amount), 0) AS t FROM payments WHERE paid_at >= CURDATE()")["t"])
+    # Dues: the real due (a reseller's price, less the balance, plus charges) and the real end time
+    _dsub = one("SELECT id, username FROM subscribers WHERE created_by = %s ORDER BY id DESC LIMIT 1", (_rname2,))
+    run("DELETE FROM sub_charges WHERE subscriber_id = %s", (_dsub["id"],))
+    run("UPDATE subscribers SET status = 'active', balance = 100, grace_until = NULL, expiry_date = CURDATE() - INTERVAL 3 DAY, "
+        "expiry_time = NULL WHERE id = %s", (_dsub["id"],))
+    run("INSERT INTO sub_charges (subscriber_id, name, amount) VALUES (%s, 'CI dues fee', 50)", (_dsub["id"],))
+    import mod_collect as _mcol, mod_subs as _msubs
+    with flask_app.test_request_context():
+        from flask import g as _g
+        _g.me = {"id": ids["admin"], "username": "admin", "role": "admin", "parent_id": None}
+        _srow = one("SELECT s.*, p.price FROM subscribers s LEFT JOIN plans p ON p.id = s.plan_id WHERE s.id = %s", (_dsub["id"],))
+        _want = _mcol.due_of(_srow)["total"]
+    _du = adm.get("/dues?q=%s" % _dsub["username"]).get_data(as_text=True)
+    _du_amt = re.search(r"/subscribers/%d.*?<td class=\"num\"><b>([0-9,.]+)</b>" % _dsub["id"], _du, re.S)
+    # Monthly statement: only the reseller tiers; their collectors' takings count as theirs
+    _st_page = _rc2.get("/statements").get_data(as_text=True)
+    # a fresh collection, then void: the renewal, the fee and the balance are undone and the payment leaves Payments
+    run("UPDATE panel_admins SET balance = 100000 WHERE id = %s", (ids["reseller"],))
+    _before = one("SELECT expiry_date, balance FROM subscribers WHERE id = %s", (_dsub["id"],))
+    _rbal0 = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
+    _fv = _cc.get("/collect/%d" % _dsub["id"]).get_data(as_text=True)
+    _cc.post("/collect/%d" % _dsub["id"], data={"_csrf": "ci", "form_token": _tok(_fv), "method": "cash", "amount": "%.2f" % _due(_fv),
+                                               "repeat_ok": "1"})
+    _vc = one("SELECT * FROM collections WHERE subscriber_id = %s ORDER BY id DESC LIMIT 1", (_dsub["id"],))
+    _mid = one("SELECT expiry_date >= CURDATE() AS renewed FROM subscribers WHERE id = %s", (_dsub["id"],))["renewed"]
+    _pays_mid = one("SELECT COUNT(*) AS c FROM payments WHERE note LIKE %s", ("%" + _vc["receipt_no"] + "%",))["c"]
+    _rv = adm.post("/collections/%d/void" % _vc["id"], data={"_csrf": "ci", "reason": "ci wrong door"}, follow_redirects=True)
+    _after = one("SELECT expiry_date, balance FROM subscribers WHERE id = %s", (_dsub["id"],))
+    _pays_after = one("SELECT COUNT(*) AS c FROM payments WHERE note LIKE %s", ("%" + _vc["receipt_no"] + "%",))["c"]
+    _fee_back = one("SELECT paid FROM sub_charges WHERE subscriber_id = %s AND name = 'CI dues fee'", (_dsub["id"],))["paid"]
+    _rbal1 = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
+    _vstat = one("SELECT status FROM collections WHERE id = %s", (_vc["id"],))["status"]
+    check("own customers" in _sp and "reseller balance" in _sp and "Company income" in _dr
+          and abs(_d["income"]["own"] - _today_own) < 0.01 and _d["pay"]["total"] == _all_today
+          and _du_amt and abs(float(_du_amt.group(1).replace(",", "")) - _want) < 0.01 and _want > 0
+          and "Bill Collector" not in _st_page and "Technician" not in _st_page
+          and _mid == 1 and _pays_mid >= 1 and _vstat == "void" and "undone" in _rv.get_data(as_text=True)
+          and _after["expiry_date"] == _before["expiry_date"] and float(_after["balance"]) == float(_before["balance"])
+          and _pays_after == 0 and _fee_back == 0 and abs(_rbal1 - _rbal0) < 0.01,
+          "Accounting: company income counts the office's own customers and the balance resellers buy (Daily report the "
+          "same); Dues shows the real amount owed; the statement lists only reseller tiers; voiding a collection undoes its "
+          "renewal, fee and balance, refunds the reseller and takes the payment out of the reports "
+          + repr((_d["income"], _today_own, _du_amt.group(1) if _du_amt else None, _want, _before, _after, _pays_after, _fee_back, _rbal0, _rbal1)))
     return bad
 
 

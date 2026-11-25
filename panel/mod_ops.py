@@ -13,6 +13,7 @@ from flask import Response, abort, flash, g, redirect, render_template, request,
 
 import core
 import dailyreport
+import db
 import msglib
 from core import audit, commit, get_db, q, route
 
@@ -61,6 +62,7 @@ def _statement_rows(first, nxt):
     else:
         sellers = q("SELECT a.id, a.username, a.full_name, a.role, a.balance, par.username AS parent FROM panel_admins a "
                     "LEFT JOIN panel_admins par ON par.id = a.parent_id WHERE a.username IN (%s) "
+                    "AND a.role IN ('reseller', 'subreseller', 'retailer') "       # not their own technicians / collectors
                     "ORDER BY FIELD(a.role, 'reseller', 'subreseller', 'retailer'), a.username" % ",".join(["%s"] * len(names)),
                     list(names))
     if not sellers:
@@ -78,13 +80,24 @@ def _statement_rows(first, nxt):
                  "WHERE user_id IN (" + ph_i + ") AND created_at < %s GROUP BY user_id) m ON m.mid = l.id", ids + [moment])
         return {r["user_id"]: float(r["balance_after"]) for r in rows}
     opening, closing = _bal_at(first), _bal_at(nxt)
-    pays = {r["received_by"]: r for r in q(
-        "SELECT received_by, COUNT(*) AS n, SUM(days_added > 0) AS renewals, COALESCE(SUM(amount), 0) AS total FROM payments "
-        "WHERE received_by IN (" + ph_u + ") AND paid_at >= %s AND paid_at < %s GROUP BY received_by", users + [first, nxt])}
+    # what their own bill collectors took counts as theirs (a collector's payments carry the collector's name)
+    staff = {r["username"]: r["boss"] for r in q(
+        "SELECT c.username, b.username AS boss FROM panel_admins c JOIN panel_admins b ON b.id = c.parent_id "
+        "WHERE c.role = 'collector' AND b.username IN (" + ph_u + ")", users)}
+    takers = users + list(staff)
+    pays = {}
+    for r in q("SELECT received_by, COUNT(*) AS n, SUM(days_added > 0) AS renewals, COALESCE(SUM(amount), 0) AS total FROM payments "
+               "WHERE received_by IN (" + ",".join(["%s"] * len(takers)) + ") AND paid_at >= %s AND paid_at < %s GROUP BY received_by",
+               takers + [first, nxt]):
+        who = staff.get(r["received_by"], r["received_by"])
+        acc = pays.setdefault(who, {"n": 0, "renewals": 0, "total": 0.0})
+        acc["n"] += int(r["n"] or 0)
+        acc["renewals"] += int(r["renewals"] or 0)
+        acc["total"] += float(r["total"] or 0)
     subs = {r["created_by"]: r for r in q(
-        "SELECT created_by, COUNT(*) AS total, SUM(created_at >= %s AND created_at < %s) AS new_c, "
-        "SUM(status = 'active' AND (expiry_date IS NULL OR expiry_date >= CURDATE())) AS active FROM subscribers "
-        "WHERE created_by IN (" + ph_u + ") GROUP BY created_by", [first, nxt] + users)}
+        "SELECT s.created_by, COUNT(*) AS total, SUM(s.created_at >= %s AND s.created_at < %s) AS new_c, "
+        "SUM(s.status = 'active' AND (s.expiry_date IS NULL OR " + db.PKG_END + " > NOW() OR " + db.GRACE_ON + ")) AS active "
+        "FROM subscribers s WHERE s.created_by IN (" + ph_u + ") GROUP BY s.created_by", [first, nxt] + users)}
     labels = dict(core.role_list())
     out = []
     for s in sellers:
@@ -136,8 +149,9 @@ def pay_link(s, sid):
 
 
 def dues_filter(args):
-    """(where list, params) for the Dues list and its reminder: active customers whose package has ended."""
-    where = ["s.status = 'active'", "s.expiry_date < CURDATE()"]
+    """(where list, params) for the Dues list and its reminder: active customers whose package has ended (at its real
+    end time, as RADIUS cuts them)."""
+    where = [db.ENDED]
     params = []
     text = (args.get("q") or "").strip()
     if text:
@@ -175,7 +189,8 @@ def dues_remind():
             return back
         where.append("s.id IN (%s)" % ",".join(["%s"] * len(ids)))
         params += ids
-    rows = q("SELECT s.id, s.username, s.full_name, s.phone, s.expiry_date, s.sms_on, s.balance, p.label AS plan_label, p.price "
+    rows = q("SELECT s.id, s.username, s.full_name, s.phone, s.expiry_date, s.sms_on, s.balance, p.label AS plan_label, p.price, "
+             + db.DUE_SQL + " AS due "
              "FROM subscribers s LEFT JOIN plans p ON p.id = s.plan_id WHERE " + " AND ".join(where) + " LIMIT 5000", params)
     s = core.cfg()
     isp = s.get("isp_name") or ""
@@ -190,7 +205,7 @@ def dues_remind():
             if not phone or not r["sms_on"]:
                 skipped += 1
                 continue
-            due = max(float(r["price"] or 0) - float(r["balance"] or 0), 0)
+            due = float(r["due"] or 0)            # their own price and charges, less their balance (as on their page)
             ctx = msglib.sub_context(r, isp, {"amount": msglib.money(due), "id": core.sub_code(r["id"]),
                                               "paylink": pay_link(s, r["id"])})
             body = re.sub(r"[ \t]{2,}", " ", msglib.render(tpl["body"], ctx)).strip()   # an empty {paylink} leaves no gap

@@ -4,6 +4,8 @@ No Flask here: the page (Accounting > Daily report, mod_ops.py) and the Telegram
 call build() with an open cursor, so the two always show the same numbers."""
 from datetime import date, timedelta
 
+import db
+
 
 def _one(cur, sql, args=()):
     cur.execute(sql, args)
@@ -35,16 +37,26 @@ def build(cur, day):
         d["spent"], d["other_in"] = float(e.get("spent") or 0), float(e.get("other_in") or 0)
     except Exception:                 # an older database without the Cashflow columns
         d["spent"], d["other_in"] = 0.0, 0.0
-    d["net"] = round(d["pay"]["total"] + d["other_in"] - d["spent"], 2)
+    # the company's own income: the office's own customers' payments plus the balance resellers bought (a reseller's
+    # customer pays the reseller; "Collected" above counts every payment recorded, theirs too)
+    own = _one(cur, "SELECT COALESCE(SUM(p.amount), 0) AS t FROM payments p WHERE p.paid_at >= %s AND p.paid_at < %s AND "
+               + db.OWN_PAYMENT, (start, end))
+    try:
+        tops = _one(cur, "SELECT COALESCE(SUM(" + db.TOPUP_AMOUNT + "), 0) AS t " + db.TOPUP_FROM +
+                    " AND ul.created_at >= %s AND ul.created_at < %s", (start, end))
+    except Exception:
+        tops = {}
+    d["income"] = {"own": float(own.get("t") or 0), "topups": float(tops.get("t") or 0)}
+    d["income"]["total"] = round(d["income"]["own"] + d["income"]["topups"], 2)
+    d["net"] = round(d["income"]["total"] + d["other_in"] - d["spent"], 2)
     c = _one(cur, "SELECT SUM(created_at >= %s AND created_at < %s) AS new_c, COUNT(*) AS total, "
-                  "SUM(status = 'active' AND expiry_date < CURDATE()) AS dues_n, "
+                  "SUM(" + db.ENDED + ") AS dues_n, "
                   "SUM(status = 'active' AND expiry_date = CURDATE()) AS exp_today, "
                   "SUM(status = 'active' AND expiry_date = CURDATE() + INTERVAL 1 DAY) AS exp_tomorrow, "
                   "SUM(status = 'active' AND expiry_date BETWEEN CURDATE() + INTERVAL 2 DAY AND CURDATE() + INTERVAL 3 DAY) AS exp_3 "
-                  "FROM subscribers", (start, end))
+                  "FROM subscribers s", (start, end))
     d["subs"] = {k: int(c.get(k) or 0) for k in ("new_c", "total", "dues_n", "exp_today", "exp_tomorrow", "exp_3")}
-    due = _one(cur, "SELECT COALESCE(SUM(p.price), 0) AS amount FROM subscribers s LEFT JOIN plans p ON p.id = s.plan_id "
-                    "WHERE s.status = 'active' AND s.expiry_date < CURDATE()")
+    due = _one(cur, "SELECT COALESCE(SUM(" + db.DUE_SQL + "), 0) AS amount FROM subscribers s WHERE " + db.ENDED)
     d["subs"]["dues_amount"] = float(due.get("amount") or 0)
     d["online"] = int(_one(cur, "SELECT COUNT(*) AS c FROM radacct WHERE acctstoptime IS NULL").get("c") or 0)
     t = _one(cur, "SELECT SUM(created_at >= %s AND created_at < %s) AS opened, SUM(closed_at >= %s AND closed_at < %s) AS closed, "
@@ -66,6 +78,8 @@ def text(d, isp, currency):
              "💰 Collected: %s %s (%d payments, %d renewals)" % (currency, m(d["pay"]["total"]), d["pay"]["n"], d["pay"]["renewals"])]
     if d["by_method"]:
         lines.append("   " + " · ".join("%s %s" % (r["method"].capitalize(), m(r["total"])) for r in d["by_method"][:5]))
+    lines.append("🏢 Company income: %s %s (own customers %s · reseller balance %s)" % (
+        currency, m(d["income"]["total"]), m(d["income"]["own"]), m(d["income"]["topups"])))
     if d["spent"] or d["other_in"]:
         lines.append("🧾 Expenses: %s %s · Other income: %s · Net: %s" % (currency, m(d["spent"]), m(d["other_in"]), m(d["net"])))
     if d["by_person"]:

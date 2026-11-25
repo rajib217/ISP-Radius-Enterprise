@@ -297,12 +297,9 @@ def onu_scope(alias="o"):
     return " AND %s.olt_id IN (SELECT od.id FROM net_devices od WHERE od.kind = 'olt'%s)" % (alias, sql), p
 
 
-# when the package ends (no alias for plans needed: every caller of sub_filters can use it)
-_PLAN_TIME = "NULLIF((SELECT px.fixed_expire_time FROM plans px WHERE px.id = s.plan_id), '')"
-PKG_END = "TIMESTAMP(s.expiry_date, COALESCE(NULLIF(s.expiry_time, ''), " + _PLAN_TIME + ", '23:59:59'))"
-# a grace period still running (Grace Period On): RADIUS lets them in until the grace day at the package's time
-GRACE_ON = ("(s.grace_until IS NOT NULL AND s.grace_until > s.expiry_date AND "
-            "TIMESTAMP(s.grace_until, COALESCE(" + _PLAN_TIME + ", '23:59:59')) > NOW())")
+# when the package ends / a grace period still running (db.py: shared with the daily report)
+PKG_END = db.PKG_END
+GRACE_ON = db.GRACE_ON
 
 
 def stale_minutes():

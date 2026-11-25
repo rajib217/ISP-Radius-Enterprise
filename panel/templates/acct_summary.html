@@ -11,7 +11,7 @@
 </div>
 {% set net = income.total - spent.total %}
 <section class="kpis" style="margin-top:0">
-  <div class="kpi"><span class="k">Income</span><span class="v">{{ income.total|money }}</span><span class="s">{{ income.c }} payments</span></div>
+  <div class="kpi"><span class="k">Income</span><span class="v">{{ income.total|money }}</span><span class="s" title="A reseller's customer pays the reseller; the company's income from resellers is the balance they buy">own customers {{ income.own|money }} · reseller balance {{ income.topups|money }}{% if income.other %} · other {{ income.other|money }}{% endif %}</span></div>
   <div class="kpi"><span class="k">Expenses</span><span class="v">{{ spent.total|money }}</span><span class="s">{{ spent.c }} records</span></div>
   <div class="kpi"><span class="k">Net</span><span class="v" style="color:var(--{{ 'ok' if net >= 0 else 'bad' }})">{{ net|money }}</span><span class="s">{{ currency }}</span></div>
 </section>
