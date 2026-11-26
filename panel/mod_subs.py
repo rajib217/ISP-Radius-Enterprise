@@ -135,16 +135,8 @@ def do_renew(sub, days, amount, method="cash", note="", notify=True, exact=False
                      sub.get("plan_id") if prev_plan_id is _KEEP else prev_plan_id))
     g.last_payment = pay_id
     with get_db().cursor() as cur:
+        # renewed out of the expired / disabled policy: sync_subscriber queues the reconnect (radius.py)
         radius.sync_subscriber(cur, sub["username"], plan, "active", new_expiry, sub["static_ip"])
-        # renewed after the package ran out (or while suspended): the live session may still sit in the expired /
-        # disabled policy, so ask the NOC service to disconnect it; the router reconnects with the full package
-        was_limited = sub.get("status") == "suspended" or (sub.get("expiry_date") and sub["expiry_date"] < date.today())
-        if was_limited:
-            try:
-                cur.execute("INSERT INTO coa_queue (username, reason, created_by) VALUES (%s, 'renewed', %s)",
-                            (sub["username"], g.me["username"][:64]))
-            except Exception:      # table missing until install.sh is re-run; the renewal itself must still go through
-                pass
     if notify:
         core.notify("payment", sub["id"], {"amount": core.fmt_money(amount)}, key=pay_id)
     import appnotify             # in the customer's app, always (the SMS / email switch above is separate)

@@ -1197,7 +1197,7 @@ def check_rules(flask_app, ids):
     with flask_app.test_request_context("/portal"):
         _paid = _bk2.settle_portal(_prow, {"trxID": "CINTRX1", "amount": "%.2f" % (float(_prow["amount"]) + float(_prow["fee"]))})
     _after = one("SELECT expiry_date, status FROM subscribers WHERE id = %s", (_ex["id"],))
-    _queued = one("SELECT COUNT(*) AS c FROM coa_queue WHERE username = %s AND reason = 'renewed'", (_ex["username"],))["c"]
+    _queued = one("SELECT COUNT(*) AS c FROM coa_queue WHERE username = %s AND reason = 'back to the package'", (_ex["username"],))["c"]
     check(_paid and _after["expiry_date"] > date.today() and _after["status"] == "active" and _queued >= 1,
           "a bKash payment from the notice page renews the package at once and reconnects the customer")
     run("DELETE FROM settings WHERE skey IN ('bkash_on', 'bkash_key', 'bkash_secret', 'bkash_user', 'bkash_pass', 'bkash_callback_base')")
@@ -3597,6 +3597,34 @@ def check_rules(flask_app, ids):
           and "before/after expiration" not in _fx_help and "on the expiry day" in _fx_help,
           "Fixed Expire Time: setting it on a package replaces its customers' own end times (RADIUS ends at the package "
           "time); auto renew keeps the package time; the Auto Renew help says when it renews " + repr((_fx_t1, _fx_rad, _fx_t2)))
+    # paid while sitting in the expired notice / policy (also on the day it ended): the live session is reconnected, by
+    # auto renew too, so it leaves the restricted IP; a customer who was not restricted is not disconnected
+    run("UPDATE plans SET auto_renew = 1 WHERE id = %s", (_pk,))
+    run("UPDATE subscribers SET status = 'active', net_disabled = 0, quota_hit = '', grace_until = NULL, balance = 1000, "
+        "expiry_date = CURDATE(), expiry_time = '00:00' WHERE id = %s", (_ar["id"],))
+    run("DELETE FROM radusergroup WHERE username = %s", (_ar["username"],))
+    run("INSERT INTO radusergroup (username, groupname, priority) VALUES (%s, 'expired-notice', 1)", (_ar["username"],))
+    run("DELETE FROM coa_queue WHERE username = %s", (_ar["username"],))
+    _c10 = db.connect()
+    with _c10.cursor() as _cur:
+        _mt2.subscriber_automation(_c10, _cur)
+    _c10.close()
+    _rq_auto = one("SELECT COUNT(*) AS c FROM coa_queue WHERE username = %s AND reason = 'back to the package'", (_ar["username"],))["c"]
+    _rq_groups = [r["groupname"] for r in run_q("SELECT groupname FROM radusergroup WHERE username = %s", (_ar["username"],))]
+    run("DELETE FROM coa_queue WHERE username = %s", (_ar["username"],))
+    with flask_app.test_request_context():
+        _c11 = db.connect()
+        with _c11.cursor() as _cur:
+            _rrow = one("SELECT * FROM subscribers WHERE id = %s", (_ar["id"],))
+            __import__("radius").sync_subscriber(_cur, _rrow["username"], _fx_plan, "active", _rrow["expiry_date"], _rrow["static_ip"])
+        _c11.commit()
+        _c11.close()
+    _rq_again = one("SELECT COUNT(*) AS c FROM coa_queue WHERE username = %s", (_ar["username"],))["c"]
+    run("UPDATE plans SET auto_renew = %s WHERE id = %s", (_fx_plan["auto_renew"], _pk))
+    check(_rq_auto == 1 and "expired-notice" not in _rq_groups and _fx_plan["name"] in _rq_groups and _rq_again == 0,
+          "Payment out of the expired notice (on the day it ended too, by auto renew as well): the live session is "
+          "reconnected so it leaves the restricted IP; one already on the package is not disconnected "
+          + repr((_rq_auto, _rq_groups, _rq_again)))
     # one rule for "expired" everywhere: the Home counters, the reports and the list agree, also on the day it ends
     if _dt.datetime.now().hour >= 1:
         run("UPDATE subscribers SET status = 'active', expiry_date = CURDATE(), expiry_time = %s, grace_until = NULL WHERE id = %s",

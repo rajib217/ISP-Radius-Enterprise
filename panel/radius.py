@@ -193,11 +193,22 @@ def sync_subscriber(cur, username, plan, status, expiry, static_ip, password=Non
         [(username,) + r for r in rows],
     )
 
+    cur.execute("SELECT groupname FROM radusergroup WHERE username = %s", (username,))
+    old_groups = [r["groupname"] for r in cur.fetchall()]
     cur.execute("DELETE FROM radusergroup WHERE username = %s", (username,))
     groups = [restricted] if restricted else [g for g in (plan.get("name"), plan.get("policy_group")) if g]
     for prio, grp in enumerate(groups, 1):
         cur.execute("INSERT INTO radusergroup (username, groupname, priority) VALUES (%s, %s, %s)",
                     (username, grp, prio))
+    # leaving a restricted group (expired notice, expired / disabled / quota policy) for the full package, by any path:
+    # a payment, auto renew, a grace period, a bulk change, an edit. The live session keeps the restricted IP and speed
+    # until it reconnects, so ask the NOC service to disconnect it; the router reconnects at once with the package
+    if not restricted and not reject and len(old_groups) == 1 and old_groups[0] not in groups:
+        try:
+            cur.execute("INSERT INTO coa_queue (username, reason, created_by) VALUES (%s, 'back to the package', 'system')",
+                        (username,))
+        except Exception:          # table missing until install.sh is re-run; the RADIUS rows above are still written
+            pass
 
     cur.execute(
         "DELETE FROM radreply WHERE username = %s AND attribute = 'Framed-IP-Address'",
