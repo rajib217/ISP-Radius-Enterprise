@@ -22,7 +22,7 @@
 
   <section class="panel"><div class="panel-body stack">
     <div class="field"><span class="lbl">Auto Renew</span>{{ switch('auto_renew', p.auto_renew) }}
-      <div class="help">System will auto renew active subscribers before/after expiration based on package, salesperson and subscriber settings.</div></div>
+      <div class="help">Renews every active customer on this package from their balance on the expiry day (or later, once the balance covers the price). A reseller's customer also needs the reseller's balance. Customers on other packages can have it turned on one by one on their page.</div></div>
     <div class="grid-2">
       <div class="field{{ bad('name') }}"><label class="lbl" for="pk-name">Name <b class="req">*</b></label><input id="pk-name" name="name" value="{{ p.name or '' }}" {{ 'readonly' if editing }} pattern="[A-Za-z0-9_\-]{2,64}" placeholder="10Mbps" required><div class="help">Also the RADIUS group name. Cannot change later.</div></div>
       <div class="field{{ bad('description') }}"><label class="lbl" for="pk-desc">Display name (Description) <b class="req">*</b></label><input id="pk-desc" name="description" value="{{ p.description or '' }}" maxlength="255" required placeholder="e.g. 20 Mbps Home"><div class="help">The package name customers and staff see: lists, receipts, the Activation window and the {plan} of SMS.</div></div>

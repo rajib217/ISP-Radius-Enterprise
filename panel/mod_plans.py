@@ -266,6 +266,10 @@ def plan_save():
         cols = list(vals)
         x("UPDATE plans SET " + ", ".join("%s = %%s" % c for c in cols) + " WHERE id = %s",
           [vals[c] for c in cols] + [pid])
+        # a new Fixed Expire Time applies to everyone on the package: a customer's own saved end time (the moment they
+        # were activated by hand) would otherwise win over it
+        if vals["fixed_expire_time"] and vals["fixed_expire_time"] != (old.get("fixed_expire_time") or None):
+            x("UPDATE subscribers SET expiry_time = NULL WHERE plan_id = %s AND expiry_time IS NOT NULL", (pid,))
     else:
         if q("SELECT 1 AS x FROM plans WHERE name = %s", (name,), one=True):
             flash("A package named %s already exists." % name, "error")

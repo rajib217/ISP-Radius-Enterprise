@@ -3537,6 +3537,66 @@ def check_rules(flask_app, ids):
     _rb_after = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
     _gone2 = one("SELECT COUNT(*) AS c FROM payments WHERE id = %s", (_arp["id"],))["c"]
     run("UPDATE subscribers SET auto_renew = 0 WHERE id = %s", (_ar["id"],))
+    # the package's Auto Renew switch renews its customers even with their own switch off; one with no balance is not renewed
+    _pk = one("SELECT plan_id FROM subscribers WHERE id = %s", (_ar["id"],))["plan_id"]
+    _pk_was = one("SELECT auto_renew FROM plans WHERE id = %s", (_pk,))["auto_renew"]
+    _poor = one("SELECT id FROM subscribers WHERE plan_id = %s AND id <> %s ORDER BY id LIMIT 1", (_pk, _ar["id"]))
+    run("UPDATE plans SET auto_renew = 1 WHERE id = %s", (_pk,))
+    run("UPDATE subscribers SET auto_renew = 0, status = 'active', net_disabled = 0, balance = 1000, "
+        "expiry_date = CURDATE() - INTERVAL 1 DAY, expiry_time = NULL WHERE id = %s", (_ar["id"],))
+    if _poor:
+        run("UPDATE subscribers SET auto_renew = 1, status = 'active', net_disabled = 0, balance = 0, "
+            "expiry_date = CURDATE() - INTERVAL 3 DAY WHERE id = %s", (_poor["id"],))
+    _pk_n0 = one("SELECT COUNT(*) AS c FROM payments WHERE subscriber_id = %s", (_ar["id"],))["c"]
+    _c8 = db.connect()
+    with _c8.cursor() as _cur:
+        _mt2.subscriber_automation(_c8, _cur)
+    _c8.close()
+    _pk_row = one("SELECT expiry_date, balance FROM subscribers WHERE id = %s", (_ar["id"],))
+    _pk_n1 = one("SELECT COUNT(*) AS c FROM payments WHERE subscriber_id = %s", (_ar["id"],))["c"]
+    _pk_page = adm.get("/subscribers/%d" % _ar["id"]).get_data(as_text=True)
+    _poor_row = one("SELECT expiry_date FROM subscribers WHERE id = %s", (_poor["id"],)) if _poor else None
+    run("UPDATE plans SET auto_renew = %s WHERE id = %s", (_pk_was, _pk))
+    if _poor:
+        run("UPDATE subscribers SET auto_renew = 0 WHERE id = %s", (_poor["id"],))
+    check(_pk_n1 == _pk_n0 + 1 and _pk_row["expiry_date"] > _dt.date.today() and float(_pk_row["balance"]) < 1000
+          and "Already on for everyone on this package" in _pk_page
+          and (not _poor or _poor_row["expiry_date"] < _dt.date.today()),
+          "Auto renew: the package's Auto Renew switch renews a customer with a balance even when their own switch is "
+          "off; a customer with no balance is not renewed " + repr((_pk_n0, _pk_n1, _pk_row, _poor)))
+    # Fixed Expire Time: a new package time replaces the customers' own saved end times; auto renew keeps the package time
+    _fx_plan = one("SELECT * FROM plans WHERE id = %s", (_pk,))
+    _fx_fees = [r["fee_id"] for r in run_q("SELECT fee_id FROM plan_fees WHERE plan_id = %s", (_pk,))]
+    run("UPDATE plans SET fixed_expire_time = NULL WHERE id = %s", (_pk,))
+    run("UPDATE subscribers SET expiry_time = '14:30', expiry_date = CURDATE() + INTERVAL 10 DAY WHERE id = %s", (_ar["id"],))
+    _fx_form = {"_csrf": "ci", "id": str(_pk), "description": _fx_plan["description"] or _fx_plan["label"],
+                "price": str(_fx_plan["price"] or 0), "duration": str(_fx_plan["duration"] or 30),
+                "duration_type": _fx_plan["duration_type"] or "day", "pool_name": _fx_plan["pool_name"] or "",
+                "policy_group": _fx_plan["policy_group"], "fixed_expire_time_on": "1", "fixed_expire_time": "12:00"}
+    _fx_save = adm.post("/plans/save", data=_fx_form)
+    _fx_t1 = one("SELECT expiry_time FROM subscribers WHERE id = %s", (_ar["id"],))["expiry_time"]
+    _fx_rad = (one("SELECT value FROM radcheck WHERE username = %s AND attribute = 'Expiration'", (_ar["username"],)) or {}).get("value", "")
+    run("UPDATE subscribers SET expiry_time = '14:30', expiry_date = CURDATE() - INTERVAL 1 DAY, balance = 1000, status = 'active' "
+        "WHERE id = %s", (_ar["id"],))
+    run("UPDATE plans SET auto_renew = 1 WHERE id = %s", (_pk,))
+    _c9 = db.connect()
+    with _c9.cursor() as _cur:
+        _mt2.subscriber_automation(_c9, _cur)
+    _c9.close()
+    _fx_t2 = one("SELECT expiry_time, expiry_date FROM subscribers WHERE id = %s", (_ar["id"],))
+    _fx_help = adm.get("/plans/%d/edit" % _pk).get_data(as_text=True)
+    # put the package back as it was (the form above leaves the switches and quotas it did not send off)
+    _fx_cols = [k for k in _fx_plan if k not in ("id", "name", "created_at")]
+    run("UPDATE plans SET " + ", ".join("%s = %%s" % k for k in _fx_cols) + " WHERE id = %s",
+        [_fx_plan[k] for k in _fx_cols] + [_pk])
+    run("DELETE FROM plan_fees WHERE plan_id = %s", (_pk,))
+    for _fid in _fx_fees:
+        run("INSERT INTO plan_fees (plan_id, fee_id) VALUES (%s, %s)", (_pk, _fid))
+    check(_fx_save.status_code == 302 and _fx_t1 is None and "12:00:00" in _fx_rad
+          and _fx_t2["expiry_time"] is None and _fx_t2["expiry_date"] > _dt.date.today()
+          and "before/after expiration" not in _fx_help and "on the expiry day" in _fx_help,
+          "Fixed Expire Time: setting it on a package replaces its customers' own end times (RADIUS ends at the package "
+          "time); auto renew keeps the package time; the Auto Renew help says when it renews " + repr((_fx_t1, _fx_rad, _fx_t2)))
     # one rule for "expired" everywhere: the Home counters, the reports and the list agree, also on the day it ends
     if _dt.datetime.now().hour >= 1:
         run("UPDATE subscribers SET status = 'active', expiry_date = CURDATE(), expiry_time = %s, grace_until = NULL WHERE id = %s",

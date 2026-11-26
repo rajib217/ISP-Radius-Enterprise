@@ -81,6 +81,7 @@ def context(sub, sessions):
     # what this customer actually pays for the package (their reseller's price and profit, plus taxes / fees)
     out["cust_price"] = None
     plan = _plan(sub["plan_id"]) if sub.get("plan_id") else None
+    out["plan_auto_renew"] = bool(plan and plan.get("auto_renew"))   # the package renews everyone on it
     if plan:
         import mod_subs
         try:

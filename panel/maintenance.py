@@ -208,8 +208,11 @@ def subscriber_automation(conn, cur):
         radius.sync_subscriber(cur, s["username"], plans.get(s["plan_id"]), s["status"], s["expiry_date"], s["static_ip"])
         done += 1
     conn.commit()
-    cur.execute("SELECT * FROM subscribers WHERE auto_renew = 1 AND status = 'active' AND plan_id IS NOT NULL "
-                "AND expiry_date IS NOT NULL AND expiry_date <= CURDATE() AND net_disabled = 0 LIMIT 500")
+    # on when the customer's own switch or their package's Auto Renew switch is on; customers whose balance covers the
+    # price come first, so ones who cannot pay never crowd them out of the batch
+    cur.execute("SELECT s.* FROM subscribers s JOIN plans p ON p.id = s.plan_id WHERE (s.auto_renew = 1 OR p.auto_renew = 1) "
+                "AND s.status = 'active' AND s.expiry_date IS NOT NULL AND s.expiry_date <= CURDATE() AND s.net_disabled = 0 "
+                "ORDER BY (COALESCE(s.balance, 0) + 0.001 >= " + db.CUSTOMER_PRICE + ") DESC, s.expiry_date DESC LIMIT 500")
     renew_rows = cur.fetchall()
     cur.execute("SELECT id, username, role, parent_id FROM panel_admins")
     blocked = db.blocked_usernames(cur.fetchall(), cfgs)
@@ -253,7 +256,10 @@ def subscriber_automation(conn, cur):
                                 (s["username"], "Reseller %s: %s" % (seller["username"], why)))
                 continue
         left = round(have - amount, 2)
-        cur.execute("UPDATE subscribers SET balance = %s, expiry_date = %s WHERE id = %s", (left, new_expiry, s["id"]))
+        # with a package Fixed Expire Time the renewal ends at that time (as an activation by hand), not the old own time
+        new_time = None if plan.get("fixed_expire_time") else s.get("expiry_time")
+        cur.execute("UPDATE subscribers SET balance = %s, expiry_date = %s, expiry_time = %s WHERE id = %s",
+                    (left, new_expiry, new_time, s["id"]))
         # prev_* and from_balance: what this renewal changed, so Revert Last Invoice can undo it (as for one made by hand)
         cur.execute("INSERT INTO payments (subscriber_id, username, amount, days_added, method, note, period_to, received_by, "
                     "payer_id, cost, prev_expiry, prev_expiry_time, prev_status, from_balance, prev_plan_id) "
