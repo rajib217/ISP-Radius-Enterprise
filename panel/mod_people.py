@@ -355,7 +355,7 @@ def my_user_save():
                 identity, address))
         audit("admin_created", username, "by %s" % g.me["username"])
     if aid and password:
-        x("UPDATE panel_admins SET password_hash = %s WHERE id = %s", (generate_password_hash(password), aid))
+        x("UPDATE panel_admins SET password_hash = %s, session_ver = session_ver + 1 WHERE id = %s", (generate_password_hash(password), aid))
     if "max_children" in f and core.can_fn("usr.retlimit" if g.me["role"] == "reseller" else "usr.limit_none"):
         cap, ok = _limit_in(f.get("max_children"))
         own = q("SELECT max_children FROM panel_admins WHERE id = %s", (g.me["id"],), one=True) or {}
@@ -394,7 +394,7 @@ def my_user_password(aid):
     if len(new) < 8:
         flash("Password must be at least 8 characters.", "error")
     else:
-        x("UPDATE panel_admins SET password_hash = %s WHERE id = %s", (generate_password_hash(new), aid))
+        x("UPDATE panel_admins SET password_hash = %s, session_ver = session_ver + 1 WHERE id = %s", (generate_password_hash(new), aid))
         audit("admin_password_set", row["username"], "by %s" % g.me["username"])
         commit()
         flash("Password changed for %s." % row["username"], "success")
@@ -456,6 +456,13 @@ def _ptype(role):
 # touch an administrator or make anyone one, never change their own account here (role, status, deletion), and never
 # hand out more than they have: a role whose ticks they lack, or a tick they lack on a role's permissions. Resellers /
 # sub-resellers / retailers manage the people below them under My Users instead.
+def _keep_own_session(aid):
+    """After a password change has signed the account out everywhere (session_ver + 1): when it is the person's own
+    account, keep the browser they are using signed in (as My Profile does)."""
+    if g.me and aid == g.me["id"] and not session.get("real_uid"):
+        session["sv"] = int(q("SELECT session_ver FROM panel_admins WHERE id = %s", (aid,), one=True)["session_ver"])
+
+
 def _users_gate(*keys):
     def deco(fn):
         @wraps(fn)
@@ -761,7 +768,8 @@ def admin_password(aid):
     if len(new) < 8:
         flash("Password must be at least 8 characters.", "error")
     else:
-        x("UPDATE panel_admins SET password_hash = %s WHERE id = %s", (generate_password_hash(new), aid))
+        x("UPDATE panel_admins SET password_hash = %s, session_ver = session_ver + 1 WHERE id = %s", (generate_password_hash(new), aid))
+        _keep_own_session(aid)
         audit("admin_password_set", row["username"])
         commit()
         flash("Password changed for %s." % row["username"], "success")
@@ -862,7 +870,8 @@ def admin_save():
           (name, role, phone, email, dept, zone, parent, is_active, sms_on, email_on, identity, country, province,
            city, address, cap, aid))
         if password:
-            x("UPDATE panel_admins SET password_hash = %s WHERE id = %s", (generate_password_hash(password), aid))
+            x("UPDATE panel_admins SET password_hash = %s, session_ver = session_ver + 1 WHERE id = %s", (generate_password_hash(password), aid))
+            _keep_own_session(aid)
         audit("admin_updated", row["username"])
     else:
         if not USERNAME_RE.match(username) or len(password) < 8:

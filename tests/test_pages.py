@@ -3224,6 +3224,18 @@ def check_rules(flask_app, ids):
           and "ব" not in _cl_r and _cl_bad == 403 and 'href="/collect/report"' in _bn,
           "Bill Collector pages: due cards (expired / charges filters, call, directions), the payment form with method tiles, "
           "quick amounts and a live preview, cash in hand with deposit; the hirer filters by collector (only their own)")
+    # ===== P1 fix: a package that ended earlier today is collectable (due_of uses the end time, not just the date)
+    run("UPDATE subscribers SET status = 'active', balance = 0, expiry_date = CURDATE(), expiry_time = '00:01' "
+        "WHERE id = %s", (_rsub["id"],))
+    _td_list = _cc.get("/collect").get_data(as_text=True)
+    _td_form = _cc.get("/collect/%d" % _rsub["id"]).get_data(as_text=True)
+    _td_due = _due(_td_form)
+    _td_pay = _cc.post("/collect/%d" % _rsub["id"], data={"_csrf": "ci", "form_token": _tok(_td_form), "method": "cash",
+                                                          "amount": "%.2f" % _td_due, "repeat_ok": "1"})
+    _td_row = one("SELECT * FROM collections WHERE subscriber_id = %s ORDER BY id DESC LIMIT 1", (_rsub["id"],))
+    check(_rsub["username"] in _td_list and _td_due > 0 and _td_pay.status_code == 302 and _td_row
+          and _td_row["status"] == "posted" and float(_td_row["amount"]) == round(_td_due, 2),
+          "P1 fix: a package that ended earlier today shows as due and can be collected (due_of uses the end time)")
     # ===== Backup & Restore: one .tar holds the database and the photos / documents / ticket photos / logo
     import backuplib as _bl
     import gzip as _gz
@@ -3665,6 +3677,30 @@ def check_rules(flask_app, ids):
           and _b_after.status_code == 302 and "/login" in _b_after.headers.get("Location", "") and int(_sv) >= 1,
           "My Profile: an unknown form section is refused (no way around the Edit tick); changing the password signs the "
           "account out on every other device and keeps this one signed in")
+    # ===== P1 fix: a password set by someone else also signs the account out everywhere else
+    run("UPDATE panel_admins SET session_ver = 0 WHERE id = %s", (ids["staff"],))
+    _sv0 = int(one("SELECT session_ver FROM panel_admins WHERE id = %s", (ids["staff"],))["session_ver"])
+    _pz = client(ids["staff"])
+    _pz_before = _pz.get("/").status_code
+    _rst = adm.post("/admins/%d/password" % ids["staff"], data={"_csrf": "ci", "password": "Forced789!"}).status_code
+    _pz_after = _pz.get("/")
+    _sv1 = int(one("SELECT session_ver FROM panel_admins WHERE id = %s", (ids["staff"],))["session_ver"])
+    run("UPDATE panel_admins SET password_hash = %s WHERE id = %s", (_sp_row["password_hash"], ids["staff"]))
+    check(_sv0 == 0 and _pz_before == 200 and _rst == 302 and _pz_after.status_code == 302
+          and "/login" in _pz_after.headers.get("Location", "") and _sv1 == _sv0 + 1,
+          "Admin password reset: a password set by the administrator signs the account out on every other device too")
+    # ...and an administrator setting their own password on the Users page stays signed in here, signed out elsewhere
+    _ad_hash = one("SELECT password_hash FROM panel_admins WHERE id = %s", (ids["admin"],))["password_hash"]
+    _ad_other = client(ids["admin"])
+    _ad_other.get("/")
+    _own_rst = adm.post("/admins/%d/password" % ids["admin"], data={"_csrf": "ci", "password": "OwnReset789!"}).status_code
+    _own_here = adm.get("/").status_code
+    _own_other = _ad_other.get("/")
+    run("UPDATE panel_admins SET password_hash = %s WHERE id = %s", (_ad_hash, ids["admin"]))
+    check(_own_rst == 302 and _own_here == 200 and _own_other.status_code == 302
+          and "/login" in _own_other.headers.get("Location", ""),
+          "Users page, own password: the browser that changed it stays signed in, other devices are signed out "
+          + repr((_own_rst, _own_here, _own_other.status_code)))
     # ===== Review fixes: templates office-only; import only own customers; one bKash TrxID once; safe CSV; login limit
     _tpl_before = one("SELECT body FROM message_templates WHERE kind = 'sms' AND name = 'payment'")
     _tr_page = _rc2.get("/templates?kind=sms").get_data(as_text=True)

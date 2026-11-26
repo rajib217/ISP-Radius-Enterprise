@@ -66,6 +66,15 @@ def _scope_sql(alias="s"):
     return " AND %s.created_by IN (%s)" % (alias, ",".join(["%s"] * len(names))), list(names)
 
 
+def _pkg_ended(sub, plan):
+    """The package's real end moment (PKG_END in db.py): the expiry date at the subscriber's own time, else the
+    package's fixed time, else 23:59:59 — the same moment the due list (OWED_SQL / ENDED) and RADIUS use, not just
+    the date. Grace is not counted here: a customer in grace still owes, as the due list says."""
+    import mod_subs              # imported inside the function, as due_of does
+    end = mod_subs.end_moment(sub, plan)
+    return bool(end and end <= datetime.now())
+
+
 def due_of(sub):
     """What a customer owes now: {'package', 'charges', 'total', 'plan', 'days', 'price'}. An expired (not suspended)
     package is owed at the customer's price less what is already in their balance, as Activation would charge it."""
@@ -76,7 +85,7 @@ def due_of(sub):
     days = int(plan["validity_days"] or 30) if plan else 0
     price = package = 0.0
     spare = float(sub.get("balance") or 0)
-    if plan and sub.get("status") != "suspended" and sub.get("expiry_date") and sub["expiry_date"] < date.today():
+    if plan and sub.get("status") != "suspended" and _pkg_ended(sub, plan):
         price = round(mod_subs.customer_price(sub, plan, days), 2)
         package = round(max(price - spare, 0), 2)
         spare = max(spare - price, 0)

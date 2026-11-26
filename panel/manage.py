@@ -44,7 +44,7 @@ def seed_install(conn, cur, env):
         cur.execute("UPDATE panel_admins SET full_name = %s, email = %s, phone = %s, inv_name = %s, inv_address = %s, "
                     "inv_phone = %s, role = 'admin', is_active = 1 WHERE id = %s", profile + (row["id"],))
         if password:
-            cur.execute("UPDATE panel_admins SET password_hash = %s WHERE id = %s", (generate_password_hash(password), row["id"]))
+            cur.execute("UPDATE panel_admins SET password_hash = %s, session_ver = session_ver + 1 WHERE id = %s", (generate_password_hash(password), row["id"]))
             done.append("admin-password-changed")
         done.append("admin-updated")
     else:
@@ -97,7 +97,7 @@ def main(argv):
             print("created")
             return 0
         if cmd == "reset-password" and len(argv) >= 4:
-            cur.execute("UPDATE panel_admins SET password_hash = %s, is_active = 1 WHERE username = %s",
+            cur.execute("UPDATE panel_admins SET password_hash = %s, session_ver = session_ver + 1, is_active = 1 WHERE username = %s",
                         (generate_password_hash(argv[3]), argv[2]))
             conn.commit()
             print("updated" if cur.rowcount else "no such user")
