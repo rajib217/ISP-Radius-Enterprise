@@ -88,16 +88,18 @@ def push_round(conn, cur, s, send=None):
     subject = webpush.subject_of(s)
     sent = 0
     for n in rows:
-        cur.execute("UPDATE sub_notifications SET pushed_at = NOW() WHERE id = %s AND pushed_at IS NULL", (n["id"],))
-        conn.commit()
         cur.execute("SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE subscriber_id = %s", (n["subscriber_id"],))
         subs = cur.fetchall()
         if not subs:
+            # Nobody to send to: mark it done, as before, so it is not retried all day.
+            cur.execute("UPDATE sub_notifications SET pushed_at = NOW() WHERE id = %s AND pushed_at IS NULL", (n["id"],))
+            conn.commit()
             continue
         cur.execute("SELECT COUNT(*) AS c FROM sub_notifications WHERE subscriber_id = %s AND read_at IS NULL", (n["subscriber_id"],))
         unread = int(cur.fetchone()["c"])
         data = {"title": n["title"], "body": n["body"], "url": n["link"] or "/portal/notifications",
                 "tag": "n%d" % n["id"], "unread": unread}
+        delivered = False
         for sub in subs:
             if not RUNNING:
                 break
@@ -105,11 +107,17 @@ def push_round(conn, cur, s, send=None):
             if status in (200, 201, 202):
                 cur.execute("UPDATE push_subscriptions SET last_ok = NOW(), fails = 0 WHERE id = %s", (sub["id"],))
                 sent += 1
+                delivered = True
             elif status in (404, 410):
                 cur.execute("DELETE FROM push_subscriptions WHERE id = %s", (sub["id"],))
             else:
                 cur.execute("UPDATE push_subscriptions SET fails = fails + 1 WHERE id = %s", (sub["id"],))
                 cur.execute("DELETE FROM push_subscriptions WHERE id = %s AND fails >= 20", (sub["id"],))
+            conn.commit()
+        # Only a notification that actually reached a phone counts as pushed: one the push service refused stays
+        # queued and is tried again next round, instead of being silently lost.
+        if delivered:
+            cur.execute("UPDATE sub_notifications SET pushed_at = NOW() WHERE id = %s AND pushed_at IS NULL", (n["id"],))
             conn.commit()
     return sent
 
@@ -131,23 +139,33 @@ def staff_push_round(conn, cur, s, send=None):
     subject = webpush.subject_of(s)
     sent = 0
     for n in rows:
-        cur.execute("UPDATE staff_notifications SET pushed_at = NOW() WHERE id = %s AND pushed_at IS NULL", (n["id"],))
-        conn.commit()
         cur.execute("SELECT id, endpoint, p256dh, auth FROM staff_push_subs WHERE admin_id = %s", (n["admin_id"],))
+        subs = cur.fetchall()
+        if not subs:
+            # Nobody to send to: mark it done, as before, so it is not retried all day.
+            cur.execute("UPDATE staff_notifications SET pushed_at = NOW() WHERE id = %s AND pushed_at IS NULL", (n["id"],))
+            conn.commit()
+            continue
         data = {"title": n["title"], "body": n["body"], "url": n["link"] or "/", "tag": "s%d" % n["id"], "staff": 1,
                 "urgent": 1 if n["urgent"] else 0}
-        for sub in cur.fetchall():
+        delivered = False
+        for sub in subs:
             if not RUNNING:
                 break
             status, _detail = send(sub, data, priv, pub, subject, ttl=6 * 3600)
             if status in (200, 201, 202):
                 cur.execute("UPDATE staff_push_subs SET last_ok = NOW(), fails = 0 WHERE id = %s", (sub["id"],))
                 sent += 1
+                delivered = True
             elif status in (404, 410):
                 cur.execute("DELETE FROM staff_push_subs WHERE id = %s", (sub["id"],))
             else:
                 cur.execute("UPDATE staff_push_subs SET fails = fails + 1 WHERE id = %s", (sub["id"],))
                 cur.execute("DELETE FROM staff_push_subs WHERE id = %s AND fails >= 20", (sub["id"],))
+            conn.commit()
+        # Same rule as for customers: only a notification that actually reached a phone counts as pushed.
+        if delivered:
+            cur.execute("UPDATE staff_notifications SET pushed_at = NOW() WHERE id = %s AND pushed_at IS NULL", (n["id"],))
             conn.commit()
     return sent
 

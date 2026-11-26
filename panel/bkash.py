@@ -14,6 +14,7 @@ import time
 import urllib.error
 import urllib.request
 
+import pymysql
 from flask import g
 
 import core
@@ -271,10 +272,20 @@ def settle_portal(row, data):
     if not _amount_ok("portal", row, data):
         return False
     trx = str(data.get("trxID", ""))[:64]
-    with core.get_db().cursor() as cur:
-        cur.execute("UPDATE portal_payments SET status = 'completed', trx_id = %s, message = '', checked_at = NOW() "
-                    "WHERE id = %s AND status = 'pending'", (trx, row["id"]))
-        first = cur.rowcount == 1
+    try:
+        with core.get_db().cursor() as cur:
+            cur.execute("UPDATE portal_payments SET status = 'completed', trx_id = %s, message = '', checked_at = NOW() "
+                        "WHERE id = %s AND status = 'pending'", (trx or None, row["id"]))
+            first = cur.rowcount == 1
+    except pymysql.err.IntegrityError:
+        # The TrxID was already booked somewhere else (the UNIQUE KEY said so): close this row as failed instead of
+        # crashing the callback / sweep, so the office can check it by hand. The money was never credited.
+        core.get_db().rollback()
+        mark("portal", row["id"], "failed",
+             "Trx %s is already booked somewhere else: check this payment by hand." % (trx or "?"))
+        core.audit("bkash_trx_duplicate", row.get("payment_id", ""), "Trx %s already booked" % trx, who="bkash")
+        core.commit()
+        return False
     if not first:
         core.commit()
         return False
@@ -323,12 +334,22 @@ def settle_topup(row, data):
     if not _amount_ok("topup", row, data):
         return False
     trx = str(data.get("trxID", ""))[:64]
+    try:
+        with core.get_db().cursor() as cur:
+            cur.execute("UPDATE topups SET status = 'completed', trx_id = %s, message = '', checked_at = NOW() "
+                        "WHERE id = %s AND status = 'pending'", (trx or None, row["id"]))
+            if cur.rowcount != 1:
+                core.commit()
+                return False
+    except pymysql.err.IntegrityError:
+        # Same duplicate-TrxID guard as settle_portal: close the row as failed, never credit it.
+        core.get_db().rollback()
+        mark("topup", row["id"], "failed",
+             "Trx %s is already booked somewhere else: check this payment by hand." % (trx or "?"))
+        core.audit("bkash_trx_duplicate", row.get("payment_id", ""), "Trx %s already booked" % trx, who="bkash")
+        core.commit()
+        return False
     with core.get_db().cursor() as cur:
-        cur.execute("UPDATE topups SET status = 'completed', trx_id = %s, message = '', checked_at = NOW() "
-                    "WHERE id = %s AND status = 'pending'", (trx, row["id"]))
-        if cur.rowcount != 1:
-            core.commit()
-            return False
         cur.execute("UPDATE panel_admins SET balance = balance + %s WHERE id = %s", (row["amount"], row["user_id"]))
         cur.execute("SELECT username, balance FROM panel_admins WHERE id = %s", (row["user_id"],))
         who = cur.fetchone() or {"username": "?", "balance": 0}

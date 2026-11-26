@@ -220,14 +220,17 @@ def coa_round(conn, cur, s, down_routers):
     todo = []
 
     # 1) asked for by the panel (renewal of an expired customer, ...)
-    cur.execute("SELECT id, username, reason FROM coa_queue ORDER BY id LIMIT %s", (KICK_BATCH,))
+    # newest first: a row that is waiting for a router to come back must never hold up a fresh one (a payment's
+    # reconnect); the waiting ones are picked up whenever a round has room
+    cur.execute("SELECT id, username, reason FROM coa_queue ORDER BY id DESC LIMIT %s", (KICK_BATCH,))
     queued = cur.fetchall()
+    qmap = {}        # queue id -> the live sessions it asked to kick (empty when the customer is already offline)
     for qrow in queued:
         cur.execute("SELECT radacctid, username, nasipaddress, acctsessionid, framedipaddress FROM radacct "
                     "WHERE username = %s AND acctstoptime IS NULL", (qrow["username"],))
-        todo += [dict(r, why=qrow["reason"] or "queued") for r in cur.fetchall()]
-    if queued:
-        cur.execute("DELETE FROM coa_queue WHERE id IN (%s)" % ",".join(["%s"] * len(queued)), [r["id"] for r in queued])
+        rows = cur.fetchall()
+        qmap[qrow["id"]] = [r["radacctid"] for r in rows]
+        todo += [dict(r, why=qrow["reason"] or "queued", qid=qrow["id"]) for r in rows]
     cur.execute("DELETE FROM coa_queue WHERE created_at < NOW() - INTERVAL 1 DAY")
 
     # 2) package ran out while online: the session started before the Expiration moment, so FreeRADIUS never saw it end.
@@ -256,6 +259,12 @@ def coa_round(conn, cur, s, down_routers):
         if r["nasipaddress"] in down_routers or not secrets.get(r["nasipaddress"]):
             continue                      # router offline, or CoA switched off for it
         jobs.append(r)
+    # Queue rows for customers who are already offline have nothing to kick: clear them now, so they do not sit
+    # in the queue (KICK_BATCH rows a round) and take the room of rows that still have a session to kick.
+    _empty = [qid for qid, aids in qmap.items() if not aids]
+    if _empty:
+        cur.execute("DELETE FROM coa_queue WHERE id IN (%s)" % ", ".join(["%s"] * len(_empty)), _empty)
+        conn.commit()
     if not jobs:
         return 0, 0
     with ThreadPoolExecutor(max_workers=min(16, len(jobs))) as pool:
@@ -269,6 +278,15 @@ def coa_round(conn, cur, s, down_routers):
         else:
             failed += 1
             _failed_kicks[r["radacctid"]] = now
+    # A queue row is cleared only once the kick it asked for was actually sent (or there was no live session left
+    # to kick). A router that was down or did not answer, or a session skipped this round, keeps its row
+    # and is tried again next round, so a disconnect is never silently lost. Rows older than a day were cleared above.
+    # A Disconnect-NAK means the router has no such session (an accounting row left open): nothing is left to kick,
+    # so it counts as done too; retrying it all day would only fill the queue
+    sent_ids = {r["radacctid"] for r, (ok, msg) in zip(jobs, results) if ok or "session already gone" in (msg or "")}
+    done = [qid for qid, aids in qmap.items() if not aids or all(a in sent_ids for a in aids)]
+    if done:
+        cur.execute("DELETE FROM coa_queue WHERE id IN (%s)" % ", ".join(["%s"] * len(done)), done)
     for k in [k for k, t in _failed_kicks.items() if now - t > KICK_BACKOFF * 2]:
         del _failed_kicks[k]
     conn.commit()

@@ -919,6 +919,13 @@ def check_rules(flask_app, ids):
             _sent = _snd.push_round(_c3, cur, {"portal_on": "1", "support_email": "noc@example.net"},
                                     send=lambda sub, data, priv, pub, subj: (_calls.append((sub["endpoint"], data, subj)) or (201, "")))
             _again = _snd.push_round(_c3, cur, {"portal_on": "1"}, send=lambda *a: (_calls.append("dup") or (201, "")))
+            # safety patch: a push the service refuses is not marked pushed — it is tried again next round
+            _an.add(cur, _nsid, "custom", "CI push retry", "try again")
+            _c3.commit()
+            _refused = _snd.push_round(_c3, cur, {"portal_on": "1"}, send=lambda *a: (500, "down"))
+            _still = one("SELECT COUNT(*) AS c FROM sub_notifications WHERE title = 'CI push retry' AND pushed_at IS NULL")["c"]
+            _delivered = _snd.push_round(_c3, cur, {"portal_on": "1"}, send=lambda *a: (201, ""))
+            _done = one("SELECT COUNT(*) AS c FROM sub_notifications WHERE title = 'CI push retry' AND pushed_at IS NULL")["c"]
             _an.add(cur, _nsid, "custom", "CI push 2", "gone")
             _c3.commit()
             _snd.push_round(_c3, cur, {"portal_on": "1"}, send=lambda *a: (410, "gone"))
@@ -927,8 +934,10 @@ def check_rules(flask_app, ids):
         _wp.available, _wp.keys = _keep_av, _keep_keys
     check(_sent == 1 and _again == 0 and len(_calls) == 1 and _calls[0][1]["title"] == "CI push"
           and _calls[0][1]["url"] == "/portal/notifications" and _calls[0][2] == "mailto:noc@example.net"
+          and _refused == 0 and _still == 1 and _delivered == 1 and _done == 0
           and one("SELECT COUNT(*) AS c FROM push_subscriptions WHERE subscriber_id = %s", (_nsid,))["c"] == 0,
-          "the sender pushes each new notification once to the customer's phones and drops a subscription the service reports gone")
+          "the sender pushes each new notification once to the customer's phones and drops a subscription the service reports gone; "
+          "a push the service refuses is tried again instead of being lost")
     _sw2 = flask_app.test_client().get("/sw.js").get_data(as_text=True)
     _ph = pc.get("/portal/notifications").get_data(as_text=True)
     check('addEventListener("push"' in _sw2 and "showNotification" in _sw2 and "notificationclick" in _sw2 and "silent: false" in _sw2
@@ -993,6 +1002,76 @@ def check_rules(flask_app, ids):
           and 'href="/network/coa"' in adm.get("/").get_data(as_text=True),
           "CoA Request Log sits under Network; a refused unknown PPPoE username opens New subscriber with its username and "
           "password filled in, existing customers' passwords are never kept, and sellers do not see others' requests")
+    # ---- safety patch: a queued disconnect is cleared only once it was actually sent
+    import noc as _noc
+    _keep_disc = _noc._disconnect
+    run("INSERT INTO nas (nasname, shortname, type, secret, description, group_id, coa_enabled) "
+        "VALUES ('10.9.9.5', 'ci-nas', 'other', 'ci-secret', '', 0, 1)")
+    run("INSERT INTO radacct (acctsessionid, acctuniqueid, username, nasipaddress, framedipaddress, acctstarttime, acctupdatetime) "
+        "VALUES ('ci-sess-down', 'ci-sess-down-u', 'ci-coa-down', '10.9.9.5', '10.0.0.51', NOW() - INTERVAL 1 HOUR, NOW()), "
+        "('ci-sess-ok', 'ci-sess-ok-u', 'ci-coa-ok', '10.9.9.5', '10.0.0.52', NOW() - INTERVAL 1 HOUR, NOW())")
+    run("INSERT INTO coa_queue (username, reason) VALUES ('ci-coa-down', 'CI down'), ('ci-coa-ok', 'CI ok')")
+    _c6 = db.connect()
+    try:
+        with _c6.cursor() as _cur6:
+            _s_down = _noc.coa_round(_c6, _cur6, {"coa_port": "3799", "auto_kick_expired": "0", "coa_log": "0"}, {"10.9.9.5"})
+            _q_down = one("SELECT COUNT(*) AS c FROM coa_queue WHERE username = 'ci-coa-down'")["c"]
+            _noc._disconnect = lambda row, secret, port: (True, "ok") if row["username"] == "ci-coa-ok" else (False, "not this one")
+            _s_ok = _noc.coa_round(_c6, _cur6, {"coa_port": "3799", "auto_kick_expired": "0", "coa_log": "0"}, set())
+            _q_ok = one("SELECT COUNT(*) AS c FROM coa_queue WHERE username = 'ci-coa-ok'")["c"]
+            _q_down2 = one("SELECT COUNT(*) AS c FROM coa_queue WHERE username = 'ci-coa-down'")["c"]
+    finally:
+        _noc._disconnect = _keep_disc
+        _c6.close()
+    run("INSERT INTO radacct (acctsessionid, acctuniqueid, username, nasipaddress, framedipaddress, acctstarttime, acctupdatetime) "
+        "VALUES ('ci-sess-fail', 'ci-sess-fail-u', 'ci-coa-fail', '10.9.9.5', '10.0.0.53', NOW() - INTERVAL 1 HOUR, NOW())")
+    run("INSERT INTO coa_queue (username, reason) VALUES ('ci-coa-fail', 'CI fail')")
+    _c7 = db.connect()
+    try:
+        with _c7.cursor() as _cur7:
+            _noc._disconnect = lambda row, secret, port: (False, "router refused")
+            _s_fail = _noc.coa_round(_c7, _cur7, {"coa_port": "3799", "auto_kick_expired": "0", "coa_log": "0"}, set())
+            _q_fail = one("SELECT COUNT(*) AS c FROM coa_queue WHERE username = 'ci-coa-fail'")["c"]
+    finally:
+        _noc._disconnect = _keep_disc
+        _c7.close()
+    check(_s_down == (0, 0) and _q_down == 1 and _s_ok == (1, 1) and _q_ok == 0 and _q_down2 == 1
+          and _s_fail == (0, 1) and _q_fail == 1,
+          "a queued disconnect is cleared only once it was actually sent: a router that is down or a kick that fails "
+          "keeps its queue row and is tried again next round")
+    # ...but a router that says it has no such session (Disconnect-NAK) clears the row, and rows waiting for a router
+    # that is down never hold up a fresh one (newest first)
+    run("INSERT INTO radacct (acctsessionid, acctuniqueid, username, nasipaddress, framedipaddress, acctstarttime, acctupdatetime) "
+        "VALUES ('ci-sess-nak', 'ci-sess-nak-u', 'ci-coa-nak', '10.9.9.5', '10.0.0.54', NOW() - INTERVAL 1 HOUR, NOW()), "
+        "('ci-sess-new', 'ci-sess-new-u', 'ci-coa-new', '10.9.9.6', '10.0.0.55', NOW() - INTERVAL 1 HOUR, NOW())")
+    run("INSERT INTO nas (nasname, shortname, type, secret, description, group_id, coa_enabled) "
+        "VALUES ('10.9.9.6', 'ci-nas6', 'other', 'ci-secret', '', 0, 1)")
+    run("INSERT INTO coa_queue (username, reason) VALUES ('ci-coa-nak', 'CI nak')")
+    for _i in range(_noc.KICK_BATCH):
+        run("INSERT INTO coa_queue (username, reason) VALUES ('ci-coa-down', 'CI waiting')")
+    run("INSERT INTO coa_queue (username, reason) VALUES ('ci-coa-new', 'CI new')")
+    _c8 = db.connect()
+    try:
+        with _c8.cursor() as _cur8:
+            _noc._disconnect = lambda row, secret, port: (True, "ok") if row["username"] == "ci-coa-new" else (False, "Router refused (session already gone?)")
+            _s_new = _noc.coa_round(_c8, _cur8, {"coa_port": "3799", "auto_kick_expired": "0", "coa_log": "0"}, {"10.9.9.5"})
+            _q_new = one("SELECT COUNT(*) AS c FROM coa_queue WHERE username = 'ci-coa-new'")["c"]
+            _noc._failed_kicks.clear()
+            run("DELETE FROM coa_queue WHERE username = 'ci-coa-down'")
+            _s_nak = _noc.coa_round(_c8, _cur8, {"coa_port": "3799", "auto_kick_expired": "0", "coa_log": "0"}, set())
+            _q_nak = one("SELECT COUNT(*) AS c FROM coa_queue WHERE username = 'ci-coa-nak'")["c"]
+    finally:
+        _noc._disconnect = _keep_disc
+        _c8.close()
+    run("DELETE FROM coa_queue WHERE username LIKE 'ci-coa-%%'")
+    run("DELETE FROM radacct WHERE acctsessionid IN ('ci-sess-nak', 'ci-sess-new')")
+    run("DELETE FROM nas WHERE nasname = '10.9.9.6'")
+    check(_s_new == (1, 0) and _q_new == 0 and _q_nak == 0 and _s_nak[1] >= 1,
+          "a router that has no such session (Disconnect-NAK) clears the queued row; a fresh queued disconnect is sent "
+          "even while older rows wait for a router that is down " + repr((_s_new, _q_new, _s_nak, _q_nak)))
+    check(adm.get("/").headers.get("X-Frame-Options") == "SAMEORIGIN"
+          and adm.get("/").headers.get("X-Content-Type-Options") == "nosniff",
+          "the panel tells browsers it is never framed by another site and never to sniff a response's type")
     # ---- resellers see the New PPPoE requests of the routers assigned to them (NAS > Reseller) and add those customers
     _res_name = one("SELECT username FROM panel_admins WHERE id = %s", (ids["reseller"],))["username"]
     run("DELETE FROM nas WHERE nasname IN ('10.9.9.1', '10.9.9.2')")
@@ -3491,6 +3570,37 @@ def check_rules(flask_app, ids):
           and "CIBK0001" in _res_sees and "bkadd-dlg" not in _res_sees,
           "bKash Payments: the office adds bKash money a reseller sent (Trx ID, note): their balance and ledger go up, it is "
           "listed and found by Trx ID or note; a Trx ID is used once; resellers cannot add; filters by tier and account")
+    # ---- safety patch: the database itself refuses a TrxID booked twice (the UNIQUE KEY), not just the form check
+    import pymysql as _pm
+    _c9 = db.connect()
+    _dup_top = _dup_portal = False
+    try:
+        with _c9.cursor() as _cur9:
+            try:
+                _cur9.execute("INSERT INTO topups (user_id, amount, fee, method, note, token, payment_id, trx_id, status, message) "
+                              "VALUES (%s, 1, 0, 'bkash', 'CI dup', 'ci-dup-token', 'MANUAL', 'CIBK0001', 'completed', '')",
+                              (ids["reseller"],))
+                _c9.commit()
+            except _pm.err.IntegrityError:
+                _dup_top = True
+                _c9.rollback()
+            _cur9.execute("INSERT INTO portal_payments (subscriber_id, amount, fee, days, token, payment_id, trx_id, status, message) "
+                          "VALUES (%s, 1, 0, 30, 'ci-dup-token2', '', 'CIPORTAL9', 'completed', '')", (_nsid,))
+            _c9.commit()
+            try:
+                _cur9.execute("INSERT INTO portal_payments (subscriber_id, amount, fee, days, token, payment_id, trx_id, status, message) "
+                              "VALUES (%s, 1, 0, 30, 'ci-dup-token3', '', 'CIPORTAL9', 'completed', '')", (_nsid,))
+                _c9.commit()
+            except _pm.err.IntegrityError:
+                _dup_portal = True
+                _c9.rollback()
+            _cur9.execute("DELETE FROM portal_payments WHERE trx_id = 'CIPORTAL9'")
+            _c9.commit()
+    finally:
+        _c9.close()
+    check(_dup_top and _dup_portal
+          and one("SELECT COUNT(*) AS c FROM topups WHERE trx_id = 'CIBK0001'")["c"] == 1,
+          "the database itself refuses a TrxID booked twice (UNIQUE on topups and portal_payments), so two adds at once cannot double-book it")
     # ===== Bill collector tools: search suggestions, the map, dues nearby, door visits; no Bangla on their pages
     run("UPDATE subscribers SET status = 'active', balance = 0, net_disabled = 0, grace_until = NULL, expiry_date = CURDATE() - INTERVAL 4 DAY, "
         "expiry_time = NULL, area = 'CI-Lane', lat = 23.810000, lng = 90.410000 WHERE id = %s", (_dsub["id"],))

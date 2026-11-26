@@ -16,6 +16,7 @@ Permissions (Users > Roles > Accounting > bKash Payments; not tied to the Accoun
     below them, and those people's customers; Export needs the Export tick."""
 import csv
 import io
+import pymysql
 import re
 import secrets
 from datetime import date, datetime, timedelta
@@ -240,9 +241,16 @@ def bkash_payment_add():
     if err:
         flash(err, "error")
         return redirect(back)
-    tid = insert("INSERT INTO topups (user_id, amount, fee, method, note, token, payment_id, trx_id, status, message) "
-                 "VALUES (%s, %s, 0, 'bkash', %s, %s, %s, %s, 'completed', %s)",
-                 (who["id"], amount, note, secrets.token_hex(16), MANUAL, trx, ("Added by %s" % g.me["username"])[:255]))
+    try:
+        tid = insert("INSERT INTO topups (user_id, amount, fee, method, note, token, payment_id, trx_id, status, message) "
+                     "VALUES (%s, %s, 0, 'bkash', %s, %s, %s, %s, 'completed', %s)",
+                     (who["id"], amount, note, secrets.token_hex(16), MANUAL, trx, ("Added by %s" % g.me["username"])[:255]))
+    except pymysql.err.IntegrityError:
+        # The check above said the TrxID was free, but another add at the same moment booked it first: the UNIQUE
+        # KEY caught the race. Nothing was added, and the balance was never touched.
+        core.get_db().rollback()
+        flash("Trx ID %s is already booked. Nothing was added." % trx, "error")
+        return redirect(back)
     with core.get_db().cursor() as cur:
         cur.execute("UPDATE panel_admins SET balance = balance + %s WHERE id = %s", (amount, who["id"]))
         cur.execute("SELECT balance FROM panel_admins WHERE id = %s", (who["id"],))

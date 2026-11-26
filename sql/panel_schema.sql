@@ -632,12 +632,13 @@ CREATE TABLE IF NOT EXISTS topups (
   note        VARCHAR(255) NOT NULL DEFAULT '',
   token       VARCHAR(40)  NOT NULL,
   payment_id  VARCHAR(64)  NOT NULL DEFAULT '',
-  trx_id      VARCHAR(64)  NOT NULL DEFAULT '',
+  trx_id      VARCHAR(64)  NULL,
   status      ENUM('pending','completed','failed','cancelled') NOT NULL DEFAULT 'pending',
   message     VARCHAR(255) NOT NULL DEFAULT '',
   created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  KEY idx_user (user_id, id)
+  KEY idx_user (user_id, id),
+  UNIQUE KEY uq_trx (trx_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 
@@ -650,11 +651,12 @@ CREATE TABLE IF NOT EXISTS portal_payments (
   days          INT UNSIGNED NOT NULL DEFAULT 30,
   token         VARCHAR(40)  NOT NULL,
   payment_id    VARCHAR(64)  NOT NULL DEFAULT '',
-  trx_id        VARCHAR(64)  NOT NULL DEFAULT '',
+  trx_id        VARCHAR(64)  NULL,
   status        ENUM('pending','completed','failed','cancelled') NOT NULL DEFAULT 'pending',
   message       VARCHAR(255) NOT NULL DEFAULT '',
   created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  KEY idx_sub (subscriber_id, id)
+  KEY idx_sub (subscriber_id, id),
+  UNIQUE KEY uq_trx (trx_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Bandwidth throughput (v3 dashboard). maintenance.py fills these every 5 minutes from radacct counters.

@@ -1825,8 +1825,13 @@ core.attach(app)
 @app.after_request
 def _permissions_policy(resp):
     """Say plainly which phone features the panel's own pages may ask for: location (Use my location, the map) and
-    the camera (job photos, profile pictures). Nothing else, and never for frames from other sites."""
+    the camera (job photos, profile pictures). Nothing else, and never for frames from other sites. The panel is
+    never framed by another site (SAMEORIGIN), and browsers must not sniff a response's type (nosniff). A strict
+    Content-Security-Policy is not set here yet: 357 inline styles and 82 inline scripts would break under one,
+    so that waits for the de-inline work."""
     resp.headers.setdefault("Permissions-Policy", "geolocation=(self), camera=(self), microphone=(), payment=()")
+    resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
     return resp
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@ import re
 import secrets
 from datetime import date, datetime, timedelta
 
+import pymysql
 from flask import abort, flash, g, jsonify, redirect, render_template, request, url_for
 
 import core
@@ -407,8 +408,9 @@ def collect_one(sid):
 def _form(sub, d, f=None):
     f = f or {}
     charges = q("SELECT name, amount, created_at FROM sub_charges WHERE subscriber_id = %s AND paid = 0 ORDER BY id", (sub["id"],))
+    # Only this collector's own receipts: the form used to show every collector's recent collections for the customer.
     recent = q("SELECT receipt_no, amount, method, status, created_at, id FROM collections WHERE subscriber_id = %s "
-               "ORDER BY id DESC LIMIT 5", (sub["id"],))
+               "AND collector_id = %s ORDER BY id DESC LIMIT 5", (sub["id"], g.me["id"]))
     late = (date.today() - sub["expiry_date"]).days if d["package"] and sub.get("expiry_date") else 0
     return render_template("collect_form.html", sub=sub, due=d, methods=[m for m in METHODS if core.can_fn(METHOD_KEY[m[0]])],
                            f=f, token=secrets.token_urlsafe(24), code=core.sub_code(sub["id"]), cap=caps()[0], charges=charges,
@@ -423,10 +425,20 @@ def post(sub, d, amount, method, pos_ref, trx, token):
     import mod_subs
     me = g.me
     boss = core.seller_boss()
-    cid = insert("INSERT INTO collections (receipt_no, subscriber_id, username, collector_id, parent_id, amount, method, pos_ref, "
-                 "trx_id, form_token) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                 ("tmp-" + secrets.token_hex(8), sub["id"], sub["username"], me["id"], me.get("parent_id"), amount, method,
-                  pos_ref, trx, token or None))
+    try:
+        cid = insert("INSERT INTO collections (receipt_no, subscriber_id, username, collector_id, parent_id, amount, method, pos_ref, "
+                     "trx_id, form_token) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                     ("tmp-" + secrets.token_hex(8), sub["id"], sub["username"], me["id"], me.get("parent_id"), amount, method,
+                      pos_ref, trx, token or None))
+    except pymysql.err.IntegrityError as e:
+        # The caller checked the form token and the TrxID first, but a second submit at the same moment passed the
+        # same checks: the UNIQUE KEY (uq_token / uq_trx) caught the race. The caller rolls back and shows this
+        # instead of a 500, and no money was booked twice.
+        msg = str(e.args[1] if len(e.args) > 1 else e)
+        if "uq_trx" in msg:
+            return {"ok": False, "error": "This bKash TrxID is already booked. The same payment cannot be taken twice."}
+        return {"ok": False,
+                "error": "This payment form was already submitted (the receipt was made once). Open the customer again for a new one."}
     receipt = "CR-%06d" % cid
     x("UPDATE collections SET receipt_no = %s WHERE id = %s", (receipt, cid))
     label = {"cash": "cash", "pos": "POS", "bkash": "bKash"}[method]
@@ -555,6 +567,10 @@ def collect_deposit():
         amount = round(float(request.form.get("amount") or 0), 2)
     except ValueError:
         amount = 0
+    # Serialize deposits from this collector: two at once would both read the same cash in hand and together hand
+    # over more than the collector holds. The row lock is held until this request commits (autocommit is off), so
+    # the second deposit waits and then reads the hand after the first one landed.
+    q("SELECT id FROM panel_admins WHERE id = %s FOR UPDATE", (g.me["id"],), one=True)
     h = cash_in_hand(g.me["id"])
     room = round(h["hand"] - h["pending"], 2)
     if amount <= 0 or amount > room + 0.001:
