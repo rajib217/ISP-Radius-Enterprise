@@ -3747,6 +3747,45 @@ def check_rules(flask_app, ids):
           "Payment out of the expired notice (on the day it ended too, by auto renew as well): the live session is "
           "reconnected so it leaves the restricted IP; one already on the package is not disconnected "
           + repr((_rq_auto, _rq_groups, _rq_again)))
+    # Ledger > Reverse: only the administrator undoes a top-up made by mistake; a reseller's money goes back to them;
+    # once only; never when the money is already spent
+    run("UPDATE panel_admins SET balance = 5000 WHERE id = %s", (ids["reseller"],))
+    run("UPDATE subscribers SET balance = 0 WHERE id = %s", (_rsub["id"],))
+    _rv_r0 = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
+    _rc2.post("/subscribers/%d/balance" % _rsub["id"], data={"_csrf": "ci", "amount": "120", "note": "by mistake"})
+    _rv_line = one("SELECT * FROM sub_ledger WHERE subscriber_id = %s ORDER BY id DESC LIMIT 1", (_rsub["id"],))
+    _rv_r1 = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
+    _rv_url = "/subscribers/%d/ledger/%d/reverse" % (_rsub["id"], _rv_line["id"])
+    _rv_by_res = _rc2.post(_rv_url, data={"_csrf": "ci"}).status_code
+    _rv_by_staff = st.post(_rv_url, data={"_csrf": "ci"}).status_code
+    _rv_page_res = _rc2.get("/subscribers/%d" % _rsub["id"]).get_data(as_text=True)
+    _rv_page_adm = adm.get("/subscribers/%d" % _rsub["id"]).get_data(as_text=True)
+    _rv_ok = adm.post(_rv_url, data={"_csrf": "ci"}).status_code
+    _rv_sub = float(one("SELECT balance FROM subscribers WHERE id = %s", (_rsub["id"],))["balance"])
+    _rv_r2 = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
+    _rv_rev = one("SELECT * FROM sub_ledger WHERE subscriber_id = %s ORDER BY id DESC LIMIT 1", (_rsub["id"],))
+    _rv_uled = one("SELECT * FROM user_ledger WHERE user_id = %s ORDER BY id DESC LIMIT 1", (ids["reseller"],))
+    adm.post(_rv_url, data={"_csrf": "ci"})
+    _rv_twice = float(one("SELECT balance FROM panel_admins WHERE id = %s", (ids["reseller"],))["balance"])
+    _rv_after_page = adm.get("/subscribers/%d" % _rsub["id"]).get_data(as_text=True)
+    # spent: an administrator's top-up already used, so the balance is lower than it
+    adm.post("/subscribers/%d/balance" % _rsub["id"], data={"_csrf": "ci", "amount": "80"})
+    _rv_sp = one("SELECT id FROM sub_ledger WHERE subscriber_id = %s ORDER BY id DESC LIMIT 1", (_rsub["id"],))
+    run("UPDATE subscribers SET balance = 30 WHERE id = %s", (_rsub["id"],))
+    adm.post("/subscribers/%d/ledger/%d/reverse" % (_rsub["id"], _rv_sp["id"]), data={"_csrf": "ci"})
+    _rv_sp_bal = float(one("SELECT balance FROM subscribers WHERE id = %s", (_rsub["id"],))["balance"])
+    _rv_sp_row = one("SELECT reversed_at FROM sub_ledger WHERE id = %s", (_rv_sp["id"],))
+    run("UPDATE subscribers SET balance = 0 WHERE id = %s", (_rsub["id"],))
+    check(_rv_line["kind"] == "topup" and abs(_rv_r0 - _rv_r1 - 120) < 0.01
+          and _rv_by_res == 403 and _rv_by_staff in (403, 404) and "/reverse" not in _rv_page_res and _rv_url in _rv_page_adm
+          and _rv_ok == 302 and _rv_sub == 0 and abs(_rv_r2 - _rv_r0) < 0.01
+          and _rv_rev["kind"] == "reversal" and float(_rv_rev["amount"]) == -120
+          and float(_rv_uled["amount"]) == 120 and abs(_rv_twice - _rv_r2) < 0.01
+          and _rv_url not in _rv_after_page and "Reversed" in _rv_after_page
+          and _rv_sp_bal == 30 and _rv_sp_row["reversed_at"] is None,
+          "Ledger > Reverse: only the administrator undoes a balance top-up; the reseller who gave it gets it back; it "
+          "is undone once; a top-up already spent is not reversed "
+          + repr((_rv_line["kind"], _rv_by_res, _rv_by_staff, _rv_ok, _rv_sub, _rv_r0, _rv_r1, _rv_r2, _rv_twice, _rv_sp_bal)))
     # one rule for "expired" everywhere: the Home counters, the reports and the list agree, also on the day it ends
     if _dt.datetime.now().hour >= 1:
         run("UPDATE subscribers SET status = 'active', expiry_date = CURDATE(), expiry_time = %s, grace_until = NULL WHERE id = %s",

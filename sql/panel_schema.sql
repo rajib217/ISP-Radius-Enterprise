@@ -1077,3 +1077,8 @@ CREATE TABLE IF NOT EXISTS collection_deposits (
 
 -- Changing the password signs the account out on every other device (sql/migrations/0003_session_version.sql)
 ALTER TABLE panel_admins ADD COLUMN IF NOT EXISTS session_ver INT UNSIGNED NOT NULL DEFAULT 0;
+
+-- Ledger > Reverse (administrator only): kind marks a balance top-up made by hand ('topup') and the line that undid
+-- one ('reversal'); reversed_at closes a top-up so it is undone once (sql/migrations/0005_ledger_reverse.sql)
+ALTER TABLE sub_ledger ADD COLUMN IF NOT EXISTS kind VARCHAR(16) NOT NULL DEFAULT '';
+ALTER TABLE sub_ledger ADD COLUMN IF NOT EXISTS reversed_at DATETIME NULL;

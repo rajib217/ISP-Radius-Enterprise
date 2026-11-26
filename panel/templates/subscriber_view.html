@@ -178,7 +178,9 @@
     <td class="nowrap" data-card="key">{{ e.at|dt }}</td>
     <td data-card="title"><span class="pill {{ 'warn' if e.kind == 'Invoice' else ('ok' if e.credit else 'bad') }}">{{ e.kind }}</span></td>
     <td class="mono muted">{{ e.no }}</td>
-    <td>{{ e.text }}</td>
+    <td>{{ e.text }}{% if e.reversed %} <span class="pill bad">Reversed</span>{% endif %}
+      {% if e.lid and me.role == 'admin' %}<form method="post" action="{{ url_for('subscriber_ledger_reverse', sid=sub.id, lid=e.lid) }}" style="display:inline"
+        data-confirm="Reverse this top-up of {{ '%.2f' % e.credit }}? It comes off the customer's balance, and a reseller who gave it gets it back.">{{ csrf_input() }}<button class="btn sm" type="submit">Reverse</button></form>{% endif %}</td>
     <td class="num r" data-card="key">{{ '%.2f' % e.debit if e.debit else '' }}</td>
     <td class="num g" data-card="key">{{ '%.2f' % e.credit if e.credit else '' }}</td>
     <td class="num"><b class="{{ 'r' if e.balance < 0 else '' }}">{{ '%.2f' % e.balance }}</b></td>

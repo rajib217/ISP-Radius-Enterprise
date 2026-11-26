@@ -565,7 +565,8 @@ def subscribers_mass_payment():
             cur.execute("UPDATE subscribers SET balance = balance + %s WHERE id = %s", (amount, sub["id"]))
             cur.execute("SELECT balance FROM subscribers WHERE id = %s", (sub["id"],))
             after = float(cur.fetchone()["balance"])
-            cur.execute("INSERT INTO sub_ledger (subscriber_id, amount, balance_after, note, created_by) VALUES (%s, %s, %s, %s, %s)",
+            cur.execute("INSERT INTO sub_ledger (subscriber_id, amount, balance_after, note, created_by, kind) "
+                        "VALUES (%s, %s, %s, %s, %s, 'topup')",
                         (sub["id"], amount, after, ("Mass payment (%s)" % method)[:255], g.me["username"]))
         audit("balance_changed", sub["username"], "%+.2f -> %.2f (mass payment, %s)" % (amount, after, method))
         import appnotify

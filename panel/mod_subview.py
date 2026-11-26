@@ -143,7 +143,7 @@ def tabs(sub, sessions):
                     (user, (date.today().replace(day=1) - timedelta(days=150)).replace(day=1)))
     t["fees"] = q("SELECT f.name, f.kind, f.mode, f.value FROM fees f JOIN plan_fees pf ON pf.fee_id = f.id "
                   "WHERE f.active = 1 AND pf.plan_id = %s ORDER BY f.name", (sub["plan_id"],)) if sub["plan_id"] else []
-    balance_rows = q("SELECT id, amount, balance_after, note, created_by, created_at FROM sub_ledger WHERE subscriber_id = %s "
+    balance_rows = q("SELECT id, amount, balance_after, note, created_by, created_at, kind, reversed_at FROM sub_ledger WHERE subscriber_id = %s "
                      "ORDER BY id DESC LIMIT 300", (sid,))
     t["invoices"] = invoices(t["payments"], t["charges"])
     t["ledger"] = ledger(sub, t["payments"], t["charges"], balance_rows)
@@ -220,7 +220,10 @@ def ledger(sub, payments, charges, balance_rows):
         amt = _f(b["amount"])
         rows.append({"at": b["created_at"], "seq": 3, "kind": "Balance top-up" if amt >= 0 else "Balance deduct",
                      "no": "", "text": note or ("Balance added" if amt >= 0 else "Balance taken off"),
-                     "debit": -amt if amt < 0 else 0.0, "credit": amt if amt > 0 else 0.0, "by": b["created_by"]})
+                     "debit": -amt if amt < 0 else 0.0, "credit": amt if amt > 0 else 0.0, "by": b["created_by"],
+                     # a top-up made by hand, not undone yet: the administrator may reverse it (subscriber_ledger_reverse)
+                     "lid": b["id"] if b.get("kind") == "topup" and amt > 0 and not b.get("reversed_at") else None,
+                     "reversed": bool(b.get("reversed_at"))})
     rows.sort(key=lambda e: (e["at"], e["seq"]), reverse=True)
     due = sum(_f(c["amount"]) for c in charges if not c["paid"])
     running = round(_f(sub["balance"]) - due, 2)
@@ -283,8 +286,8 @@ def subscriber_balance(sid):
             return _back(sid)
         cur.execute("SELECT balance FROM subscribers WHERE id = %s", (sid,))
         new = float(cur.fetchone()["balance"])
-    insert("INSERT INTO sub_ledger (subscriber_id, amount, balance_after, note, created_by) VALUES (%s, %s, %s, %s, %s)",
-           (sid, amount, new, request.form.get("note", "").strip()[:255], g.me["username"]))
+    insert("INSERT INTO sub_ledger (subscriber_id, amount, balance_after, note, created_by, kind) VALUES (%s, %s, %s, %s, %s, %s)",
+           (sid, amount, new, request.form.get("note", "").strip()[:255], g.me["username"], "topup" if amount > 0 else ""))
     audit("balance_changed", sub["username"], "%+.2f -> %.2f" % (amount, new))
     if amount > 0:
         import appnotify
@@ -293,6 +296,57 @@ def subscriber_balance(sid):
                 "SELECT MAX(id) AS m FROM sub_ledger WHERE subscriber_id = %s", (sid,), one=True)["m"]), g.me["username"])
     commit()
     flash("Balance is now %.2f." % new, "success")
+    return _back(sid, "ledgers")
+
+
+@route("/subscribers/<int:sid>/ledger/<int:lid>/reverse", module="subscribers", methods=["POST"])
+def subscriber_ledger_reverse(sid, lid):
+    """Ledger > Reverse (administrator only): undo a balance top-up made by mistake. The amount comes off the customer's
+    balance, and when a reseller / sub-reseller / retailer gave it from their own balance it goes back to them. A
+    top-up is undone once, and never when the money is already spent (revert that invoice first)."""
+    if g.me["role"] != "admin":
+        abort(403)
+    sub = _sub(sid)
+    with get_db().cursor() as cur:
+        cur.execute("SELECT * FROM sub_ledger WHERE id = %s AND subscriber_id = %s FOR UPDATE", (lid, sid))
+        row = cur.fetchone()
+        if not row or row["kind"] != "topup" or float(row["amount"]) <= 0 or row["reversed_at"]:
+            get_db().rollback()
+            flash("This line cannot be reversed: only a balance top-up made by hand, and only once.", "error")
+            return _back(sid, "ledgers")
+        amount = round(float(row["amount"]), 2)
+        cur.execute("UPDATE subscribers SET balance = balance - %s WHERE id = %s AND balance >= %s", (amount, sid, amount))
+        if cur.rowcount != 1:
+            get_db().rollback()
+            flash("The balance (%.2f) is lower than this top-up (%.2f): the money is already used. Revert that invoice "
+                  "first (Revert Last Invoice), then reverse the top-up." % (float(sub["balance"] or 0), amount), "error")
+            return _back(sid, "ledgers")
+        cur.execute("UPDATE sub_ledger SET reversed_at = NOW() WHERE id = %s", (lid,))
+        cur.execute("SELECT balance FROM subscribers WHERE id = %s", (sid,))
+        left = float(cur.fetchone()["balance"])
+        when = row["created_at"].strftime("%d %b %Y %H:%M")
+        cur.execute("INSERT INTO sub_ledger (subscriber_id, amount, balance_after, note, created_by, kind) "
+                    "VALUES (%s, %s, %s, %s, %s, 'reversal')",
+                    (sid, -amount, left, ("Reversed top-up of %s (by %s)" % (when, row["created_by"] or "?"))[:255],
+                     g.me["username"]))
+        # the money a seller gave from their own balance goes back to them, with a line in their own ledger
+        cur.execute("SELECT id, username, role FROM panel_admins WHERE username = %s", (row["created_by"],))
+        giver = cur.fetchone()
+        refunded = ""
+        if giver and giver["role"] in core.SELLER_ROLES:
+            cur.execute("UPDATE panel_admins SET balance = balance + %s WHERE id = %s", (amount, giver["id"]))
+            cur.execute("SELECT balance FROM panel_admins WHERE id = %s", (giver["id"],))
+            after = float(cur.fetchone()["balance"])
+            cur.execute("INSERT INTO user_ledger (user_id, amount, balance_after, method, note, created_by) "
+                        "VALUES (%s, %s, %s, 'transfer', %s, %s)",
+                        (giver["id"], amount, after, ("Reversed: balance to %s of %s" % (sub["username"], when))[:255],
+                         g.me["username"]))
+            refunded = giver["username"]
+    audit("balance_reversed", sub["username"], "-%.2f (top-up of %s by %s) -> %.2f%s" % (
+        amount, when, row["created_by"] or "?", left, ", returned to %s" % refunded if refunded else ""))
+    commit()
+    flash("Top-up of %.2f reversed. Balance is now %.2f.%s" % (
+        amount, left, " %.2f went back to %s." % (amount, refunded) if refunded else ""), "success")
     return _back(sid, "ledgers")
 
 

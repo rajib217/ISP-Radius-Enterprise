@@ -217,7 +217,7 @@ ENDPOINT_FN = {
     "import_csv": "sub.import", "import_sample": "sub.import", "subscribers_export": "sub.export",
     "subscriber_renew": "sub.activation", "subscriber_activate": ("sub.activation", "sub.mass_activation"), "subscriber_activation": ("sub.activation", "sub.mass_activation"),
     "subscriber_lookup": ("sub.activation", "sub.mass_activation"), "subscriber_charge_info": ("sub.activation", "sub.mass_activation"),
-    "subscriber_migrate": "sub.migration", "subscriber_balance": "sub.balance", "subscriber_grace": "sub.grace",
+    "subscriber_migrate": "sub.migration", "subscriber_balance": "sub.balance", "subscriber_ledger_reverse": "sub.balance", "subscriber_grace": "sub.grace",
     "subscriber_password": "sub.password", "subscriber_photo_save": "sub.photo", "subscriber_invoice": "sub.invoice",
     "subscriber_reset_mac": "sub.reset_mac", "subscriber_settings": "sub.service", "subscriber_kick": "sub.disconnect",
     "subscriber_net": ("sub.net_on", "sub.net_off"), "subscriber_toggle": ("sub.profile_on", "sub.profile_off"),
