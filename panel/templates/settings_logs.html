@@ -37,5 +37,5 @@
   <div class="set-foot"><button class="btn primary" type="submit">Submit</button></div>
 </form>
 <form id="log-test" method="post" action="{{ url_for('settings_logs_test') }}">{{ csrf_input() }}</form>
-<script>document.getElementById('tok-eye').addEventListener('click',function(){var i=document.getElementById('s-tok');i.type=i.type==='password'?'text':'password';});</script>
+
 {% endblock %}

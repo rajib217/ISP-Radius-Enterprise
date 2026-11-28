@@ -5,15 +5,15 @@
 <div class="page-head"><div><h1>Network</h1><p class="sub"><a href="{{ url_for('dashboard') }}">Home</a> &middot; All Network</p></div></div>
 <div class="toolbtns">
   {% if can('network', 'edit') %}
-  <button class="btn tb" type="button" data-open="nas-dlg" data-new>{{ icon('plus') }}Add NAS</button>
-  <button class="btn tb" type="button" data-open="grp-dlg" data-new>{{ icon('folder') }}Create NAS Group</button>
+  <button class="btn primary" type="button" data-open="nas-dlg" data-new>{{ icon('plus') }}Add NAS</button>
+  <button class="btn primary" type="button" data-open="grp-dlg" data-new>{{ icon('folder') }}Create NAS Group</button>
   {% endif %}
-  <a class="btn tb" href="{{ url_for('network_graph') }}">{{ icon('chart') }}Graph</a>
+  <a class="btn primary" href="{{ url_for('network_graph') }}">{{ icon('chart') }}Graph</a>
 </div>
 
 <section class="panel xpanel">
   <div class="panel-head"><h2>{{ icon('server') }} NAS</h2>
-    {% if can('network', 'edit') %}<details class="dd"><summary class="btn tb">Actions &#9662;</summary><div class="dd-menu">
+    {% if can('network', 'edit') %}<details class="dd"><summary class="btn primary">Actions &#9662;</summary><div class="dd-menu">
       <form method="post" action="{{ url_for('nas_ping_all') }}">{{ csrf_input() }}<button type="submit">Check all routers</button></form>
       <a href="{{ url_for('nas_groups') }}">Manage NAS groups</a>
       <a href="{{ url_for('tools') }}">Test a customer login</a>

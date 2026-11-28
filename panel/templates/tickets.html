@@ -48,8 +48,8 @@
     <span><b data-bulk-count>0</b> ticked</span>
     <select name="assign_to" aria-label="Give to" style="width:auto"><option value="">Give to…</option>{% for s in staff %}<option value="{{ s.id }}">{{ s.full_name or s.username }} ({{ s.role }})</option>{% endfor %}</select>
     <button class="btn sm" type="submit" name="action" value="assign" data-bulk-btn disabled>{{ icon('user') }}Assign</button>
-    <button class="btn sm" type="submit" name="action" value="resolved" data-bulk-btn disabled>{{ icon('check') }}Resolve</button>
-    <button class="btn sm" type="submit" name="action" value="closed" data-bulk-btn disabled>Close</button>
+    <button class="btn sm" type="submit" name="action" value="resolved" data-bulk-btn disabled data-confirm="Resolve the ticked tickets? The customers are told they are solved and asked to rate it.">{{ icon('check') }}Resolve</button>
+    <button class="btn sm" type="submit" name="action" value="closed" data-bulk-btn disabled data-confirm="Close the ticked tickets?">Close</button>
     <button class="btn sm" type="submit" name="action" value="urgent" data-bulk-btn disabled>Make urgent</button>
   </form>
   {% endif %}
@@ -76,7 +76,17 @@
 (function () {
   var all = document.querySelector("[data-bulk-all]"), boxes = document.querySelectorAll("[data-bulk-id]");
   var count = document.querySelector("[data-bulk-count]"), btns = document.querySelectorAll("[data-bulk-btn]");
-  function upd() { var n = 0; boxes.forEach(function (b) { if (b.checked) n++; }); if (count) count.textContent = n; btns.forEach(function (b) { b.disabled = !n; }); }
+  function upd() {
+    var n = 0; boxes.forEach(function (b) { if (b.checked) n++; });
+    if (count) count.textContent = n;
+    var word = n === 1 ? "ticket" : "tickets";
+    btns.forEach(function (b) {
+      b.disabled = !n;
+      /* the confirm names the action and the count. Close notifies nobody; only Resolve tells the customer. */
+      if (b.value === "resolved") b.dataset.confirm = "Resolve " + n + " " + word + "? The customers are told they are solved and asked to rate it.";
+      if (b.value === "closed") b.dataset.confirm = "Close " + n + " " + word + "?";
+    });
+  }
   if (all) all.addEventListener("change", function () { boxes.forEach(function (b) { b.checked = all.checked; }); upd(); });
   boxes.forEach(function (b) { b.addEventListener("change", upd); });
   upd();

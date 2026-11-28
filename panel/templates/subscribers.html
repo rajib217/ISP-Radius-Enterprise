@@ -21,20 +21,20 @@
 
 <div class="toolbtns">
   {% if can('subscribers', 'edit') %}
-  {% if can_fn('sub.add') %}<button class="btn tb" type="button" data-open="add-drawer">{{ icon('plus') }}Add Subscriber</button>{% endif %}
-  {% if can_fn('sub.activation') or can_fn('sub.mass_activation') %}<button class="btn tb" type="button" data-open="activate-dlg">{{ icon('bolt') }}Activation</button>{% endif %}
-  {% if can_fn('sub.mass_activation') %}<button class="btn tb" type="button" data-mass-open="mass-act-dlg">{{ icon('play') }}Mass Activation</button>{% endif %}
-  {% if can_fn('sub.import') %}<a class="btn tb" href="{{ url_for('import_csv') }}">{{ icon('upload') }}Import</a>{% endif %}
+  {% if can_fn('sub.add') %}<button class="btn primary" type="button" data-open="add-drawer">{{ icon('plus') }}Add Subscriber</button>{% endif %}
+  {% if can_fn('sub.activation') or can_fn('sub.mass_activation') %}<button class="btn primary" type="button" data-open="activate-dlg">{{ icon('bolt') }}Activation</button>{% endif %}
+  {% if can_fn('sub.mass_activation') %}<button class="btn primary" type="button" data-mass-open="mass-act-dlg">{{ icon('play') }}Mass Activation</button>{% endif %}
+  {% if can_fn('sub.import') %}<a class="btn primary" href="{{ url_for('import_csv') }}">{{ icon('upload') }}Import</a>{% endif %}
   {% endif %}
-  {% if can_fn('sub.export') %}<a class="btn tb" href="{{ url_for('subscribers_export', **keep) }}">{{ icon('download') }}Export</a>
-  <a class="btn tb green" href="{{ url_for('subscribers_export', **dict(keep, passwords='1' if me.role == 'admin' else '0')) }}">{{ icon('download') }}{{ 'Export with passwords' if me.role == 'admin' else 'Download export' }}</a>{% endif %}
+  {% if can_fn('sub.export') %}<a class="btn primary" href="{{ url_for('subscribers_export', **keep) }}">{{ icon('download') }}Export</a>
+  <a class="btn primary green" href="{{ url_for('subscribers_export', **dict(keep, passwords='1' if me.role == 'admin' else '0')) }}">{{ icon('download') }}{{ 'Export with passwords' if me.role == 'admin' else 'Download export' }}</a>{% endif %}
   {% if can('subscribers', 'edit') %}
-  {% if can_fn('sub.mass_payment') %}<button class="btn tb" type="button" data-mass-open="mass-pay-dlg">{{ icon('card') }}Mass Payment</button>{% endif %}
-  {% if me.role == 'admin' %}<button class="btn tb red" type="button" data-mass-open="mass-del-dlg">{{ icon('trash') }}Mass Delete</button>{% endif %}
-  {% if can_fn('sub.mass_settings') %}<button class="btn tb" type="button" id="massSetBtn">{{ icon('sliders') }}Mass Settings</button>{% endif %}
+  {% if can_fn('sub.mass_payment') %}<button class="btn primary" type="button" data-mass-open="mass-pay-dlg">{{ icon('card') }}Mass Payment</button>{% endif %}
+  {% if me.role == 'admin' %}<button class="btn primary red" type="button" data-mass-open="mass-del-dlg">{{ icon('trash') }}Mass Delete</button>{% endif %}
+  {% if can_fn('sub.mass_settings') %}<button class="btn primary" type="button" id="massSetBtn">{{ icon('sliders') }}Mass Settings</button>{% endif %}
   {% endif %}
-  <button class="btn tb" type="button" data-open="filter-dlg">{{ icon('filter') }}Filter</button>
-  <button class="btn tb" type="button" id="compactBtn" aria-pressed="false">{{ icon('table') }}Compact View</button>
+  <button class="btn primary" type="button" data-open="filter-dlg">{{ icon('filter') }}Filter</button>
+  <button class="btn primary" type="button" id="compactBtn" aria-pressed="false">{{ icon('table') }}Compact View</button>
   <button class="btn sm icon info" type="button" data-open="legend-dlg" aria-label="What do the lists mean?" title="What do the lists mean?">{{ icon('info') }}</button>
 </div>
 
@@ -61,7 +61,7 @@
     </select>
     <input type="number" name="days" min="0" max="3650" value="30" data-for="extend grace" class="hide" aria-label="Days">
     <label class="check" data-for="suspend"><input type="checkbox" name="kick" value="1" checked>Disconnect them now</label>
-    <button class="btn sm primary" type="submit" data-confirm="Apply this action to all selected subscribers?">Apply</button>
+    <button class="btn sm primary" type="submit" data-bulk-apply data-confirm="Apply this action to all selected subscribers?">Apply</button>
   </form>
   <div class="hint hide" id="massHint">Tick the customers in the list first, then choose Apply.</div>
 
@@ -152,8 +152,8 @@
           <td data-c="plan" data-card="key">{% if s.plan_label %}<span class="pill info">{{ s.plan_label }}</span>{% else %}<span class="muted">No plan</span>{% endif %}</td>
           <td data-c="mac" class="mono ipmac">{% if s.live_ip or s.live_mac %}<span>{{ s.live_ip or '—' }}</span><small>{{ s.live_mac or '—' }}</small>{% else %}<span class="muted">—</span>{% endif %}</td>
           <td data-c="seller">{% if s.created_by %}<span class="pill violet">{{ s.seller_name or s.created_by }}{% if s.seller_role %} ({{ roles.get(s.seller_role, s.seller_role) }}){% endif %}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
-          <td data-c="balance"><span class="pill ok">{{ '%.2f'|format(s.balance|float) }}</span></td>
-          <td data-c="due"><span class="pill {{ 'bad' if s.due|float > 0 else 'ok' }}">{{ '%.2f'|format(s.due|float) }}</span></td>
+          <td data-c="balance" data-card="key"><span class="pill ok">{{ money(s.balance) }}</span></td>
+          <td data-c="due" data-card="key"><span class="pill {{ 'bad' if s.due|float > 0 else 'ok' }}">{{ money(s.due) }}</span></td>
           <td data-c="area">{{ s.area or '—' }}</td>
           <td data-c="phone" class="nowrap">{{ s.phone or '—' }}</td>
         </tr>

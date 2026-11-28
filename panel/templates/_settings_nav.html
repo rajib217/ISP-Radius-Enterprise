@@ -1,6 +1,8 @@
 {% from "_macros.html" import icon %}
-{% macro link(key, label, ic, href, out=false) %}<a class="{{ 'on' if tab == key }}" href="{{ href }}">{{ icon(ic) }}<span>{{ label }}</span>{% if out %}<em>&rarr;</em>{% endif %}</a>{% endmacro %}
+{% macro link(key, label, ic, href, out=false) %}<a class="{{ 'on' if tab == key }}" href="{{ href }}"{% if tab == key %} aria-current="page"{% endif %}>{{ icon(ic) }}<span>{{ label }}</span>{% if out %}<em>&rarr;</em>{% endif %}</a>{% endmacro %}
 <nav class="set-nav" aria-label="Settings">
+  <details class="set-nav-d" open>
+    <summary><span>Sections</span>{{ icon('chevron-down') }}</summary>
   <h6>System</h6>
   {{ link('general', 'General', 'sliders', url_for('settings')) }}
   {{ link('software', 'Software', 'server', url_for('settings_software')) }}
@@ -21,4 +23,5 @@
   <h6>Payment gateways</h6>
   {% for slug, name, ic in gateways %}{{ link('gw-' ~ slug, name, ic, url_for('settings_gateway', slug=slug)) }}{% endfor %}
   {{ link('bksms', 'bKash SMS auto-renew', 'phone', url_for('settings_bksms')) }}
+  </details>
 </nav>

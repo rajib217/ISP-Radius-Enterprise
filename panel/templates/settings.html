@@ -28,7 +28,6 @@
     {% endfor %}
   </div>
 </section>
-<script>document.querySelectorAll("[data-autosubmit]").forEach(function (i) { i.addEventListener("change", function () { if (i.files.length) i.form.submit(); }); });</script>
 <form method="post" class="panel set-card">
   {{ csrf_input() }}
   <div class="panel-head"><h2>General Settings</h2></div>

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import icon, state_badge %}
+{% from "_macros.html" import icon, state_badge, money with context %}
 {% block title %}{{ sub.username }}{% endblock %}
 {% block content %}
 {% set no_money = me.role == 'technician' %}{# technicians see no balance, dues, invoices or payments #}
@@ -61,8 +61,8 @@
     <div class="kpi"><div><small>Total</small><b>{{ ('%.0f' % x.quota_gb|float) if x.quota_gb else '∞' }}</b><em>GB</em></div><i class="ki green">{{ icon('archive') }}</i></div>
     <div class="kpi"><div><small>Used</small><b>{{ '%.2f' % month_gb }}</b><em>GB this month</em></div><i class="ki red">{{ icon('chart') }}</i></div>
     <div class="kpi"><div><small>Remaining</small><b>{{ ('%.2f' % ([x.quota_gb|float - month_gb, 0]|max)) if x.quota_gb else '∞' }}</b><em>GB</em></div><i class="ki amber">{{ icon('power') }}</i></div>
-    {% if not no_money %}<div class="kpi"><div><small class="g">Balance</small><b class="g">{{ '%.2f' % sub.balance|float }}</b></div><i class="ki green">{{ icon('wallet') }}</i></div>
-    <div class="kpi" title="{% if x.due_package %}Expired package {{ '%.2f' % x.due_package }}{% if x.due_charges %} + unpaid charges {{ '%.2f' % x.due_charges }}{% endif %}{% else %}Unpaid charges{% endif %}"><div><small class="r">Due</small><b class="r">{{ '%.2f' % x.due|float }}</b>{% if x.due_package %}<em>package expired</em>{% endif %}</div><i class="ki red">{{ icon('card') }}</i></div>{% endif %}
+    {% if not no_money %}<div class="kpi"><div><small class="g">Balance</small><b class="g">{{ money(sub.balance) }}</b></div><i class="ki green">{{ icon('wallet') }}</i></div>
+    <div class="kpi" title="{% if x.due_package %}Expired package {{ currency }} {{ x.due_package|money }}{% if x.due_charges %} + unpaid charges {{ currency }} {{ x.due_charges|money }}{% endif %}{% else %}Unpaid charges{% endif %}"><div><small class="r">Due</small><b class="r">{{ money(x.due) }}</b>{% if x.due_package %}<em>package expired</em>{% endif %}</div><i class="ki red">{{ icon('card') }}</i></div>{% endif %}
     <div class="kpi"><div><small>Tickets</small><b>{{ x.open_tickets }}</b></div><i class="ki blue">{{ icon('ticket') }}</i></div>
   </div>
   <nav class="sv-tabs" aria-label="Sections">
@@ -173,7 +173,7 @@
   {% if t.months %}<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Month</th><th class="num">Download</th><th class="num">Upload</th><th class="num">Sessions</th><th class="num">Online time</th></tr></thead><tbody>{% for m in t.months %}<tr><td>{{ m.m }}</td><td class="num">{{ m.down|bytes }}</td><td class="num">{{ m.up|bytes }}</td><td class="num">{{ m.sessions }}</td><td class="num">{{ m.secs|dur }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><p>No usage recorded yet.</p></div>{% endif %}</section>
 </div>
 
-{% if not no_money %}<div class="sv-pane" id="tab-ledgers" hidden><section class="panel"><div class="panel-head"><h2>Ledger</h2><span class="aside">Balance {{ currency }} {{ '%.2f' % sub.balance|float }}{% if x.due|float %} · Due {{ currency }} {{ '%.2f' % x.due|float }}{% endif %}</span></div>
+{% if not no_money %}<div class="sv-pane" id="tab-ledgers" hidden><section class="panel"><div class="panel-head"><h2>Ledger</h2><span class="aside">Balance {{ money(sub.balance) }}{% if x.due|float %} · Due {{ money(x.due) }}{% endif %}</span></div>
   {% if t.ledger %}<div class="tbl-wrap"><table class="tbl sv-ledger"><thead><tr><th>Date</th><th>Type</th><th>Ref</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th><th>By</th></tr></thead><tbody>{% for e in t.ledger %}<tr>
     <td class="nowrap" data-card="key">{{ e.at|dt }}</td>
     <td data-card="title"><span class="pill {{ 'warn' if e.kind == 'Invoice' else ('ok' if e.credit else 'bad') }}">{{ e.kind }}</span></td>

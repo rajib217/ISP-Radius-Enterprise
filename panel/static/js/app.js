@@ -143,13 +143,24 @@
       if (bar) bar.classList.toggle("show", n > 0);
       if (counter) counter.textContent = n;
       if (master) { master.checked = n > 0 && n === boxes().length; master.indeterminate = n > 0 && n < boxes().length; }
+      syncConfirm();
     };
+    /* the bulk Apply confirm names the chosen action and how many are ticked */
+    var applyBtn = $("[data-bulk-apply]"), actionSel = $("[data-bulk-action]");
+    var syncConfirm = function () {
+      if (!applyBtn || !actionSel) return;
+      var n = boxes().filter(function (b) { return b.checked; }).length;
+      var label = actionSel.options[actionSel.selectedIndex].textContent.trim();
+      applyBtn.dataset.confirm = "Apply \"" + label + "\" to " + n + (n === 1 ? " subscriber" : " subscribers") + "?";
+    };
+    syncConfirm();
     if (master) master.addEventListener("change", function () { boxes().forEach(function (b) { b.checked = master.checked; }); refresh(); });
     bulk.addEventListener("change", function (e) { if (e.target.classList.contains("row-check")) refresh(); });
     var action = $("[data-bulk-action]");
     if (action) {
       var sync = function () {
         $$("[data-for]", bar).forEach(function (n) { n.classList.toggle("hide", n.dataset["for"].split(" ").indexOf(action.value) < 0); });
+        syncConfirm();
       };
       action.addEventListener("change", sync); sync();
     }
@@ -652,7 +663,60 @@
         load(current, b);
       });
     });
+    /* arrow keys move between the range tabs (they are role="tab", so they must be keyboard-operable) */
+    box.addEventListener("keydown", function (e) {
+      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+      var btns = $$("button[data-range]", box), i = btns.indexOf(document.activeElement);
+      if (i < 0) return;
+      e.preventDefault();
+      var next = btns[(i + (e.key === "ArrowRight" ? 1 : -1) + btns.length) % btns.length];
+      next.focus(); next.click();
+    });
     setInterval(function () { if (!document.hidden && (current === "1h" || current === "24h")) load(current); }, 300000);
+  });
+
+  /* dashboard: collapsible panels, remembered per panel (like the sidebar toggle) */
+  $$("[data-panel-toggle]").forEach(function (btn) {
+    var key = btn.dataset.panelToggle, sec = btn.closest("section.panel");
+    if (!sec) return;
+    var label = btn.dataset.label || "section";
+    function apply(closed) {
+      sec.classList.toggle("collapsed", closed);
+      btn.setAttribute("aria-expanded", closed ? "false" : "true");
+      btn.setAttribute("aria-label", (closed ? "Expand " : "Collapse ") + label);
+    }
+    apply(store("isp-dash-" + key) === "0");
+    btn.addEventListener("click", function () {
+      var closed = !sec.classList.contains("collapsed");
+      apply(closed);
+      store("isp-dash-" + key, closed ? "0" : "1");
+      /* a chart drawn while its panel was hidden measured 0 wide: redraw it now that it shows */
+      if (!closed && window.IspCharts) window.IspCharts.redraw();
+    });
+  });
+
+  /* settings nav: a long list above the form on phones, so it starts collapsed there (open on desktop) */
+  var setNav = document.querySelector(".set-nav-d");
+  if (setNav) {
+    var setNavMq = window.matchMedia("(max-width: 900px)");
+    var syncSetNav = function () {
+      if (setNavMq.matches) setNav.removeAttribute("open");
+      else setNav.setAttribute("open", "");
+    };
+    if (setNavMq.addEventListener) setNavMq.addEventListener("change", syncSetNav);
+    else if (setNavMq.addListener) setNavMq.addListener(syncSetNav);
+    syncSetNav();
+  }
+
+  /* moved here from settings.html / settings_logs.html (their inline scripts are gone, CSP step):
+     the logo/favicon file input submits its form on change; the log-engine token eye toggles show/hide */
+  $$("[data-autosubmit]").forEach(function (i) {
+    i.addEventListener("change", function () { if (i.files.length) i.form.submit(); });
+  });
+  var tokEye = document.getElementById("tok-eye");
+  if (tokEye) tokEye.addEventListener("click", function () {
+    var tok = document.getElementById("s-tok");
+    if (tok) tok.type = tok.type === "password" ? "text" : "password";
   });
 
   /* v3: tables become cards on phones. Every cell gets its column name as data-label; tables without

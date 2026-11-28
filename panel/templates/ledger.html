@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import icon, pager %}
+{% from "_macros.html" import icon, pager, money with context %}
 {% block title %}Ledger Reports{% endblock %}
 {% set role_names = {'subscriber': 'Subscriber', 'portal': 'Portal', 'admin': 'Admin', 'reseller': 'Reseller', 'subreseller': 'Sub-reseller', 'retailer': 'Retailer'} %}
 {% macro acct(user, role) %}{% if user %}{% if role in ('reseller', 'subreseller', 'retailer') %}<a class="led-acct" href="{{ url_for('ledger', acct=user, **{'from': ledger_from}) }}" title="All of {{ user }}'s ledger">{{ user }} <small>({{ role_names.get(role) }})</small></a>{% else %}<span class="led-acct {{ 'sub' if role in ('subscriber', 'portal') else '' }}">{{ user }}{% if role %} <small>({{ role_names.get(role, role|capitalize) }})</small>{% endif %}</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}{% endmacro %}
@@ -57,10 +57,10 @@
         <td data-label="Type" data-card="key"><span class="led-type t-{{ r.kind|lower|replace(' ', '-') }}">{{ r.kind }}</span></td>
         <td data-label="Primary" data-card="title">{{ acct(r.p_user, r.p_role) }}</td>
         <td data-label="Participant">{{ acct(r.part_user, r.part_role) }}</td>
-        <td class="num" data-label="Amount" data-card="key"><span class="led-amt {{ 'neg' if r.amount < 0 else 'pos' }}">{{ '%.2f'|format(r.amount) }}</span></td>
+        <td class="num" data-label="Amount" data-card="key"><span class="led-amt {{ 'neg' if r.amount < 0 else 'pos' }}">{{ money(r.amount) }}</span></td>
         <td data-label="Ref ID"><span class="led-chip">{{ r.ref }}</span></td>
-        <td class="num" data-label="P.Balance">{% if r.pbal is not none %}<span class="led-chip num">{{ '{:,.2f}'.format(r.pbal) }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
-        <td class="num" data-label="N.Balance">{% if r.nbal is not none %}<span class="led-chip num">{{ '{:,.2f}'.format(r.nbal) }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="num" data-label="P.Balance">{% if r.pbal is not none %}<span class="led-chip num">{{ money(r.pbal) }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="num" data-label="N.Balance">{% if r.nbal is not none %}<span class="led-chip num">{{ money(r.nbal) }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
         <td class="nowrap" data-label="Created"><span class="led-chip">{{ r.created.strftime('%Y-%m-%d %H:%M') }}</span></td>
         <td data-label="Action By">{% if r.action_by %}<span class="led-chip">{{ r.action_by }}</span>{% endif %}</td>
       </tr>{% endfor %}</tbody>

@@ -212,8 +212,10 @@ def f_d(value):
 
 @app.template_filter("money")
 def f_money(value):
+    # One rendering everywhere: always two decimals, thousands separated.
+    # Whole amounts used to lose ".00" (1,200 next to 1,200.50 in one column).
     value = float(value or 0)
-    return "{:,.0f}".format(value) if value == int(value) else "{:,.2f}".format(value)
+    return "{:,.2f}".format(value)
 
 
 @app.template_filter("ago")

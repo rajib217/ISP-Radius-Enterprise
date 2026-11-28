@@ -55,8 +55,8 @@
 {% endif %}
 
 {% if tabs %}
-<section class="panel" style="margin-bottom:16px">
-  <div class="panel-head"><h2>Reports &amp; Statistics</h2></div>
+<section class="panel" id="dash-reports" style="margin-bottom:16px">
+  <div class="panel-head"><h2>Reports &amp; Statistics</h2><button type="button" class="panel-toggle" data-panel-toggle="dash-reports" data-label="Reports &amp; Statistics" aria-expanded="true" aria-controls="dash-reports" aria-label="Collapse Reports &amp; Statistics">{{ icon('chevron-down') }}</button></div>
   <div class="panel-body">
     <div class="tabs">{% for k, label in tabs %}<a class="{{ 'on' if k == tab }}" href="{{ url_for('dashboard', tab=k) }}">{{ label }}</a>{% endfor %}</div>
     {% if td.cards %}
@@ -92,7 +92,7 @@
 {# ---- resellers / sub-resellers / retailers: their own customers whose package ends within 7 days ---- #}
 <section class="panel" id="my-expiring" style="margin-bottom:16px" aria-labelledby="my-exp-h">
   <div class="panel-head"><h2 id="my-exp-h">Expiring soon subscribers</h2>{% if exp_pg.total %}<span class="badge warn">{{ exp_pg.total }}</span>{% endif %}
-    <a class="aside" href="{{ url_for('subscribers', status='expiring') }}">View all</a></div>
+    <a class="aside" href="{{ url_for('subscribers', status='expiring') }}">View all</a><button type="button" class="panel-toggle" data-panel-toggle="dash-my-expiring" data-label="Expiring soon subscribers" aria-expanded="true" aria-controls="my-expiring" aria-label="Collapse Expiring soon subscribers">{{ icon('chevron-down') }}</button></div>
   {% if my_expiring %}
   <ul class="list">
     {% for s in my_expiring %}{% set left = (s.expiry_date - today).days %}
@@ -120,6 +120,7 @@
         <p class="muted">{% if oo.all %}{{ '{:,}'.format(oo.all) }} ONU{{ '' if oo.all == 1 else 's' }} without a connection right now{% else %}Every ONU is online{% endif %}</p></div>
     </div>
     <a class="btn sm" href="{{ url_for('onus', status=oo.only or 'offline') }}">{{ icon('globe') }}Open ONU list</a>
+    <button type="button" class="panel-toggle" data-panel-toggle="dash-offline-onus" data-label="Offline ONUs" aria-expanded="true" aria-controls="offline-onus" aria-label="Collapse Offline ONUs">{{ icon('chevron-down') }}</button>
   </div>
 
   {% if oo.all %}
@@ -184,16 +185,16 @@
 {% if not seller %}
 
 <div class="cols">
-  <section class="panel c-5">
-    <div class="panel-head"><h2>Customers by plan</h2><a class="aside" href="{{ url_for('plans') }}">Manage plans</a></div>
+  <section class="panel c-5" id="dash-plan-mix">
+    <div class="panel-head"><h2>Customers by plan</h2><a class="aside" href="{{ url_for('plans') }}">Manage plans</a><button type="button" class="panel-toggle" data-panel-toggle="dash-plan-mix" data-label="Customers by plan" aria-expanded="true" aria-controls="dash-plan-mix" aria-label="Collapse Customers by plan">{{ icon('chevron-down') }}</button></div>
     <div class="panel-body">
       <div class="chart" data-kind="donut" data-src="plan-mix"></div>
       <script type="application/json" id="plan-mix">{{ plan_mix|tojson }}</script>
     </div>
   </section>
 
-  <section class="panel c-7">
-    <div class="panel-head"><h2>Online by router</h2><span class="aside">{{ by_nas|length }} router{{ '' if by_nas|length == 1 else 's' }} reporting</span></div>
+  <section class="panel c-7" id="dash-by-nas">
+    <div class="panel-head"><h2>Online by router</h2><span class="aside">{{ by_nas|length }} router{{ '' if by_nas|length == 1 else 's' }} reporting</span><button type="button" class="panel-toggle" data-panel-toggle="dash-by-nas" data-label="Online by router" aria-expanded="true" aria-controls="dash-by-nas" aria-label="Collapse Online by router">{{ icon('chevron-down') }}</button></div>
     {% if by_nas %}
     <ul class="list bars">
       {% for n in by_nas %}
@@ -209,8 +210,8 @@
     {% endif %}
   </section>
 
-  {% if can_fn('home.expiring') %}<section class="panel c-6">
-    <div class="panel-head"><h2>Expiring soon</h2><a class="aside" href="{{ url_for('subscribers', status='expiring') }}">View all</a></div>
+  {% if can_fn('home.expiring') %}<section class="panel c-6" id="dash-expiring">
+    <div class="panel-head"><h2>Expiring soon</h2><a class="aside" href="{{ url_for('subscribers', status='expiring') }}">View all</a><button type="button" class="panel-toggle" data-panel-toggle="dash-expiring" data-label="Expiring soon" aria-expanded="true" aria-controls="dash-expiring" aria-label="Collapse Expiring soon">{{ icon('chevron-down') }}</button></div>
     {% if expiring %}
     <ul class="list">
       {% for s in expiring %}
@@ -224,8 +225,8 @@
     {% else %}<div class="empty"><h3>Nobody expires this week</h3><p>Customers with an expiry date in the next 7 days appear here.</p></div>{% endif %}
   </section>{% endif %}
 
-  <section class="panel c-6">
-    <div class="panel-head"><h2>Latest refused logins</h2><a class="aside" href="{{ url_for('logs', result='reject') }}">Open log</a></div>
+  <section class="panel c-6" id="dash-rejects">
+    <div class="panel-head"><h2>Latest refused logins</h2><a class="aside" href="{{ url_for('logs', result='reject') }}">Open log</a><button type="button" class="panel-toggle" data-panel-toggle="dash-rejects" data-label="Latest refused logins" aria-expanded="true" aria-controls="dash-rejects" aria-label="Collapse Latest refused logins">{{ icon('chevron-down') }}</button></div>
     {% if rejects %}
     <ul class="list">
       {% for r in rejects %}
@@ -237,19 +238,20 @@
 
   {# usage and money charts sit just above the server panel (owner's layout) #}
   {% if v3.bw %}
-  <section class="panel c-12">
+  <section class="panel c-12" id="dash-bandwidth">
     <div class="panel-head"><h2>Bandwidth usage</h2>
       <div class="seg-tabs" role="tablist" aria-label="Time range" data-traffic-tabs data-target="traffic-chart" data-url="{{ url_for('api_traffic') }}">
         {% for k, l in (('1h', '1H'), ('24h', '24H'), ('7d', '7D'), ('30d', '30D')) %}<button type="button" role="tab" data-range="{{ k }}" aria-selected="{{ 'true' if k == '24h' else 'false' }}">{{ l }}</button>{% endfor %}
       </div>
+      <button type="button" class="panel-toggle" data-panel-toggle="dash-bandwidth" data-label="Bandwidth usage" aria-expanded="true" aria-controls="dash-bandwidth" aria-label="Collapse Bandwidth usage">{{ icon('chevron-down') }}</button>
     </div>
     <div class="panel-body"><div class="chart" id="traffic-chart" data-kind="area" data-src="traffic-data" aria-label="Download and upload throughput"></div>
       <script type="application/json" id="traffic-data">{{ v3.traffic|tojson }}</script></div>
   </section>
   {% endif %}
   {% if v3.money %}
-  <section class="panel c-12">
-    <div class="panel-head"><h2>Revenue &amp; collection</h2><span class="aside" title="Older months are estimated from the customers who are active now">Last 6 months · not collected is estimated</span></div>
+  <section class="panel c-12" id="dash-revenue">
+    <div class="panel-head"><h2>Revenue &amp; collection</h2><span class="aside" title="Older months are estimated from the customers who are active now">Last 6 months · not collected is estimated</span><button type="button" class="panel-toggle" data-panel-toggle="dash-revenue" data-label="Revenue &amp; collection" aria-expanded="true" aria-controls="dash-revenue" aria-label="Collapse Revenue &amp; collection">{{ icon('chevron-down') }}</button></div>
     <div class="panel-body"><div class="chart" data-kind="bars" data-src="revenue-6m" aria-label="Collected and not collected per month"></div>
       <script type="application/json" id="revenue-6m">{{ v3.revenue6|tojson }}</script></div>
   </section>
@@ -257,8 +259,8 @@
 
   {% if off_onus is not none %}<div class="c-12 onu-off-slot">{{ onu_section }}</div>{% endif %}
   {% if server %}
-  <section class="panel c-12">
-    <div class="panel-head"><h2>This server</h2>{% if server.uptime %}<span class="aside">Up {{ server.uptime|dur }}</span>{% endif %}</div>
+  <section class="panel c-12" id="dash-server">
+    <div class="panel-head"><h2>This server</h2>{% if server.uptime %}<span class="aside">Up {{ server.uptime|dur }}</span>{% endif %}<button type="button" class="panel-toggle" data-panel-toggle="dash-server" data-label="This server" aria-expanded="true" aria-controls="dash-server" aria-label="Collapse This server">{{ icon('chevron-down') }}</button></div>
     <ul class="list bars">
       {% if server.load %}{% set pct = (100 * server.load[0] / server.cpus)|round|int %}
       <li><span class="grow"><b>CPU load</b><small>{{ '%.2f'|format(server.load[0]) }} on {{ server.cpus }} core{{ '' if server.cpus == 1 else 's' }}</small></span><span class="meter {{ 'bad' if pct > 90 else ('warn' if pct > 70) }}"><i style="width: {{ [pct, 100]|min }}%"></i></span><b>{{ pct }}%</b></li>{% endif %}

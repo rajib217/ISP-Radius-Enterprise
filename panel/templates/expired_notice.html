@@ -8,6 +8,7 @@
   <meta name="theme-color" content="#0f172a">
   <title>বিল অপরিশোধিত · {{ isp }}</title>
   {# Everything is inline: an expired customer can open nothing but this server (and bKash). #}
+  {% from "_macros.html" import money with context %}
   <style>
     :root { --bg: #eef2f7; --card: #ffffff; --ink: #0f172a; --muted: #5b6b82; --line: #e4e9f1; --soft: #f6f8fb;
       --accent: #2563eb; --accent2: #7c3aed; --bad: #e11d48; --badbg: #fff1f3; --warn: #b45309; --warnbg: #fff7e8;
@@ -145,12 +146,12 @@
         <span class="av" aria-hidden="true">{{ (info.name or info.username)[:1]|upper }}</span>
         <div><b>{{ info.name or info.username }}</b><small>ইউজার আইডি: <span class="mono">{{ info.username }}</span></small></div>
       </div>
-      {% if info.amount %}<div class="due"><span>পরিশোধ করতে হবে</span><b><small>{{ currency }}</small>{{ '%.2f' % info.amount }}</b></div>{% endif %}
+      {% if info.amount %}<div class="due"><span>পরিশোধ করতে হবে</span><b>{{ money(info.amount) }}</b></div>{% endif %}
       <dl class="facts">
         {% if info.id %}<div><dt>সাবস্ক্রাইবার আইডি</dt><dd class="mono">{{ info.id|subid }}</dd></div>{% endif %}
         {% if info.plan %}<div><dt>প্যাকেজ</dt><dd>{{ info.plan }}</dd></div>{% endif %}
         {% if info.ended %}<div class="{{ 'wide' if not info.balance }}"><dt>মেয়াদ শেষ</dt><dd>{{ info.ended.strftime('%d-%m-%Y, %I:%M %p') }}</dd></div>{% endif %}
-        {% if info.balance %}<div><dt>আপনার ব্যালেন্স</dt><dd>{{ currency }} {{ '%.2f' % info.balance }}</dd></div>{% endif %}
+        {% if info.balance %}<div><dt>আপনার ব্যালেন্স</dt><dd>{{ money(info.balance) }}</dd></div>{% endif %}
       </dl>
       {% if info.until %}<div class="until"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         <div><b>{{ info.until.strftime('%d-%m-%Y, %I:%M %p') }}</b> পর্যন্ত এই কম স্পীডে bKash-এ বিল দিতে পারবেন।<small>এরপর সংযোগ পুরো বন্ধ হবে, তখন অফিসে ফোন করে চালু করতে হবে।</small></div></div>{% endif %}
@@ -170,7 +171,7 @@
       {% if step.error %}<p class="err" role="alert">{{ step.error }}</p>{% endif %}
       <a class="btn pay" href="?pay=1&amp;sid={{ step.who.id }}&amp;go=1" rel="nofollow">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-        bKash-এ {{ currency }} {{ '%.2f' % step.who.amount }} পরিশোধ করুন</a>
+        bKash-এ {{ money(step.who.amount) }} পরিশোধ করুন</a>
       <a class="btn ghost" href="?pay=1">অন্য আইডি লিখুন</a>
       {% else %}
       <h2>আপনার সাবস্ক্রাইবার আইডি লিখুন</h2>

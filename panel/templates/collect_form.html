@@ -65,7 +65,8 @@
       {% if due.total > 0 and methods %}
       <form class="cl-pad" method="post" autocomplete="off" data-cl-pay data-package="{{ '%.2f' % due.package }}" data-price="{{ '%.2f' % due.price }}"
             data-balance="{{ '%.2f' % bal }}" data-plan="{{ plan_label }}" data-charges='{{ charges|map(attribute="amount")|map("float")|list|tojson }}'
-            data-names='{{ charges|map(attribute="name")|list|tojson }}' data-tk="{{ tk }}">
+            data-names='{{ charges|map(attribute="name")|list|tojson }}' data-tk="{{ tk }}" data-who="{{ sub.full_name or sub.username }}"
+            data-confirm="Receive this payment?">
         {{ csrf_input() }}<input type="hidden" name="form_token" value="{{ token }}">
         <div class="cl-amt">
           <label for="cf-amt">Amount received <b class="req">*</b></label>
@@ -73,6 +74,7 @@
           <div class="cl-quick">
             <button type="button" class="btn sm" data-amt="{{ '%.2f' % due.total }}">Full due {{ due.total|money }}</button>
             {% if due.package and due.charges %}<button type="button" class="btn sm" data-amt="{{ '%.2f' % due.package }}">Package only {{ due.package|money }}</button>{% endif %}
+            {% for chip in (500, 1000, 2000) %}{% if due.total >= chip %}<button type="button" class="btn sm" data-amt="{{ '%.2f' % chip }}">{{ chip|money }}</button>{% endif %}{% endfor %}
           </div>
         </div>
         <div class="cl-effect" id="cf-effect" aria-live="polite" data-cl-effect>
@@ -118,20 +120,27 @@
   function money(n) { return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   /* the same order the server books it in (mod_collect.post): package, then whole charges, the rest into the balance */
   function preview() {
-    var a = Math.round((parseFloat(amt.value) || 0) * 100) / 100, items = [];
+    var a = Math.round((parseFloat(amt.value) || 0) * 100) / 100, items = [], plain = [];
     sum.textContent = tk + " " + money(a);
-    if (a <= 0) { out.className = "cl-effect bad"; out.innerHTML = "<b>Enter the amount received.</b>"; return; }
-    if (a > max + 0.001) { out.className = "cl-effect bad"; out.innerHTML = "<b>More than the due (" + money(max) + ").</b> Take only what is owed."; return; }
+    /* the confirm dialog shows this text (it sets textContent, not HTML), so keep a plain copy of the effect */
+    function confirmMsg() {
+      var m = "Receive " + tk + " " + money(a) + " from " + form.dataset.who + "?";
+      if (plain.length) m += " " + plain.join("; ") + ".";
+      return m;
+    }
+    if (a <= 0) { out.className = "cl-effect bad"; out.innerHTML = "<b>Enter the amount received.</b>"; form.dataset.confirm = confirmMsg(); return; }
+    if (a > max + 0.001) { out.className = "cl-effect bad"; out.innerHTML = "<b>More than the due (" + money(max) + ").</b> Take only what is owed."; form.dataset.confirm = confirmMsg(); return; }
     var left = a, spare = bal;
     if (pkg > 0) {
-      if (left + 0.001 >= pkg) { items.push("Renews the package" + (form.dataset.plan ? " <b>" + esc(form.dataset.plan) + "</b>" : "")); left -= pkg; spare = Math.max(bal - price, 0); }
+      if (left + 0.001 >= pkg) { items.push("Renews the package" + (form.dataset.plan ? " <b>" + esc(form.dataset.plan) + "</b>" : "")); plain.push("Renews the package" + (form.dataset.plan ? " " + form.dataset.plan : "")); left -= pkg; spare = Math.max(bal - price, 0); }
     }
     fees.forEach(function (f, i) {
-      if (f > 0 && left + spare + 0.001 >= f) { items.push("Pays <b>" + esc(names[i]) + "</b>"); var fromBal = Math.max(f - left, 0); left = Math.max(left - f, 0); spare -= fromBal; }
+      if (f > 0 && left + spare + 0.001 >= f) { items.push("Pays <b>" + esc(names[i]) + "</b>"); plain.push("Pays " + names[i]); var fromBal = Math.max(f - left, 0); left = Math.max(left - f, 0); spare -= fromBal; }
     });
-    if (left > 0.004) items.push("<b>" + tk + " " + money(left) + "</b> goes into the balance" + (pkg > 0 && a + 0.001 < pkg ? " (not enough to renew yet)" : ""));
+    if (left > 0.004) { items.push("<b>" + tk + " " + money(left) + "</b> goes into the balance" + (pkg > 0 && a + 0.001 < pkg ? " (not enough to renew yet)" : "")); plain.push(tk + " " + money(left) + " goes into the balance" + (pkg > 0 && a + 0.001 < pkg ? " (not enough to renew yet)" : "")); }
     out.className = "cl-effect";
     out.innerHTML = "<b>This payment:</b><ul><li>" + items.join("</li><li>") + "</li></ul>";
+    form.dataset.confirm = confirmMsg();
   }
   amt.addEventListener("input", preview);
   form.querySelectorAll("[data-amt]").forEach(function (b) { b.addEventListener("click", function () { amt.value = b.dataset.amt; preview(); amt.focus(); }); });
@@ -143,8 +152,11 @@
     });
   }
   form.querySelectorAll("[data-cf-method]").forEach(function (r) { r.addEventListener("change", sync); });
-  var go = form.querySelector("[data-cl-go]");   /* one tap = one receipt; back to the page (browser Back) enables it again */
-  form.addEventListener("submit", function () { setTimeout(function () { go.disabled = true; }, 0); });
+  var go = form.querySelector("[data-cl-go]");   /* one tap = one receipt; back to the page (browser Back) enables it again.
+    The confirm dialog (app.js) intercepts the first submit, so only disable once the submit really goes through:
+    disabling on the intercepted submit would leave the button disabled for the confirmed re-submit, which the
+    browser refuses (requestSubmit on a disabled button throws) and the payment would never post. */
+  form.addEventListener("submit", function (e) { setTimeout(function () { if (!e.defaultPrevented) go.disabled = true; }, 0); });
   window.addEventListener("pageshow", function () { go.disabled = false; });
   sync(); preview();
 })();

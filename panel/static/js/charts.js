@@ -23,12 +23,47 @@
   }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
 
+  /* Keyboard + screen-reader access for charts (the charts are mouse-only otherwise).
+     The SVG itself is the focusable element (it already has role="img"); the host keeps no role so the
+     visually-hidden data table below stays in the accessibility tree, and the donut legend links stay reachable. */
+  function setSvgLabel(svgEl, text) { svgEl.setAttribute("tabindex", "0"); svgEl.setAttribute("aria-label", text); }
+  function addTable(host, caption, headers, rows) {
+    var t = document.createElement("table");
+    t.className = "sr-only";
+    var cap = document.createElement("caption"); cap.textContent = caption; t.appendChild(cap);
+    var thead = document.createElement("thead"), thr = document.createElement("tr");
+    headers.forEach(function (h) { var th = document.createElement("th"); th.textContent = h; thr.appendChild(th); });
+    thead.appendChild(thr); t.appendChild(thead);
+    var tb = document.createElement("tbody");
+    rows.forEach(function (r) {
+      var tr = document.createElement("tr");
+      r.forEach(function (c) { var td = document.createElement("td"); td.textContent = c; tr.appendChild(td); });
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+    host.appendChild(t);
+  }
+  function keyNav(el, count, showAt, hide) {
+    var idx = -1;
+    el.addEventListener("keydown", function (e) {
+      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft" && e.key !== "Home" && e.key !== "End") return;
+      e.preventDefault();
+      if (e.key === "Home") idx = 0;
+      else if (e.key === "End") idx = count - 1;
+      else if (idx < 0) idx = e.key === "ArrowRight" ? 0 : count - 1;
+      else idx = Math.min(Math.max(idx + (e.key === "ArrowRight" ? 1 : -1), 0), count - 1);
+      showAt(idx);
+    });
+    el.addEventListener("blur", function () { idx = -1; hide(); });
+  }
+
   function frame(host, height) {
     host.innerHTML = "";
     var w = Math.max(host.clientWidth, 200);
     var s = svg("svg", { viewBox: "0 0 " + w + " " + height, height: height, role: "img" }, host);
     var tip = document.createElement("div");
     tip.className = "chart-tip";
+    tip.setAttribute("aria-hidden", "true");   /* the tooltip duplicates the label / table for screen readers */
     host.appendChild(tip);
     return { s: s, w: w, h: height, tip: tip };
   }
@@ -60,6 +95,8 @@
     var vals = d.values || [];
     if (vals.length < 2) {
       host.innerHTML = '<div class="chart-empty"><div>Collecting data.<br>The curve appears after the first few 5-minute samples.</div></div>';
+      host.setAttribute("tabindex", "0");
+      host.setAttribute("aria-label", "Line chart: collecting data, nothing to show yet.");
       return;
     }
     var unit = d.unit, fmt = unit === "percent" ? function (v) { return (Math.round(v * 10) / 10) + "%"; }
@@ -83,15 +120,26 @@
     var last = svg("circle", { cx: X(vals.length - 1), cy: Y(vals[vals.length - 1]), r: 4, fill: color, stroke: css("--surface"), "stroke-width": 2 }, f.s);
     var guide = svg("line", { y1: pad.t, y2: pad.t + ih, "class": "guide", opacity: 0 }, f.s);
     var dot = svg("circle", { r: 4.5, fill: color, stroke: css("--surface"), "stroke-width": 2, opacity: 0 }, f.s);
+    var labels = d.stamps || d.labels || [];
+    function showPoint(i) {
+      guide.setAttribute("x1", X(i)); guide.setAttribute("x2", X(i)); guide.setAttribute("opacity", 1);
+      dot.setAttribute("cx", X(i)); dot.setAttribute("cy", Y(vals[i])); dot.setAttribute("opacity", 1);
+      var r = f.s.getBoundingClientRect();
+      showTip(host, f.tip, X(i) * r.width / f.w, Y(vals[i]), "<b>" + (unit ? fmt(vals[i]) : vals[i].toLocaleString()) + "</b>" + (unit ? (d.suffix || "") : " online") + "<br>" + esc(labels[i] || ""));
+    }
+    function hidePoint() { guide.setAttribute("opacity", 0); dot.setAttribute("opacity", 0); f.tip.classList.remove("show"); }
     f.s.addEventListener("pointermove", function (e) {
       var r = f.s.getBoundingClientRect(), x = (e.clientX - r.left) * f.w / r.width;
       var i = Math.round((x - pad.l) / iw * (vals.length - 1));
-      i = Math.min(Math.max(i, 0), vals.length - 1);
-      guide.setAttribute("x1", X(i)); guide.setAttribute("x2", X(i)); guide.setAttribute("opacity", 1);
-      dot.setAttribute("cx", X(i)); dot.setAttribute("cy", Y(vals[i])); dot.setAttribute("opacity", 1);
-      showTip(host, f.tip, X(i) * r.width / f.w, Y(vals[i]) , "<b>" + (unit ? fmt(vals[i]) : vals[i].toLocaleString()) + "</b>" + (unit ? (d.suffix || "") : " online") + "<br>" + esc((d.stamps || d.labels)[i]));
+      showPoint(Math.min(Math.max(i, 0), vals.length - 1));
     });
-    f.s.addEventListener("pointerleave", function () { guide.setAttribute("opacity", 0); dot.setAttribute("opacity", 0); f.tip.classList.remove("show"); });
+    f.s.addEventListener("pointerleave", hidePoint);
+    keyNav(f.s, vals.length, showPoint, hidePoint);
+    var peak = Math.max.apply(null, vals);
+    setSvgLabel(f.s, "Line chart. Latest " + fmt(vals[vals.length - 1]) + (labels.length ? " at " + labels[labels.length - 1] : "") + "; peak " + fmt(peak) + ".");
+    addTable(host, "Line chart data", ["Time", "Value"], vals.map(function (v, i) {
+      return [labels[i] || String(i + 1), unit ? fmt(v) : v.toLocaleString()];
+    }));
     void area; void last;
   }
 
@@ -106,6 +154,8 @@
     var series = d.series || [], labels = d.labels || [], n = labels.length;
     if (n < 2) {
       host.innerHTML = '<div class="chart-empty"><div>Collecting data.<br>Throughput is sampled every 5 minutes; the chart fills in as samples arrive.</div></div>';
+      host.setAttribute("tabindex", "0");
+      host.setAttribute("aria-label", "Area chart: collecting data, nothing to show yet.");
       return;
     }
     var fmt = d.unit === "bps" ? fmtBps : fmtNum;
@@ -125,20 +175,26 @@
     });
     var guide = svg("line", { y1: pad.t, y2: pad.t + ih, "class": "guide", opacity: 0 }, f.s);
     var dots = series.map(function (s, k) { return svg("circle", { r: 4, fill: colors[k], stroke: css("--surface"), "stroke-width": 2, opacity: 0 }, f.s); });
-    f.s.addEventListener("pointermove", function (e) {
-      var r = f.s.getBoundingClientRect(), x = (e.clientX - r.left) * f.w / r.width;
-      var i = Math.min(Math.max(Math.round((x - pad.l) / iw * (n - 1)), 0), n - 1);
+    function showPoint(i) {
       guide.setAttribute("x1", X(i)); guide.setAttribute("x2", X(i)); guide.setAttribute("opacity", 1);
       var html = "<b>" + esc((d.stamps || labels)[i]) + "</b>";
       series.forEach(function (s, k) {
         dots[k].setAttribute("cx", X(i)); dots[k].setAttribute("cy", Y(s.values[i])); dots[k].setAttribute("opacity", 1);
         html += '<br><i class="sw" style="background:' + colors[k] + '"></i>' + esc(s.name) + ": " + fmt(s.values[i]);
       });
+      var r = f.s.getBoundingClientRect();
       showTip(host, f.tip, X(i) * r.width / f.w, Y(Math.max.apply(null, series.map(function (s) { return s.values[i]; }))), html);
-    });
-    f.s.addEventListener("pointerleave", function () {
+    }
+    function hidePoint() {
       guide.setAttribute("opacity", 0); dots.forEach(function (c) { c.setAttribute("opacity", 0); }); f.tip.classList.remove("show");
+    }
+    f.s.addEventListener("pointermove", function (e) {
+      var r = f.s.getBoundingClientRect(), x = (e.clientX - r.left) * f.w / r.width;
+      var i = Math.min(Math.max(Math.round((x - pad.l) / iw * (n - 1)), 0), n - 1);
+      showPoint(i);
     });
+    f.s.addEventListener("pointerleave", hidePoint);
+    keyNav(f.s, n, showPoint, hidePoint);
     var lg = document.createElement("div");
     lg.className = "legend";
     lg.innerHTML = series.map(function (s, k) {
@@ -146,6 +202,13 @@
       return '<span><i style="background:' + colors[k] + '"></i>' + esc(s.name) + ' <b class="num">' + fmt(last) + "</b></span>";
     }).join("");
     host.appendChild(lg);
+    setSvgLabel(f.s, "Area chart. " + series.map(function (s) {
+      return s.name + " latest " + fmt(s.values[n - 1]);
+    }).join("; ") + ".");
+    addTable(host, "Area chart data", ["Time"].concat(series.map(function (s) { return s.name; })),
+      labels.map(function (lab, i) {
+        return [lab].concat(series.map(function (s) { return fmt(s.values[i]); }));
+      }));
   }
 
   function fmtMoney(v) { return v >= 1e6 ? (Math.round(v / 1e5) / 10) + "M" : v >= 1000 ? (Math.round(v / 100) / 10) + "k" : String(Math.round(v)); }
@@ -158,6 +221,8 @@
     for (i = 0; i < n; i++) { var t = 0; series.forEach(function (s) { t += s.values[i] || 0; }); totals.push(t); }
     if (!n || Math.max.apply(null, totals) === 0) {
       host.innerHTML = '<div class="chart-empty"><div>Nothing recorded in this period.</div></div>';
+      host.setAttribute("tabindex", "0");
+      host.setAttribute("aria-label", "Bar chart: nothing recorded in this period.");
       return;
     }
     var f = frame(host, d.height || 220), pad = { l: 56, r: 8, t: 10, b: 24 };
@@ -165,6 +230,13 @@
     var iw = f.w - pad.l - pad.r, ih = f.h - pad.t - pad.b, slot = iw / n, bw = Math.max(Math.min(slot * 0.68, 26), 2);
     axes(f, pad, max, fmt);
     xlabels(f, pad, d.labels, function (k) { return pad.l + slot * (k + 0.5); });
+    function showBar(idx) {
+      var html = "<b>" + esc(d.labels[idx]) + "</b>";
+      series.forEach(function (s) { html += "<br>" + esc(s.name) + ": " + tipFmt(s.values[idx] || 0); });
+      var r = f.s.getBoundingClientRect();
+      showTip(host, f.tip, (pad.l + slot * (idx + 0.5)) * r.width / f.w, pad.t + ih * (1 - totals[idx] / max), html);
+    }
+    function hideTip() { f.tip.classList.remove("show"); }
     for (i = 0; i < n; i++) {
       var y0 = pad.t + ih, x = pad.l + slot * (i + 0.5) - bw / 2;
       for (j = 0; j < series.length; j++) {
@@ -173,25 +245,33 @@
       }
       (function (idx) {
         var hit = svg("rect", { x: pad.l + slot * idx, y: pad.t, width: slot, height: ih, fill: "transparent" }, f.s);
-        hit.addEventListener("pointermove", function () {
-          var html = "<b>" + esc(d.labels[idx]) + "</b>";
-          series.forEach(function (s) { html += "<br>" + esc(s.name) + ": " + tipFmt(s.values[idx] || 0); });
-          var r = f.s.getBoundingClientRect();
-          showTip(host, f.tip, (pad.l + slot * (idx + 0.5)) * r.width / f.w, pad.t + ih * (1 - totals[idx] / max), html);
-        });
-        hit.addEventListener("pointerleave", function () { f.tip.classList.remove("show"); });
+        hit.addEventListener("pointermove", function () { showBar(idx); });
+        hit.addEventListener("pointerleave", hideTip);
       })(i);
     }
+    keyNav(f.s, n, showBar, hideTip);
     var lg = document.createElement("div");
     lg.className = "legend";
     lg.innerHTML = series.map(function (s, k) { return '<span><i style="background:' + colors[k] + '"></i>' + esc(s.name) + "</span>"; }).join("");
     host.appendChild(lg);
+    setSvgLabel(f.s, "Bar chart. " + d.labels.map(function (lab, k) {
+      return lab + ": " + series.map(function (s) { return s.name + " " + tipFmt(s.values[k] || 0); }).join(", ");
+    }).join("; ") + ".");
+    addTable(host, "Bar chart data", ["Period"].concat(series.map(function (s) { return s.name; })),
+      d.labels.map(function (lab, k) {
+        return [lab].concat(series.map(function (s) { return tipFmt(s.values[k] || 0); }));
+      }));
   }
 
   function donut(host, d) {
     var items = (d.items || []).filter(function (x) { return x.value > 0; });
     host.innerHTML = "";
-    if (!items.length) { host.innerHTML = '<div class="chart-empty"><div>No subscribers yet.</div></div>'; return; }
+    if (!items.length) {
+      host.innerHTML = '<div class="chart-empty"><div>No subscribers yet.</div></div>';
+      host.setAttribute("tabindex", "0");
+      host.setAttribute("aria-label", "Donut chart: no subscribers yet.");
+      return;
+    }
     var total = items.reduce(function (a, b) { return a + b.value; }, 0);
     var wrap = document.createElement("div");
     wrap.className = "donut-wrap";
@@ -215,6 +295,13 @@
     var t2 = svg("text", { x: 75, y: 94, "text-anchor": "middle", "class": "donut-sub" }, s); t2.textContent = d.center || "subscribers";
     wrap.appendChild(ul);
     host.appendChild(wrap);
+    /* the legend list below is already readable and its links are tabbable; the SVG carries the summary */
+    setSvgLabel(s, "Donut chart. " + items.map(function (it) {
+      return it.name + " " + it.value.toLocaleString() + " (" + (Math.round(1000 * it.value / total) / 10) + "%)";
+    }).join(", ") + "; total " + total.toLocaleString() + " " + (d.center || "subscribers") + ".");
+    addTable(host, "Donut chart data", ["Group", "Count", "Share"], items.map(function (it) {
+      return [it.name, it.value.toLocaleString(), (Math.round(1000 * it.value / total) / 10) + "%"];
+    }));
   }
 
   var kinds = { line: line, bars: bars, donut: donut, area: area };

@@ -4035,6 +4035,49 @@ def check_rules(flask_app, ids):
           "Review fixes: only the office edits message templates; a reseller's CSV update leaves other owners' customers alone; "
           "one bKash TrxID books once (collector / SMS); exports never run formulas; sign-in limited per account "
           + repr((_tr_save, _tr_del, _off_name, _ing, _sms_row, _lg.status_code)))
+    # ---- UI top-10 (2026-11-26): money, confirms, tap targets, charts, collapsibles, settings, cards, chips, de-inline
+    _money = flask_app.jinja_env.filters["money"]
+    _subs = adm.get("/subscribers").get_data(as_text=True)
+    _dash = adm.get("/").get_data(as_text=True)
+    _sett = adm.get("/settings").get_data(as_text=True)
+    _tick = adm.get("/tickets").get_data(as_text=True)
+    check(_money(1200) == "1,200.00" and _money(1200.5) == "1,200.50" and _money(0) == "0.00"
+          and 'data-card="key"' in _subs,
+          "money always shows two decimals (1,200.00, never 1,200), and the subscriber list shows Balance/Due on phone cards")
+    run("INSERT INTO sub_charges (subscriber_id, name, amount) VALUES (%s, 'CI chips', 5000)", (_rsub["id"],))
+    _cf = _cc.get("/collect/%d" % _rsub["id"]).get_data(as_text=True)   # the form is the collector's page: the office gets 403 here
+    check('data-confirm="Receive this payment?"' in _cf and "if (!e.defaultPrevented) go.disabled = true;" in _cf
+          and 'data-amt="500.00"' in _cf and 'data-amt="1000.00"' in _cf and 'data-amt="2000.00"' in _cf,
+          "the collect form asks before posting a payment (and the ask does not break the submit), with 500/1000/2000 quick chips")
+    check('data-confirm="Resolve the ticked tickets? The customers are told they are solved and asked to rate it."' in _tick
+          and 'data-confirm="Close the ticked tickets?"' in _tick and "data-bulk-apply" in _subs,
+          "bulk ticket Resolve/Close ask first (only Resolve tells the customer), and the subscriber bulk Apply names its action")
+    _dash_src = open(os.path.join(ROOT, "panel", "templates", "dashboard.html"), encoding="utf-8").read()
+    check(_dash.count("data-panel-toggle") == 9 and _dash_src.count("data-panel-toggle") == 10
+          and 'aria-current="page"' in _sett and 'class="set-nav-d"' in _sett,
+          "the dashboard has a collapse toggle on every section (9 for the office, 10 in the template incl. the sellers' own list), "
+          "and Settings marks the open page and collapses its long nav on phones")
+    _css = open(os.path.join(ROOT, "panel", "static", "css", "app.css"), encoding="utf-8").read()
+    _cjs = open(os.path.join(ROOT, "panel", "static", "js", "charts.js"), encoding="utf-8").read()
+    _ajs = open(os.path.join(ROOT, "panel", "static", "js", "app.js"), encoding="utf-8").read()
+    check(".btn.sm { height: 40px; }" in _css and ".cl-chip, .cl-quick button, .cl-filters select { height: 40px; }" in _css
+          and ".cl-acts .btn, .cl-cash .btn, .clm-near .btn { height: 44px; }" in _css
+          and ".btn.tb" not in _css and ".btn.blue" not in _css and ".btn.primary.green" in _css
+          and ".note-box.info" in _css and ".set-nav-d" in _css,
+          "phones get 44px primary buttons and 40px small buttons/chips; the dead .btn.tb/.btn.blue variants are gone")
+    check("setSvgLabel" in _cjs and "tabindex" in _cjs and '"sr-only"' in _cjs
+          and "data-autosubmit" in _ajs and "tok-eye" in _ajs and "syncConfirm" in _ajs and "isp-dash-" in _ajs,
+          "charts are keyboard-readable with a hidden data table, and the moved settings scripts and bulk/dashboard helpers live in app.js")
+    _bk = open(os.path.join(ROOT, "panel", "templates", "settings_backup.html"), encoding="utf-8").read()
+    _st = open(os.path.join(ROOT, "panel", "templates", "settings.html"), encoding="utf-8").read()
+    _sl = open(os.path.join(ROOT, "panel", "templates", "settings_logs.html"), encoding="utf-8").read()
+    _ex = open(os.path.join(ROOT, "panel", "templates", "expired_notice.html"), encoding="utf-8").read()
+    check('style="' not in _bk and "<script" not in _st and "<script" not in _sl and "<style>" in _ex,
+          "Backup settings has no inline styles left and the two moved settings scripts are gone; "
+          "the expired-notice page keeps its inline style on purpose (captive portal)")
+    _cf_src = open(os.path.join(ROOT, "panel", "templates", "collect_form.html"), encoding="utf-8").read()
+    check("for chip in (500, 1000, 2000)" in _cf_src and "due.total >= chip" in _cf_src,
+          "quick chips are rendered only when the due covers them")
     return bad
 
 
