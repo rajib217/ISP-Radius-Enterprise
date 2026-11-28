@@ -1,26 +1,79 @@
 {% extends "base.html" %}
 {% from "_macros.html" import icon %}
-{% block title %}MAC Vendor{% endblock %}
+{% block title %}MAC Vendor Database{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>MAC Vendor</h1><p class="sub">Find out who made a customer's router or ONU from its MAC address. {{ '{:,}'.format(total) }} vendor prefixes loaded.</p></div></div>
-<div class="split-even">
-  <section class="panel"><div class="panel-head"><h2>Look up a MAC</h2></div><div class="panel-body stack">
-    <form method="get" action="{{ url_for('mac_vendors') }}" class="row-gap"><input name="mac" value="{{ found.mac if found else '' }}" placeholder="AA:BB:CC:DD:EE:FF" spellcheck="false" class="w-220"><button class="btn primary" type="submit">Look up</button></form>
-    {% if found %}<p>{% if not found.prefix %}That is not a valid MAC address.{% elif found.vendor %}<b>{{ found.vendor }}</b> <span class="muted">(prefix {{ found.prefix }})</span>{% else %}No vendor known for prefix <span class="mono">{{ found.prefix }}</span>.{% if not total %} Import a vendor list first.{% endif %}{% endif %}</p>{% endif %}
-  </div></section>
-  <section class="panel"><div class="panel-head"><h2>Online devices by vendor</h2></div>
-    {% if by_vendor %}<div class="tbl-wrap"><table class="tbl"><tbody>{% for v, c in by_vendor[:15] %}<tr><td>{{ v }}</td><td class="num"><b>{{ '{:,}'.format(c) }}</b></td></tr>{% endfor %}</tbody></table></div>
-    {% else %}<div class="empty"><p>No customer is online with a MAC address.</p></div>{% endif %}</section>
-</div>
+<section class="panel mv-list" data-tt="mac-vendors" data-tt-title="MAC Vendor Database" data-tt-server>
+  <div class="panel-head mv-head"><h2>{{ icon('database') }}MAC Vendor Database</h2>
+    {% if can('network', 'edit') %}
+    <details class="dd mv-dd"><summary class="btn violet sm">Actions &#9662;</summary>
+      <div class="dd-menu">
+        <form method="post" action="{{ url_for('mac_vendor_update') }}" data-confirm="Download the latest vendor list from IEEE (standards-oui.ieee.org)? It takes up to a minute.">{{ csrf_input() }}<button type="submit">{{ icon('refresh') }} Update from IEEE</button></form>
+        <button type="button" data-open="mv-import">{{ icon('upload') }} Import file</button>
+        <a href="{{ url_for('mac_vendor_export', **keep) }}">{{ icon('download') }} Download all (CSV)</a>
+        {% if total_all %}<form method="post" action="{{ url_for('mac_vendor_clear') }}" data-confirm="Remove all {{ '{:,}'.format(total_all) }} vendor prefixes?">{{ csrf_input() }}<button type="submit" class="pk-del">{{ icon('trash') }} Clear list</button></form>{% endif %}
+      </div>
+    </details>
+    {% else %}<a class="btn sm" href="{{ url_for('mac_vendor_export', **keep) }}">{{ icon('download') }}Download all (CSV)</a>{% endif %}
+  </div>
+
+  <form class="tt-bar mv-bar" method="get" action="{{ url_for('mac_vendors') }}">
+    <select name="per" aria-label="Rows per page" class="tt-per" onchange="this.form.submit()">{% for n in (10, 25, 50, 100) %}<option value="{{ n }}" {{ 'selected' if n == pg.per }}>{{ n }}</option>{% endfor %}</select>
+    <div class="tt-tools" role="group" aria-label="Export this page">
+      <button type="button" data-tt-do="print">Print</button><button type="button" data-tt-do="copy">Copy</button><button type="button" data-tt-do="pdf">PDF</button><button type="button" data-tt-do="excel">Excel</button><button type="button" data-tt-do="csv">CSV</button>
+      <span class="tt-view-wrap"><button type="button" data-tt-view aria-expanded="false">View &#9662;</button><div class="tt-cols" data-tt-cols hidden></div></span>
+    </div>
+    <label class="tt-search">Search: <input type="search" name="q" value="{{ term }}" placeholder="Type &amp; Search" aria-label="Search by vendor name or MAC"></label>
+  </form>
+
+  <div class="tt-meta">
+    <span class="muted">{% if pg.total %}Showing {{ '{:,}'.format(pg.first) }} to {{ '{:,}'.format(pg.last) }} of {{ '{:,}'.format(pg.total) }} records{% else %}No matching records{% endif %}</span>
+    {% if pg.pages > 1 %}{% set cur = pg.page %}
+    <nav class="tt-pages" aria-label="Pages">
+      {% if cur > 1 %}<a class="tt-pg" href="{{ url_for('mac_vendors', page=cur-1, **keep) }}" aria-label="Previous page">&lsaquo;</a>{% else %}<span class="tt-pg" aria-disabled="true">&lsaquo;</span>{% endif %}
+      {% for p in range(1, pg.pages + 1) %}
+        {% if p == 1 or p == pg.pages or (p >= cur - 2 and p <= cur + 2) %}
+          {% if p == cur %}<span class="tt-pg on" aria-current="page">{{ p }}</span>{% else %}<a class="tt-pg" href="{{ url_for('mac_vendors', page=p, **keep) }}">{{ p }}</a>{% endif %}
+        {% elif p == cur - 3 or p == cur + 3 %}<span class="tt-gap">…</span>{% endif %}
+      {% endfor %}
+      {% if cur < pg.pages %}<a class="tt-pg" href="{{ url_for('mac_vendors', page=cur+1, **keep) }}" aria-label="Next page">&rsaquo;</a>{% else %}<span class="tt-pg" aria-disabled="true">&rsaquo;</span>{% endif %}
+    </nav>{% endif %}
+  </div>
+
+  {% if rows %}
+  <div class="tbl-wrap"><table class="tbl mv-tbl" data-tt-table>
+    <thead><tr><th data-k="id">ID</th><th data-k="prefix">MAC Prefix</th><th data-k="vendor">Vendor Name</th><th data-k="privacy">Privacy</th><th data-k="block">Block Type</th><th data-k="updated">Last Update</th></tr></thead>
+    <tbody>{% for r in rows %}
+      <tr>
+        <td class="muted">{{ pg.offset + loop.index }}</td>
+        <td><span class="mv-prefix mono">{{ r.shown }}</span></td>
+        <td>{{ r.vendor }}</td>
+        <td>{% if r.private %}<span class="mv-tag priv">Private</span>{% else %}<span class="mv-tag pub">Public</span>{% endif %}</td>
+        <td><span class="mv-tag blk">{{ r.block_type }}</span></td>
+        <td class="nowrap">{{ r.updated.isoformat() if r.updated else '—' }}</td>
+      </tr>{% endfor %}</tbody>
+  </table></div>
+  {% elif not total_all %}
+  <div class="empty"><h3>No vendor list yet</h3><p>Use Actions &rsaquo; Update from IEEE to download it, or Import the IEEE <code>oui.csv</code> file. Then every customer's MAC shows its maker (TP-Link, Tenda, ...).</p></div>
+  {% else %}<div class="empty"><p>Nothing matches “{{ term }}”.</p></div>{% endif %}
+</section>
+
+<section class="panel" style="margin-top:16px"><div class="panel-head"><h2>Online devices by vendor</h2></div>
+  {% if by_vendor %}<div class="tbl-wrap"><table class="tbl"><tbody>{% for v, c in by_vendor %}<tr><td>{{ v }}</td><td class="num"><b>{{ '{:,}'.format(c) }}</b></td></tr>{% endfor %}</tbody></table></div>
+  {% else %}<div class="empty"><p>No customer is online with a MAC address.</p></div>{% endif %}</section>
+
 {% if can('network', 'edit') %}
-<section class="panel" style="margin-top:16px"><div class="panel-head"><h2>Vendor list</h2>
-  {% if total %}<form method="post" action="{{ url_for('mac_vendor_clear') }}" data-confirm="Remove all vendor prefixes?">{{ csrf_input() }}<button class="btn sm danger" type="submit">Clear list</button></form>{% endif %}</div>
-  <form method="post" action="{{ url_for('mac_vendor_import') }}" enctype="multipart/form-data" class="panel-body stack">
+<dialog class="modal" id="mv-import" aria-labelledby="mv-import-title">
+  <form method="post" action="{{ url_for('mac_vendor_import') }}" enctype="multipart/form-data">
     {{ csrf_input() }}
-    <p>Upload the IEEE <code>oui.csv</code> file (from standards-oui.ieee.org), or paste lines like <code>AA:BB:CC,Vendor name</code>. Existing prefixes are replaced.</p>
-    <input type="file" name="file" accept=".csv,.txt">
-    <textarea name="text" rows="4" placeholder="4C:5E:0C,Routerboard.com" spellcheck="false" class="mono"></textarea>
-    <div><button class="btn primary" type="submit">{{ icon('upload') }}Import</button></div>
-  </form></section>
+    <div class="modal-head"><h2 id="mv-import-title">Import vendor list</h2><button type="button" class="btn sm icon" data-close aria-label="Close" title="Close">{{ icon('x') }}</button></div>
+    <div class="modal-body stack">
+      <p>Upload the IEEE <code>oui.csv</code>, <code>mam.csv</code> or <code>oui36.csv</code> file, the maclookup.app CSV, or paste lines like <code>AA:BB:CC,Vendor name</code>. Existing prefixes are replaced.</p>
+      <input type="file" name="file" accept=".csv,.txt">
+      <textarea name="text" rows="4" placeholder="4C:5E:0C,Routerboard.com" spellcheck="false" class="mono"></textarea>
+    </div>
+    <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary" type="submit">{{ icon('upload') }}Import</button></div>
+  </form>
+</dialog>
 {% endif %}
 {% endblock %}
+{% block scripts %}<script src="{{ asset('js/table-tools.js') }}"></script>{% endblock %}

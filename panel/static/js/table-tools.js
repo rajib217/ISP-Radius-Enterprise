@@ -24,6 +24,7 @@
                                : heads.filter(function (h) { return h.hasAttribute("data-tt-hide") && h.dataset.k; })
                                       .map(function (h) { return h.dataset.k; }); } catch (e) { hidden = []; }
     var savedPer = parseInt(store(key + ".per"), 10); if (savedPer) per = savedPer;
+    if (box.hasAttribute("data-tt-server")) per = 1e9;      // the server pages and searches; only export / View here
     if (perSel) { perSel.value = String(per); if (perSel.value !== String(per)) { per = parseInt(perSel.value, 10) || 50; } }
 
     function cellText(td) { return (td.dataset.v !== undefined ? td.dataset.v : td.textContent).trim(); }

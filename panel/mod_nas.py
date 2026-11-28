@@ -208,55 +208,132 @@ def nas_group_delete(gid):
 
 
 # ===================================================================== MAC vendors
+BLOCK_LEN = {"MA-L": 6, "MA-M": 7, "MA-S": 9}
+IEEE_FILES = ("https://standards-oui.ieee.org/oui/oui.csv", "https://standards-oui.ieee.org/oui28/mam.csv",
+              "https://standards-oui.ieee.org/oui36/oui36.csv")
+
+
+def _hex(text):
+    return re.sub(r"[^0-9A-Fa-f]", "", text or "").upper()
+
+
 def mac_prefix(text):
-    h = re.sub(r"[^0-9A-Fa-f]", "", text or "").upper()
+    h = _hex(text)
     return h[:6] if len(h) >= 6 else ""
+
+
+def vendor_of(mac):
+    """Who made the device with this MAC: the longest IEEE block that matches (MA-S, then MA-M, then MA-L), or ''."""
+    h = _hex(mac)
+    keys = [h[:n] for n in (9, 7, 6) if len(h) >= n]
+    if not keys:
+        return ""
+    row = q("SELECT vendor FROM mac_vendors WHERE prefix IN (" + ",".join(["%s"] * len(keys)) + ") "
+            "ORDER BY LENGTH(prefix) DESC LIMIT 1", keys, one=True)
+    return row["vendor"] if row else ""
+
+
+def fmt_prefix(p):
+    """0050C2 -> 00:50:C2, 0050C21 -> 00:50:C2:1, 0050C2123 -> 00:50:C2:12:3"""
+    return ":".join(p[i:i + 2] for i in range(0, len(p), 2))
 
 
 LINE_RE = re.compile(r'^\s*"?([0-9A-Fa-f]{2}[:\-.]?[0-9A-Fa-f]{2}[:\-.]?[0-9A-Fa-f]{2})"?\s*(?:\(hex\))?[,;\t ]+\s*"?(.+?)"?\s*$')
 
 
+def _day(text):
+    m = re.match(r"^\s*(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})", text or "")
+    return "%s-%02d-%02d" % (m.group(1), int(m.group(2)), int(m.group(3))) if m else None
+
+
 def parse_vendors(text):
+    """{prefix: (vendor, block, private, date)} from the IEEE files (oui.csv, mam.csv, oui36.csv), the maclookup.app
+    export (Mac Prefix,Vendor Name,Private,Block Type,Last Update) or plain lines  AA:BB:CC,Vendor name."""
     out = {}
     for line in io.StringIO(text):
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-        if line.upper().startswith("MA-"):                      # IEEE oui.csv: Registry,Assignment,Organization,Address
-            try:
-                row = next(csv.reader([line]))
-                p, v = mac_prefix(row[1]), row[2].strip()
-            except (StopIteration, IndexError):
+        try:
+            row = next(csv.reader([line]))
+        except (StopIteration, csv.Error):
+            continue
+        if row and row[0].strip().upper() in BLOCK_LEN and len(row) >= 3:           # IEEE: Registry,Assignment,Name,...
+            block, p, v = row[0].strip().upper(), _hex(row[1]), row[2].strip()
+            if len(p) != BLOCK_LEN[block]:
                 continue
+            item = (v, block, 1 if v.lower() == "private" else 0, None)
+        elif len(row) >= 4 and row[3].strip().upper() in BLOCK_LEN:                  # maclookup.app export
+            block, p, v = row[3].strip().upper(), _hex(row[0]), row[1].strip()
+            if len(p) != BLOCK_LEN[block]:
+                continue
+            item = (v, block, 1 if row[2].strip().lower() in ("true", "1", "yes") else 0, _day(row[4]) if len(row) > 4 else None)
         else:
             m = LINE_RE.match(line)
             if not m:
                 continue
             p, v = mac_prefix(m.group(1)), m.group(2).strip().strip('"')
-        if len(p) == 6 and v:
-            out[p] = v[:128]
+            item = (v, "MA-L", 0, None)
+        if p and item[0]:
+            out[p] = (item[0][:128],) + item[1:]
     return out
+
+
+def _save_vendors(rows):
+    """REPLACE the parsed rows; an entry with no date of its own gets today's."""
+    items = [(p, v, b, pv, d) for p, (v, b, pv, d) in rows.items()]
+    with get_db().cursor() as cur:
+        for i in range(0, len(items), 2000):
+            cur.executemany("REPLACE INTO mac_vendors (prefix, vendor, block_type, private, updated) "
+                            "VALUES (%s, %s, %s, %s, COALESCE(%s, CURDATE()))", items[i:i + 2000])
+    return len(items)
+
+
+def _vendor_where():
+    term = request.args.get("q", "").strip()[:64]
+    if not term:
+        return term, "", []
+    h = _hex(term)
+    if len(h) >= 2 and len(h) * 1.0 >= len(re.sub(r"[\s:\-.]", "", term)):          # looks like a MAC / prefix
+        keys = [h[:n] for n in (9, 7, 6) if len(h) >= n]
+        if keys:                                                                       # a whole MAC: its own block
+            return term, " WHERE prefix IN (" + ",".join(["%s"] * len(keys)) + ") OR vendor LIKE %s", keys + ["%" + term + "%"]
+        return term, " WHERE prefix LIKE %s OR vendor LIKE %s", [h + "%", "%" + term + "%"]
+    return term, " WHERE vendor LIKE %s", ["%" + term + "%"]
 
 
 @route("/mac-vendors", module="network")
 def mac_vendors():
-    lookup = request.args.get("mac", "").strip()
-    found = None
-    if lookup:
-        p = mac_prefix(lookup)
-        row = q("SELECT vendor FROM mac_vendors WHERE prefix = %s", (p,), one=True) if p else None
-        found = {"mac": lookup, "prefix": p, "vendor": row["vendor"] if row else ""}
-    total = q("SELECT COUNT(*) AS c FROM mac_vendors", one=True)["c"]
-    vendors = {r["prefix"]: r["vendor"] for r in q("SELECT prefix, vendor FROM mac_vendors")} if total <= 60000 else {}
-    sessions = q("SELECT callingstationid AS mac, COUNT(*) AS c FROM radacct WHERE acctstoptime IS NULL "
-                 "AND callingstationid <> '' GROUP BY callingstationid LIMIT 5000")
-    counts = {}
-    for s in sessions:
-        v = vendors.get(mac_prefix(s["mac"]), "Unknown")
-        counts[v] = counts.get(v, 0) + s["c"]
-    by_vendor = sorted(counts.items(), key=lambda kv: -kv[1])
-    return render_template("mac_vendors.html", found=found, total=total, by_vendor=by_vendor,
-                           recent=q("SELECT prefix, vendor FROM mac_vendors ORDER BY vendor LIMIT 50"))
+    term, where, args = _vendor_where()
+    total_all = q("SELECT COUNT(*) AS c FROM mac_vendors", one=True)["c"]
+    total = q("SELECT COUNT(*) AS c FROM mac_vendors" + where, args, one=True)["c"] if where else total_all
+    pg = pager(total)
+    rows = q("SELECT prefix, vendor, block_type, private, updated FROM mac_vendors" + where +
+             " ORDER BY prefix LIMIT %s OFFSET %s", args + [pg["per"], pg["offset"]])
+    for r in rows:
+        r["shown"] = fmt_prefix(r["prefix"])
+    # customers online now, by the maker of their router (MA-L blocks)
+    by_vendor = [(r["vendor"] or "Unknown", r["c"]) for r in q(
+        "SELECT v.vendor, COUNT(*) AS c FROM radacct a LEFT JOIN mac_vendors v ON v.prefix = "
+        "LEFT(UPPER(REPLACE(REPLACE(REPLACE(a.callingstationid, ':', ''), '-', ''), '.', '')), 6) "
+        "WHERE a.acctstoptime IS NULL AND a.callingstationid <> '' GROUP BY v.vendor ORDER BY c DESC LIMIT 15")]
+    keep = {k: v for k, v in (("q", term), ("per", pg["per"])) if v}
+    return render_template("mac_vendors.html", rows=rows, pg=pg, keep=keep, term=term, total_all=total_all,
+                           by_vendor=by_vendor, ieee=IEEE_FILES)
+
+
+@route("/mac-vendors/export.csv", module="network")
+def mac_vendor_export():
+    from flask import Response
+    term, where, args = _vendor_where()
+    out = io.StringIO()
+    w = core.csv_writer(out)
+    w.writerow(["MAC Prefix", "Vendor Name", "Privacy", "Block Type", "Last Update"])
+    for r in q("SELECT prefix, vendor, block_type, private, updated FROM mac_vendors" + where + " ORDER BY prefix", args):
+        w.writerow([fmt_prefix(r["prefix"]), r["vendor"], "Private" if r["private"] else "Public", r["block_type"],
+                    r["updated"].isoformat() if r["updated"] else ""])
+    return Response("\ufeff" + out.getvalue(), mimetype="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": "attachment; filename=mac-vendors.csv"})
 
 
 @route("/mac-vendors/import", module="network", methods=["POST"])
@@ -264,18 +341,39 @@ def mac_vendor_import():
     text = request.form.get("text", "")
     upload = request.files.get("file")
     if upload and upload.filename:
-        text += "\n" + upload.stream.read(8 * 1024 * 1024).decode("utf-8", "replace")
+        text += "\n" + upload.stream.read(16 * 1024 * 1024).decode("utf-8", "replace")
     rows = parse_vendors(text)
     if not rows:
-        flash("No vendors found. Use lines like  AA:BB:CC,Vendor name  or the IEEE oui.csv file.", "error")
+        flash("No vendors found. Use the IEEE oui.csv / mam.csv / oui36.csv file, the maclookup.app CSV, "
+              "or lines like  AA:BB:CC,Vendor name.", "error")
         return redirect(url_for("mac_vendors"))
-    items = list(rows.items())
-    with get_db().cursor() as cur:
-        for i in range(0, len(items), 2000):
-            cur.executemany("REPLACE INTO mac_vendors (prefix, vendor) VALUES (%s, %s)", items[i:i + 2000])
-    audit("mac_vendors_imported", "", "%d rows" % len(items))
+    n = _save_vendors(rows)
+    audit("mac_vendors_imported", "", "%d rows" % n)
     commit()
-    flash("%d vendors saved." % len(items), "success")
+    flash("%s vendors saved." % "{:,}".format(n), "success")
+    return redirect(url_for("mac_vendors"))
+
+
+@route("/mac-vendors/update", module="network", methods=["POST"])
+def mac_vendor_update():
+    """Download the three IEEE registries (MA-L, MA-M, MA-S) straight from standards-oui.ieee.org and save them."""
+    import urllib.request
+    rows, failed = {}, []
+    for url in IEEE_FILES:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (ISP RADIUS Panel vendor update)"})
+            with urllib.request.urlopen(req, timeout=60) as r:
+                rows.update(parse_vendors(r.read(32 * 1024 * 1024).decode("utf-8", "replace")))
+        except Exception as exc:                 # no internet, IEEE refusing: say so and keep what is there
+            failed.append("%s (%s)" % (url.rsplit("/", 1)[-1], str(exc)[:80]))
+    if not rows:
+        flash("Could not download the IEEE list: %s. Download oui.csv in a browser and use Import instead." % "; ".join(failed), "error")
+        return redirect(url_for("mac_vendors"))
+    n = _save_vendors(rows)
+    audit("mac_vendors_imported", "IEEE", "%d rows" % n)
+    commit()
+    flash("%s vendors updated from IEEE.%s" % ("{:,}".format(n), (" Not downloaded: " + "; ".join(failed)) if failed else ""),
+          "warn" if failed else "success")
     return redirect(url_for("mac_vendors"))
 
 

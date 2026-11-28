@@ -904,6 +904,63 @@ def check_rules(flask_app, ids):
           "ONUs can't be added by hand (no button, the form is refused); Edit changes only the note")
     run("DELETE FROM onus WHERE name LIKE 'ONU-CI-%%'")
 
+    # ---- MAC Vendor Database: IEEE MA-L / MA-M / MA-S, maclookup.app and plain lines; paged + searched on the server;
+    #      the customer's page shows the maker of the connected MAC (longest block wins)
+    run("DELETE FROM mac_vendors")
+    _imp = ("Registry,Assignment,Organization Name,Organization Address\n"
+            "MA-L,50C7BF,\"TP-LINK TECHNOLOGIES CO.,LTD.\",Shenzhen\n"
+            "MA-M,50C7BF1,CI Small Maker,Dhaka\n"
+            "MA-S,50C7BF123,CI Tiny Maker,Dhaka\n"
+            "MA-L,AABBCC,Private,\n"
+            "Mac Prefix,Vendor Name,Private,Block Type,Last Update\n"
+            "C8:3A:35,Tenda Technology Co.,false,MA-L,2016/04/11\n"
+            "00:00:0C,Cisco Systems, Inc\n")
+    _r = adm.post("/mac-vendors/import", data={"_csrf": "ci", "text": _imp})
+    _mv = {r["prefix"]: r for r in run_q("SELECT prefix, vendor, block_type, private, updated FROM mac_vendors")}
+    check(_r.status_code == 302 and len(_mv) == 6 and _mv["50C7BF"]["vendor"] == "TP-LINK TECHNOLOGIES CO.,LTD."
+          and _mv["50C7BF1"]["block_type"] == "MA-M" and _mv["50C7BF123"]["block_type"] == "MA-S"
+          and _mv["AABBCC"]["private"] == 1 and str(_mv["C83A35"]["updated"]) == "2016-04-11"
+          and _mv["00000C"]["vendor"] == "Cisco Systems, Inc" and _mv["00000C"]["updated"] is not None,
+          "MAC Vendor import reads the IEEE files (MA-L/MA-M/MA-S, Private), the maclookup.app CSV and plain lines")
+    _pg = adm.get("/mac-vendors").get_data(as_text=True)
+    _p2 = adm.get("/mac-vendors?per=10&q=tenda").get_data(as_text=True)
+    _p3 = adm.get("/mac-vendors?q=50:C7:BF:12:34:56").get_data(as_text=True)
+    _p4 = adm.get("/mac-vendors?per=10&page=1").get_data(as_text=True)
+    _csv = adm.get("/mac-vendors/export.csv?q=tp-link").get_data(as_text=True)
+    check("MAC Vendor Database" in _pg and "Showing 1 to 6 of 6 records" in _pg and "50:C7:BF" in _pg and "MA-S" in _pg
+          and "Private" in _pg and "Public" in _pg
+          and "Tenda Technology" in _p2 and "TP-LINK" not in _p2 and "Showing 1 to 1 of 1 records" in _p2
+          and "CI Tiny Maker" in _p3 and "Tenda" not in _p3
+          and "TP-LINK" in _csv and "Tenda" not in _csv and "Last Update" in _csv,
+          "MAC Vendor page: table with prefix / vendor / privacy / block / date, server search by name or MAC, CSV of all")
+    _vs = one("SELECT id, username FROM subscribers ORDER BY id LIMIT 1")
+    run("INSERT INTO radacct (acctsessionid, acctuniqueid, username, nasipaddress, framedipaddress, callingstationid, "
+        "acctstarttime, acctupdatetime) VALUES ('ci-mv', 'ci-mv-u', %s, '10.9.9.6', '10.0.0.66', '50:C7:BF:12:34:56', "
+        "NOW() - INTERVAL 1 HOUR, NOW())", (_vs["username"],))
+    _sv1 = adm.get("/subscribers/%d" % _vs["id"]).get_data(as_text=True)
+    run("UPDATE radacct SET callingstationid = '50:C7:BF:99:00:11' WHERE acctsessionid = 'ci-mv'")
+    _sv2 = adm.get("/subscribers/%d" % _vs["id"]).get_data(as_text=True)
+    run("UPDATE radacct SET callingstationid = 'C8-3A-35-01-02-03' WHERE acctsessionid = 'ci-mv'")
+    _sv3 = adm.get("/subscribers/%d" % _vs["id"]).get_data(as_text=True)
+    _byv = adm.get("/mac-vendors").get_data(as_text=True).split("Online devices by vendor", 1)[-1]
+    check("CI Tiny Maker" in _sv1 and "TP-LINK TECHNOLOGIES" in _sv2 and "CI Tiny Maker" not in _sv2
+          and "Tenda Technology" in _sv3 and "Tenda Technology" in _byv,
+          "Customer page > Connection Status shows the maker of the connected MAC (MA-S before MA-M before MA-L)")
+    run("DELETE FROM radacct WHERE acctsessionid = 'ci-mv'")
+    import urllib.request as _ur
+    _real = _ur.urlopen
+    def _no_net(*a, **k):
+        raise OSError("no network in CI")
+    _ur.urlopen = _no_net
+    try:
+        _up = adm.post("/mac-vendors/update", data={"_csrf": "ci"}, follow_redirects=True).get_data(as_text=True)
+    finally:
+        _ur.urlopen = _real
+    check("Could not download the IEEE list" in _up and one("SELECT COUNT(*) AS n FROM mac_vendors")["n"] == 6
+          and client(ids["reseller"]).post("/mac-vendors/update", data={"_csrf": "ci"}).status_code == 403,
+          "Update from IEEE: without internet it says so and keeps the list")
+    run("DELETE FROM mac_vendors")
+
     # ---- in-app notifications for customers: payment, balance, expiring, custom; unread mark, list, live check
     import appnotify as _an
     _nsid = one("SELECT id FROM subscribers WHERE username = 'uttara.shop'")["id"]

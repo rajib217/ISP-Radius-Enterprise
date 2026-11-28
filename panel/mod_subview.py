@@ -69,9 +69,8 @@ def context(sub, sessions):
     out["nas_name"] = (nas["shortname"] if nas and nas.get("shortname") else nas_ip) or ""
     mac = (sessions[0]["callingstationid"] if sessions else (last or {}).get("callingstationid")) or ""
     out["mac_now"] = mac
-    prefix = re.sub(r"[^0-9A-Fa-f]", "", mac).upper()[:6]
-    v = q("SELECT vendor FROM mac_vendors WHERE prefix = %s", (prefix,), one=True) if len(prefix) == 6 else None
-    out["mac_vendor"] = v["vendor"] if v else ""
+    import mod_nas
+    out["mac_vendor"] = mod_nas.vendor_of(mac)          # TP-Link, Tenda, ... from the MAC Vendor list
     out["groups"] = [r["groupname"] for r in q("SELECT groupname FROM radusergroup WHERE username = %s ORDER BY priority",
                                                 (user,))]
     out["last_activation"] = q("SELECT paid_at FROM payments WHERE subscriber_id = %s AND days_added > 0 "
