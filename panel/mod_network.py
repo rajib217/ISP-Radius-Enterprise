@@ -179,8 +179,12 @@ def device_save():
 @route("/devices/<int:did>/delete", module="network", methods=["POST"])
 def device_delete(did):
     _staff_only()
-    row = q("SELECT name FROM net_devices WHERE id = %s", (did,), one=True) or abort(404)
-    x("DELETE FROM net_devices WHERE id = %s", (did,))
+    row = q("SELECT name, kind FROM net_devices WHERE id = %s", (did,), one=True) or abort(404)
+    if row["kind"] == "olt":
+        import mod_olt
+        mod_olt.drop_olt(did)                  # its ONUs go with it, same as the OLT page's Delete
+    else:
+        x("DELETE FROM net_devices WHERE id = %s", (did,))
     audit("device_deleted", row["name"])
     commit()
     flash("Device %s deleted." % row["name"], "success")

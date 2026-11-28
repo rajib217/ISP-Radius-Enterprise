@@ -855,6 +855,25 @@ def check_rules(flask_app, ids):
     run("DELETE FROM onus WHERE name LIKE 'ONU-CI-%%'")
     run("DELETE FROM net_devices WHERE name LIKE 'CI-OLT-%%'")
 
+    # ---- deleting an OLT deletes every ONU under it (synced and hand-added) and their history
+    for _dn, _how in (("CI-OLT-DEL1", "olts"), ("CI-OLT-DEL2", "devices")):
+        run("INSERT INTO net_devices (name, kind, ip, created_by) VALUES (%s, 'olt', '10.9.0.9', 'admin')", (_dn,))
+        _did = one("SELECT id FROM net_devices WHERE name = %s", (_dn,))["id"]
+        run("INSERT INTO olt_snmp (device_id) VALUES (%s)", (_did,))
+        run("INSERT INTO onus (olt_id, name, source) VALUES (%s, 'ONU-CI-D1', 'snmp'), (%s, 'ONU-CI-D2', 'manual')", (_did, _did))
+        run("INSERT INTO onus (olt_id, name, source) VALUES (NULL, 'ONU-CI-KEEP', 'manual')")
+        run("INSERT INTO onu_metrics (onu_id, ts, rx_dbm) SELECT id, NOW(), -20 FROM onus WHERE olt_id = %s", (_did,))
+        _ids = [r["id"] for r in run_q("SELECT id FROM onus WHERE olt_id = %s", (_did,))]
+        _r = adm.post("/%s/%d/delete" % (_how, _did), data={"_csrf": "ci"})
+        check(_r.status_code == 302
+              and one("SELECT COUNT(*) AS n FROM onus WHERE olt_id = %s OR name IN ('ONU-CI-D1','ONU-CI-D2')", (_did,))["n"] == 0
+              and one("SELECT COUNT(*) AS n FROM onu_metrics WHERE onu_id IN (%s, %s)", tuple(_ids))["n"] == 0
+              and not one("SELECT 1 AS x FROM olt_snmp WHERE device_id = %s", (_did,))
+              and not one("SELECT 1 AS x FROM net_devices WHERE id = %s", (_did,))
+              and one("SELECT COUNT(*) AS n FROM onus WHERE name = 'ONU-CI-KEEP'")["n"] == 1,
+              "Deleting an OLT (%s page) deletes all its ONUs and their history, nothing else" % _how)
+        run("DELETE FROM onus WHERE name LIKE 'ONU-CI-%%'")
+
     # ---- in-app notifications for customers: payment, balance, expiring, custom; unread mark, list, live check
     import appnotify as _an
     _nsid = one("SELECT id FROM subscribers WHERE username = 'uttara.shop'")["id"]

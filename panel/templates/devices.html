@@ -28,7 +28,7 @@
       <td class="act" data-card="actions">{% if can('network', 'edit') %}
         {% if d.ip %}<form method="post" action="{{ url_for('device_ping', did=d.id) }}">{{ csrf_input() }}<button class="btn sm" type="submit">Check</button></form>{% endif %}
         <button class="btn sm icon" data-open="dev-dlg" data-edit='{{ {"id": d.id, "name": d.name, "kind": d.kind, "ip": d.ip, "location": d.location, "zone_id": d.zone_id or "", "notes": d.notes, "nas_id": d.nas_id or ""}|tojson }}' aria-label="Edit {{ d.name }}" title="Edit {{ d.name }}">{{ icon('edit') }}</button>
-        <form method="post" action="{{ url_for('device_delete', did=d.id) }}" data-confirm="Delete {{ d.name }}?">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ d.name }}" title="Delete {{ d.name }}">{{ icon('trash') }}</button></form>{% endif %}</td>
+        <form method="post" action="{{ url_for('device_delete', did=d.id) }}" data-confirm="Delete {{ d.name }}?{% if d.kind == 'olt' %} Every ONU under it is deleted too.{% endif %}">{{ csrf_input() }}<button class="btn sm icon danger" type="submit" aria-label="Delete {{ d.name }}" title="Delete {{ d.name }}">{{ icon('trash') }}</button></form>{% endif %}</td>
     </tr>{% endfor %}</tbody>
   </table></div>
   {% else %}<div class="empty"><h3>No devices yet</h3><p>Add your OLTs, switches and radios to see at a glance which ones stopped answering.</p></div>{% endif %}

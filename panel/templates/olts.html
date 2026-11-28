@@ -38,7 +38,7 @@
         <a href="{{ url_for('olt_walk', did=r.id) }}">SNMP walk</a>
         <a href="{{ url_for('olt_edit', did=r.id) }}">Edit</a>
         <form method="post" action="{{ url_for('device_ping', did=r.id) }}">{{ csrf_input() }}<button type="submit">Ping</button></form>
-        <form method="post" action="{{ url_for('olt_delete', did=r.id) }}" data-confirm="Delete {{ r.name }} and the ONUs read from it?">{{ csrf_input() }}<button type="submit" class="danger-t">Delete</button></form>
+        <form method="post" action="{{ url_for('olt_delete', did=r.id) }}" data-confirm="Delete {{ r.name }} and every ONU under it? This cannot be undone.">{{ csrf_input() }}<button type="submit" class="danger-t">Delete</button></form>
         {% endif %}</div></details></td>
     </tr>{% endfor %}</tbody>
   </table></div>

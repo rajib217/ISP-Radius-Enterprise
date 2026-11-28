@@ -149,16 +149,24 @@ def olt_save():
     return redirect(url_for("olts"))
 
 
+def drop_olt(did):
+    """Delete an OLT with every ONU under it (synced or added by hand) and their signal history.
+    Returns how many ONUs went. The caller commits."""
+    n = q("SELECT COUNT(*) AS n FROM onus WHERE olt_id = %s", (did,), one=True)["n"]
+    x("DELETE m FROM onu_metrics m JOIN onus o ON o.id = m.onu_id WHERE o.olt_id = %s", (did,))
+    x("DELETE FROM onus WHERE olt_id = %s", (did,))
+    x("DELETE FROM olt_snmp WHERE device_id = %s", (did,))
+    x("DELETE FROM net_devices WHERE id = %s", (did,))
+    return n
+
+
 @route("/olts/<int:did>/delete", module="network", methods=["POST"])
 def olt_delete(did):
     d = _row(did)
-    x("DELETE FROM onus WHERE olt_id = %s AND source = 'snmp'", (did,))
-    x("UPDATE onus SET olt_id = NULL WHERE olt_id = %s", (did,))
-    x("DELETE FROM olt_snmp WHERE device_id = %s", (did,))
-    x("DELETE FROM net_devices WHERE id = %s", (did,))
-    audit("olt_deleted", d["name"])
+    n = drop_olt(did)
+    audit("olt_deleted", "%s (%d ONUs)" % (d["name"], n))
     commit()
-    flash("OLT %s deleted." % d["name"], "success")
+    flash("OLT %s and its %d ONU(s) deleted." % (d["name"], n), "success")
     return redirect(url_for("olts"))
 
 
