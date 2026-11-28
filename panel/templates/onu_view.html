@@ -9,7 +9,7 @@
     {% if can('network', 'edit') %}
     {% if o.olt_id %}<form method="post" action="{{ url_for('olt_sync', did=o.olt_id) }}">{{ csrf_input() }}<input type="hidden" name="next" value="{{ request.path }}"><button class="btn primary" type="submit">{{ icon('refresh') }}Refresh Metrics</button></form>{% endif %}
     <button class="btn violet" data-open="map-dlg" data-fill='{{ {"username": o.username, "action": url_for("onu_map", oid=o.id), "next": request.path}|tojson }}'>{{ icon('link') }}{{ 'Change subscriber' if o.username else 'Map to Subscriber' }}</button>
-    <button class="btn" data-open="onu-dlg" data-edit='{{ {"id": o.id, "olt_id": o.olt_id or "", "name": o.name, "serial": o.serial, "mac": o.mac, "username": o.username, "pon_port": o.pon_port, "rx_dbm": o.rx_dbm|string if o.rx_dbm is not none else "", "status": o.status, "note": o.note}|tojson }}'>{{ icon('edit') }}Edit</button>
+    <button class="btn" data-open="onu-dlg" data-edit='{{ {"id": o.id, "note": o.note}|tojson }}'>{{ icon('edit') }}Edit note</button>
     {% endif %}
   </div>
 </div>

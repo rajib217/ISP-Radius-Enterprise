@@ -415,41 +415,19 @@ def onu_map(oid):
 
 @route("/onus/save", module="network", methods=["POST"])
 def onu_save():
+    """ONUs are never added by hand: they come from the OLT's SNMP sync, which also keeps their
+    name, serial, MAC, port, signal and status. Only the note is edited here (and the customer via onu_map)."""
     f = request.form
     oid = int(f["id"]) if f.get("id", "").isdigit() else 0
-    try:
-        olt = int(f["olt_id"]) if f.get("olt_id", "").isdigit() else None
-        rx = round(float(f["rx_dbm"]), 2) if f.get("rx_dbm", "").strip() else None
-        assert rx is None or -60 <= rx <= 10
-        mac = f.get("mac", "").strip()
-        if mac:
-            mac = re.sub(r"[^0-9A-F]", "", mac.upper())
-            assert len(mac) == 12
-            mac = ":".join(mac[i:i + 2] for i in range(0, 12, 2))
-        status = f.get("status") if f.get("status") in dict(ONU_STATUS) else "online"
-        vals = (olt, f.get("name", "").strip()[:64], f.get("serial", "").strip()[:64], mac,
-                f.get("username", "").strip()[:64], f.get("pon_port", "").strip()[:32], rx, status,
-                f.get("note", "").strip()[:255])
-        assert vals[1] or vals[2] or mac
-    except (ValueError, AssertionError, KeyError):
-        flash("Give the ONU a name, serial or MAC, and a valid signal (-60 to 10 dBm).", "error")
+    if not oid:
+        flash("ONUs can't be added by hand. Add the OLT and run Sync ONUs; its ONUs are added automatically.", "error")
         return redirect(url_for("onus"))
-    if core.my_downline() is not None:
-        if olt not in [r["id"] for r in _my_olts()]:
-            flash("Pick one of your own OLTs for the ONU.", "error")
-            return redirect(url_for("onus"))
-        if oid:
-            _own_onu(oid)
-    if oid:
-        x("UPDATE onus SET olt_id=%s, name=%s, serial=%s, mac=%s, username=%s, pon_port=%s, rx_dbm=%s, status=%s, "
-          "note=%s WHERE id=%s", vals + (oid,))
-    else:
-        insert("INSERT INTO onus (olt_id, name, serial, mac, username, pon_port, rx_dbm, status, note) "
-               "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)", vals)
-    audit("onu_saved", vals[1] or vals[2] or mac)
+    _own_onu(oid)
+    x("UPDATE onus SET note = %s WHERE id = %s", (f.get("note", "").strip()[:255], oid))
+    audit("onu_saved", "#%d" % oid)
     commit()
     flash("ONU saved.", "success")
-    return redirect(url_for("onus"))
+    return redirect(core.safe_next(f.get("next")) or url_for("onu_view", oid=oid))
 
 
 @route("/onus/<int:oid>/delete", module="network", methods=["POST"])

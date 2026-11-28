@@ -874,6 +874,20 @@ def check_rules(flask_app, ids):
               "Deleting an OLT (%s page) deletes all its ONUs and their history, nothing else" % _how)
         run("DELETE FROM onus WHERE name LIKE 'ONU-CI-%%'")
 
+    # ---- ONUs are never added by hand (only SNMP sync adds them); edit changes the note only
+    _n0 = one("SELECT COUNT(*) AS n FROM onus")["n"]
+    _r = adm.post("/onus/save", data={"_csrf": "ci", "name": "ONU-CI-HAND", "serial": "HAND0001"})
+    _n1 = one("SELECT COUNT(*) AS n FROM onus")["n"]
+    _pg = adm.get("/onus").get_data(as_text=True)
+    run("INSERT INTO onus (olt_id, name, serial, status, source) VALUES (NULL, 'ONU-CI-SYNCED', 'SNMP0001', 'online', 'snmp')")
+    _so = one("SELECT id FROM onus WHERE name = 'ONU-CI-SYNCED'")["id"]
+    _e = adm.post("/onus/save", data={"_csrf": "ci", "id": str(_so), "note": "pole 12", "name": "X", "serial": "Y", "status": "offline"})
+    _row = one("SELECT name, serial, status, note FROM onus WHERE id = %s", (_so,))
+    check(_r.status_code == 302 and _n1 == _n0 and "Add ONU" not in _pg
+          and _e.status_code == 302 and _row == {"name": "ONU-CI-SYNCED", "serial": "SNMP0001", "status": "online", "note": "pole 12"},
+          "ONUs can't be added by hand (no button, the form is refused); Edit changes only the note")
+    run("DELETE FROM onus WHERE name LIKE 'ONU-CI-%%'")
+
     # ---- in-app notifications for customers: payment, balance, expiring, custom; unread mark, list, live check
     import appnotify as _an
     _nsid = one("SELECT id FROM subscribers WHERE username = 'uttara.shop'")["id"]

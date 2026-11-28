@@ -7,8 +7,7 @@
   <div class="actions">
     <a class="btn primary" href="{{ url_for('olts') }}">{{ icon('layers') }}Manage OLTs</a>
     {% if can('network', 'edit') %}
-    <form method="post" action="{{ url_for('olt_sync_all') }}">{{ csrf_input() }}<button class="btn primary" type="submit">{{ icon('refresh') }}Refresh Metrics</button></form>
-    <button class="btn" data-open="onu-dlg" data-new>{{ icon('plus') }}Add ONU</button>{% endif %}
+    <form method="post" action="{{ url_for('olt_sync_all') }}">{{ csrf_input() }}<button class="btn primary" type="submit">{{ icon('refresh') }}Refresh Metrics</button></form>{% endif %}
   </div>
 </div>
 <section class="panel xpanel">
@@ -56,5 +55,4 @@
   {% else %}<div class="empty"><h3>No ONUs found</h3><p>Add an OLT under Network &rsaquo; OLTs and press Sync ONUs, or change the filters.</p></div>{% endif %}
 </section>
 {% include "_onu_map.html" %}
-{% include "_onu_edit.html" %}
 {% endblock %}
