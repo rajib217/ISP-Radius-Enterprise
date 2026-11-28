@@ -276,14 +276,30 @@ def check_rules(flask_app, ids):
     check(names[1] in page and names[2] in page and names[3] not in page, "reseller's My Packages shows only the 2 allocated")
     cost1 = float(one("SELECT price FROM user_plans WHERE user_id = %s AND plan_id = 1", (ids["reseller"],))["price"])
     shown = ("BDT %s" % "{:,.0f}".format(cost1)) in page or ("%.2f" % cost1) in page   # money shows 400 or 400.00
-    check("All customers" not in page and "My cost" in page and shown,
-          "reseller's My Packages shows their own cost (%.2f), not the ISP-wide customer count" % cost1)
-    check("All customers" in adm_pkgs, "admin's My Packages still shows the ISP-wide customer count")
+    check("Added by me" not in page and "Purchase Price" in page and shown and "Reseller pays" in page and "pkg_del" not in page
+          and "/plans/1/delete" not in page,
+          "reseller's My Packages shows their own cost (%.2f), their own customers only, and no Delete" % cost1)
+    _tot_subs = one("SELECT COUNT(*) AS n FROM subscribers")["n"]
+    check("Added by me" in adm_pkgs and "Average subscriber margin" in adm_pkgs and "/plans/1/delete" in adm_pkgs
+          and ">{:,}</b>".format(_tot_subs) in adm_pkgs,
+          "admin's My Packages: summary cards count every customer (%d); each package has a Delete" % _tot_subs)
     act = res.get("/subscribers/activation").get_data(as_text=True)
     check(names[1] in act and names[3] not in act, "reseller's Activation lists only allocated packages")
     check('href="/plans"' not in res.get("/").get_data(as_text=True), "reseller's menu has no Package group")
     page = sub.get("/my-packages").get_data(as_text=True)
-    check(all(names[k] not in page for k in names), "sub-reseller with nothing allocated sees no package")
+    check(all(names[k] not in page for k in names) and "Reseller pays" not in page,
+          "sub-reseller with nothing allocated sees no package (and no Reseller pays column)")
+    # Delete from My Packages: refused while customers use the package, done when none; comes back to My Packages
+    _used = one("SELECT plan_id FROM subscribers WHERE plan_id IS NOT NULL LIMIT 1")["plan_id"]
+    _d1 = client(ids["admin"]).post("/plans/%d/delete" % _used, data={"_csrf": "ci", "next": "/my-packages"})
+    run("INSERT INTO plans (name, label, price, validity_days) VALUES ('ci-mp-del', 'CI MP Del', 10, 30)")
+    _dp = one("SELECT id FROM plans WHERE name = 'ci-mp-del'")["id"]
+    _d2 = client(ids["admin"]).post("/plans/%d/delete" % _dp, data={"_csrf": "ci", "next": "/my-packages"})
+    _d3 = res.post("/plans/%d/delete" % _used, data={"_csrf": "ci", "next": "/my-packages"})
+    check(_d1.headers.get("Location", "").endswith("/my-packages") and one("SELECT 1 AS x FROM plans WHERE id = %s", (_used,))
+          and _d2.headers.get("Location", "").endswith("/my-packages") and not one("SELECT 1 AS x FROM plans WHERE id = %s", (_dp,))
+          and _d3.status_code == 403,
+          "My Packages Delete: a package in use is kept, an unused one is deleted, a reseller is refused")
     info = res.get("/subscribers/charge-info?u=banani.cafe&plan=3").get_json()
     check(info.get("price") is None, "reseller gets no price for an unallocated package")
 

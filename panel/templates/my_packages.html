@@ -1,26 +1,69 @@
 {% extends "base.html" %}
 {% from "_macros.html" import icon %}
+{% macro m(v) %}{{ '{:,.2f}'.format((v or 0)|float) }}{% endmacro %}
 {% block title %}My Packages{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>My Packages</h1><p class="sub">{{ 'The plans you are allowed to sell' if restricted else 'All plans you can sell' }}, with your own sales this month.</p></div></div>
-<section class="panel">
+<div class="page-head"><div><h1>My Packages</h1><p class="sub"><a href="{{ url_for('dashboard') }}">Home</a> &middot; {{ role_label }}</p></div></div>
+{% if can_fn('usr.module') %}<div class="mp-actions"><a class="btn violet" href="{{ url_for('admins', group='reseller') }}" title="Pick a reseller, then set their package prices">{{ icon('plus') }}Assign Packages</a></div>{% endif %}
+
+<div class="mp-cards">
+  <div class="panel mp-card"><small>Packages</small><b>{{ rows|length }}</b><span>{{ tot.free }} free</span></div>
+  <div class="panel mp-card"><small>Your subscribers on these packages</small><b>{{ '{:,}'.format(tot.subs) }}</b><span>across {{ tot.used }} package{{ '' if tot.used == 1 else 's' }}</span></div>
+  <div class="panel mp-card"><small>Billing per cycle at current prices</small><b>{{ m(tot.billing) }}</b><span>subscribers &times; subscriber price, before discounts</span></div>
+  <div class="panel mp-card"><small>Average subscriber margin</small><b>{{ '%.1f'|format(tot.margin) }}%</b><span>subscriber profit &divide; purchase price</span></div>
+</div>
+
+<section class="panel mp-list" data-tt="my-packages" data-tt-title="My Packages">
+  <div class="panel-head"><h2>{{ icon('package') }}My Packages</h2></div>
   {% if rows %}
-  <div class="tbl-wrap"><table class="tbl">
-    <thead><tr><th>Package</th><th class="num">Speed</th>{% if seller %}<th class="num">My cost</th><th class="num">Customer price</th>{% else %}<th class="num">Price</th>{% endif %}<th class="num">Valid for</th>{% if not seller %}<th class="num">All customers</th>{% endif %}<th class="num">{{ 'My customers' if seller else 'Added by me' }}</th><th class="num">My payments (month)</th><th class="num">My collection (month)</th></tr></thead>
+  <div class="tt-bar">
+    <select data-tt-per aria-label="Rows per page" class="tt-per">{% for n in (10, 25, 50, 100) %}<option value="{{ n }}" {{ 'selected' if n == 50 }}>{{ n }}</option>{% endfor %}</select>
+    <div class="tt-tools mp-tools" role="group" aria-label="Export and columns">
+      <details class="dd"><summary class="mp-tbtn">Export &#9662;</summary><div class="dd-menu mp-menu">
+        <button type="button" data-tt-do="print">Print</button><button type="button" data-tt-do="copy">Copy</button><button type="button" data-tt-do="pdf">PDF</button><button type="button" data-tt-do="excel">Excel</button><button type="button" data-tt-do="csv">CSV</button>
+      </div></details>
+      <span class="tt-view-wrap"><button type="button" data-tt-view aria-expanded="false">Columns &#9662;</button><div class="tt-cols mp-cols" data-tt-cols hidden></div></span>
+    </div>
+  </div>
+  <div class="tbl-wrap"><table class="tbl mp-tbl" data-tt-table>
+    <thead><tr>
+      <th data-k="pkg" data-sort="text">Package</th>
+      <th data-k="subs" data-sort="num" class="num">Subscribers</th>
+      <th data-k="cost" data-sort="num" class="num">Purchase Price</th>
+      <th data-k="sub_pays" data-sort="num" class="num">Subscriber pays</th>
+      {% if show_rp %}<th data-k="res_pays" data-sort="num" class="num">Reseller pays</th>{% endif %}
+      <th data-k="status" data-sort="text">Status</th>
+      <th data-k="speed" data-sort="text" data-tt-hide>Speed</th>
+      <th data-k="valid" data-sort="num" data-tt-hide>Valid for</th>
+      {% if not seller %}<th data-k="mine" data-sort="num" class="num" data-tt-hide>Added by me</th>{% endif %}
+      <th data-k="m_pay" data-sort="num" class="num" data-tt-hide>My payments (month)</th>
+      <th data-k="m_amt" data-sort="num" class="num" data-tt-hide>My collection (month)</th>
+      {% if can_delete %}<th class="act">Actions</th>{% endif %}
+    </tr></thead>
     <tbody>{% for p in rows %}
       <tr>
-        <td class="who-cell"><b>{{ p.label }}</b><small class="mono">{{ p.name }}</small></td>
-        <td class="num">{{ p.rate }}</td>
-        {% if seller %}<td class="num">{{ (currency ~ ' ' ~ (p.my_cost|money)) if p.my_cost is not none else '—' }}</td>
-        <td class="num">{{ (currency ~ ' ' ~ (p.customer_price|money)) if p.customer_price is not none else '—' }}</td>
-        {% else %}<td class="num">{{ currency }} {{ p.price|money }}</td>{% endif %}
-        <td class="num">{{ p.duration or p.validity_days }} {{ p.duration_type or "day" }}{{ "" if (p.duration or p.validity_days) == 1 else "s" }}</td>
-        {% if not seller %}<td class="num">{{ '{:,}'.format(p.total) }}</td>{% endif %}
-        <td class="num">{{ '{:,}'.format(p.mine) }}</td>
-        <td class="num">{{ p.month.payments }}</td>
-        <td class="num"><b>{{ p.month.amount|money }}</b></td>
+        <td data-v="{{ p.label }}" class="who-cell"><b>{{ p.label }}</b><small class="muted">ID {{ p.id }}</small></td>
+        <td class="num" data-v="{{ p.subs }}">{{ '{:,}'.format(p.subs) }}</td>
+        <td class="num" data-v="{{ p.cost }}">{{ m(p.cost) }}</td>
+        <td class="num mp-pay" data-v="{{ p.sub_pays }}"><b>{{ m(p.sub_pays) }}</b><small>+{{ m(p.sp) }}</small></td>
+        {% if show_rp %}<td class="num mp-pay" data-v="{{ p.res_pays }}"><b>{{ m(p.res_pays) }}</b><small>+{{ m(p.rp) }}</small></td>{% endif %}
+        <td data-v="{{ 'Free' if p.free else 'Active' }}">{% if p.free %}<span class="mp-st free">Free</span>{% else %}<span class="mp-st on">Active</span>{% endif %}</td>
+        <td data-v="{{ p.rate }}">{{ p.rate }}</td>
+        <td data-v="{{ p.validity_days or 0 }}">{{ p.duration or p.validity_days }} {{ p.duration_type or "day" }}{{ "" if (p.duration or p.validity_days) == 1 else "s" }}</td>
+        {% if not seller %}<td class="num" data-v="{{ p.mine }}">{{ '{:,}'.format(p.mine) }}</td>{% endif %}
+        <td class="num" data-v="{{ p.month.payments }}">{{ p.month.payments }}</td>
+        <td class="num" data-v="{{ p.month.amount }}">{{ m(p.month.amount) }}</td>
+        {% if can_delete %}<td class="act">
+          <details class="dd pk-dd"><summary class="btn sm pk-act">Actions &#9662;</summary>
+            <div class="dd-menu">
+              <form method="post" action="{{ url_for('plan_delete', pid=p.id) }}" data-confirm="Delete package {{ p.label }}?{% if p.total %} {{ p.total }} customer(s) still use it, so it will not be deleted.{% endif %}">{{ csrf_input() }}<input type="hidden" name="next" value="{{ url_for('my_packages') }}"><button type="submit" class="pk-del">{{ icon('trash') }} Delete</button></form>
+            </div>
+          </details>
+        </td>{% endif %}
       </tr>{% endfor %}</tbody>
   </table></div>
+  <div class="tt-meta"><span data-tt-info class="muted"></span><nav data-tt-pages class="tt-pages" aria-label="Pages"></nav></div>
   {% else %}<div class="empty"><h3>No packages available</h3><p>Ask an administrator to create plans or to allow some for you.</p></div>{% endif %}
 </section>
 {% endblock %}
+{% block scripts %}<script src="{{ asset('js/table-tools.js') }}"></script>{% endblock %}

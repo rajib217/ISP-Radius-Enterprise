@@ -19,7 +19,10 @@
     var rows = $$("tr", body), per = 50, page = 1, sortCol = -1, sortDir = 1, query = "";
     var perSel = box.querySelector("[data-tt-per]"), search = box.querySelector("[data-tt-search]");
     var info = box.querySelector("[data-tt-info]"), pages = box.querySelector("[data-tt-pages]");
-    var hidden = []; try { hidden = JSON.parse(store(key + ".hidden") || "[]"); } catch (e) { hidden = []; }
+    var hidden = [], savedHidden = store(key + ".hidden");
+    try { hidden = savedHidden ? JSON.parse(savedHidden)
+                               : heads.filter(function (h) { return h.hasAttribute("data-tt-hide") && h.dataset.k; })
+                                      .map(function (h) { return h.dataset.k; }); } catch (e) { hidden = []; }
     var savedPer = parseInt(store(key + ".per"), 10); if (savedPer) per = savedPer;
     if (perSel) { perSel.value = String(per); if (perSel.value !== String(per)) { per = parseInt(perSel.value, 10) || 50; } }
 

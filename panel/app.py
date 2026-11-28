@@ -1639,7 +1639,7 @@ def plan_delete(pid):
     used = q("SELECT COUNT(*) AS c FROM subscribers WHERE plan_id = %s", (pid,), one=True)["c"]
     if used:
         flash("%d subscriber(s) still use %s. Move them to another plan first." % (used, plan["label"]), "error")
-        return redirect(url_for("plans"))
+        return redirect(safe_next(request.form.get("next")) or url_for("plans"))
     with get_db().cursor() as cur:
         radius.remove_plan(cur, plan["name"])
     x("DELETE FROM plan_fees WHERE plan_id = %s", (pid,))
@@ -1648,7 +1648,7 @@ def plan_delete(pid):
     audit("plan_deleted", plan["name"])
     commit()
     flash("Plan %s deleted." % plan["label"], "success")
-    return redirect(url_for("plans"))
+    return redirect(safe_next(request.form.get("next")) or url_for("plans"))
 
 
 # ====================================================================

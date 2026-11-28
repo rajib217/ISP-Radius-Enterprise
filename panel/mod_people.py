@@ -143,20 +143,38 @@ def my_packages():
         "WHERE pay.received_by = %s AND pay.paid_at >= %s GROUP BY s.plan_id",
         (me, date.today().replace(day=1)))}
     seller = g.me["role"] in core.SELLER_ROLES
-    prices = {r["plan_id"]: r for r in q("SELECT plan_id, price, sub_profit FROM user_plans WHERE user_id = %s", (g.me["id"],))} if seller else {}
+    prices = {r["plan_id"]: r for r in q("SELECT plan_id, price, sub_profit, subreseller_profit FROM user_plans "
+                                         "WHERE user_id = %s", (g.me["id"],))} if seller else {}
+    import mod_policy
+    tot = {"subs": 0, "used": 0, "free": 0, "billing": 0.0, "profit": 0.0, "cost": 0.0}
     for r in rows:
         r["month"] = month.get(r["id"]) or {"payments": 0, "amount": 0}
         r["rate"] = core.bw_text(r)
+        up = prices.get(r["id"]) or {}
+        # what this user pays for the package: a seller's own price, or the package's price when none is set
+        # (mod_subs.seller_cost); the office pays nothing above the list price
+        r["cost"] = float(up["price"]) if up.get("price") is not None else float(r["price"] or 0)
+        r["sp"] = float(up.get("sub_profit") or 0)
+        r["rp"] = float(up.get("subreseller_profit") or 0)
+        # what their customer pays: cost + subscriber profit, plus the package's taxes / fees (as charged at renewal)
+        r["sub_pays"] = mod_policy.fee_total(r["cost"] + r["sp"], r["id"])
+        r["res_pays"] = r["cost"] + r["rp"]
+        r["free"] = r["cost"] == 0 and r["sub_pays"] == 0
+        # a seller sees their own customers, never the ISP-wide count; the office sees every customer
+        r["subs"] = r["mine"] if seller else r["total"]
         if seller:
-            # a seller sees what they pay and what their customers pay, never the ISP-wide customer count
-            up = prices.get(r["id"]) or {}
-            import mod_policy
-            # no price set for them: they pay the package's own price (mod_subs.seller_cost)
-            r["my_cost"] = float(up["price"]) if up.get("price") is not None else float(r["price"] or 0)
-            # what their customer pays: cost + subscriber profit, plus the package's taxes / fees (as charged at renewal)
-            r["customer_price"] = mod_policy.fee_total(r["my_cost"] + float(up.get("sub_profit") or 0), r["id"])
             r.pop("total", None)
-    return render_template("my_packages.html", rows=rows, restricted=allowed is not None, seller=seller)
+        tot["subs"] += r["subs"]
+        tot["used"] += 1 if r["subs"] else 0
+        tot["free"] += 1 if r["free"] else 0
+        tot["billing"] += r["subs"] * (r["cost"] + r["sp"])
+        tot["profit"] += r["subs"] * r["sp"]
+        tot["cost"] += r["subs"] * r["cost"]
+    tot["margin"] = tot["profit"] * 100 / tot["cost"] if tot["cost"] else 0.0
+    can_delete = g.me["role"] == "admin" and core.can("plans", "edit") and core.can_fn("pkg.delete")
+    return render_template("my_packages.html", rows=rows, restricted=allowed is not None, seller=seller, tot=tot,
+                           show_rp=not seller or g.me["role"] == "reseller", can_delete=can_delete,
+                           role_label=core.role_labels().get(g.me["role"], g.me["role"]))
 
 
 # ===================================================================== My Users (a seller's own downline)

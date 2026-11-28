@@ -2922,3 +2922,24 @@ a.cl-stat:hover { border-color: var(--accent); text-decoration: none; }
   .cl-filter-r select { flex: 1; }
   .cl-acts { grid-template-columns: auto auto minmax(0, 1fr) minmax(0, 1.3fr); }
 }
+
+/* My Packages */
+.mp-actions { margin: 4px 0 18px; }
+.mp-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 20px; }
+.mp-card { padding: 16px 18px; margin: 0; }
+.mp-card small { display: block; color: var(--text-muted); font-size: var(--text-sm); }
+.mp-card b { display: block; font-family: var(--font-display); font-size: 22px; font-weight: 700; margin: 6px 0 4px; font-variant-numeric: tabular-nums; }
+.mp-card span { color: var(--text-muted); font-size: 12px; }
+@media (max-width: 1000px) { .mp-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .mp-cards { grid-template-columns: 1fr; } }
+.mp-list .tt-bar { justify-content: space-between; }
+.mp-tools details.dd > summary.mp-tbtn { padding: 8px 14px; font-weight: 500; border-radius: var(--r-md); }
+.mp-tools details.dd > summary.mp-tbtn:hover { background: var(--border); }
+.mp-menu { left: 0; right: auto; min-width: 140px; }
+.mp-cols { left: auto; right: 0; }
+.mp-tbl .who-cell small { display: block; font-size: 11px; }
+.mp-pay b { display: block; font-weight: 600; }
+.mp-pay small { display: block; color: var(--text-muted); font-size: 11px; }
+.mp-st { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); font-weight: 600; }
+.mp-st::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.mp-st.on { color: var(--ok); } .mp-st.free { color: var(--warn); }
