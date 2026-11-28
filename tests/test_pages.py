@@ -904,6 +904,28 @@ def check_rules(flask_app, ids):
           "ONUs can't be added by hand (no button, the form is refused); Edit changes only the note")
     run("DELETE FROM onus WHERE name LIKE 'ONU-CI-%%'")
 
+    # ---- dashboard: Expired online / Disabled online open their lists, and each card's number is that list's count
+    _eo = one("SELECT id, username, expiry_date, status, grace_until FROM subscribers WHERE status = 'active' ORDER BY id LIMIT 1")
+    run("UPDATE subscribers SET expiry_date = CURDATE() - INTERVAL 2 DAY, grace_until = NULL WHERE id = %s", (_eo["id"],))
+    run("INSERT INTO radacct (acctsessionid, acctuniqueid, username, nasipaddress, framedipaddress, acctstarttime, acctupdatetime) "
+        "VALUES ('ci-eo', 'ci-eo-u', %s, '10.9.9.7', '10.0.0.77', NOW() - INTERVAL 1 HOUR, NOW())", (_eo["username"],))
+    import dash as _dash
+    _dash._cache.clear()
+    _home = adm.get("/?tab=subscriber").get_data(as_text=True)
+    _res = {}
+    for _st in ("expired_online", "profile_disabled_online"):
+        _list = adm.get("/subscribers?status=%s&per=100" % _st).get_data(as_text=True)
+        _lnk = 'class="stat amber" href="/subscribers?status=%s"' % _st
+        _card = _home.split(_lnk, 1)[1].split("</a>", 1)[0] if _lnk in _home else ""
+        _num = re.search(r'class="st-v">([\d,]+)<', _card)
+        _cnt = re.search(r"of ([\d,]+) records", _list)
+        _res[_st] = (_num.group(1) if _num else None, _cnt.group(1) if _cnt else "0")
+    run("DELETE FROM radacct WHERE acctsessionid = 'ci-eo'")
+    run("UPDATE subscribers SET expiry_date = %s, grace_until = %s WHERE id = %s", (_eo["expiry_date"], _eo["grace_until"], _eo["id"]))
+    _dash._cache.clear()
+    check(all(v[0] is not None and v[0] == v[1] for v in _res.values()) and _res["expired_online"][0] != "0",
+          "Dashboard: Expired online and Disabled online are clickable and show their list's count " + repr(_res))
+
     # ---- MAC Vendor Database: IEEE MA-L / MA-M / MA-S, maclookup.app and plain lines; paged + searched on the server;
     #      the customer's page shows the maker of the connected MAC (longest block wins)
     run("DELETE FROM mac_vendors")

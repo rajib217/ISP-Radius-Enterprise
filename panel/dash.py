@@ -32,7 +32,7 @@ def subscriber():
            "COALESCE(SUM(" + db.ENDED + "), 0) AS expired, "
            "COALESCE(SUM(s.status = 'suspended'), 0) AS disabled, "
            "COALESCE(SUM(s.username IN " + ONLINE + "), 0) AS online, "
-           "COALESCE(SUM(" + db.ENDED + " AND s.username IN " + ONLINE + "), 0) "
+           "COALESCE(SUM(" + db.ENDED + " AND NOT " + db.GRACE_ON + " AND s.username IN " + ONLINE + "), 0) "
            "AS expired_online, "
            "COALESCE(SUM(s.status = 'suspended' AND s.username IN " + ONLINE + "), 0) AS disabled_online, "
            "COALESCE(SUM(" + db.expiring_sql(1) + "), 0) AS exp1, "
@@ -59,8 +59,9 @@ def subscriber():
         ("Offline", v["offline"], "Not connected", pct(v["offline"]), "red", {"status": "offline"}),
         ("Expired", v["expired"], "Expired accounts", pct(v["expired"]), "red", {"status": "expired"}),
         ("Disabled", v["disabled"], "Suspended accounts", pct(v["disabled"]), "amber", {"status": "suspended"}),
-        ("Expired online", v["expired_online"], "Expired but still connected", "", "amber", {}),
-        ("Disabled online", v["disabled_online"], "Suspended but still connected", "", "amber", {}),
+        ("Expired online", v["expired_online"], "Expired but still connected", "", "amber", {"status": "expired_online"}),
+        ("Disabled online", v["disabled_online"], "Suspended but still connected", "", "amber",
+         {"status": "profile_disabled_online"}),
         ("Expiring in 7 days", v["exp7"], "Active, expire within a week", "", "amber", {"status": "exp7"}),
         ("Expiring in 3 days", v["exp3"], "Active, expire within 3 days", "", "amber", {"status": "exp3"}),
         ("Expiring in 1 day", v["exp1"], "Active, expire today or tomorrow", "", "red", {"status": "exp1"}),
