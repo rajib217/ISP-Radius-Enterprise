@@ -2943,3 +2943,8 @@ a.cl-stat:hover { border-color: var(--accent); text-decoration: none; }
 .mp-st { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); font-weight: 600; }
 .mp-st::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
 .mp-st.on { color: var(--ok); } .mp-st.free { color: var(--warn); }
+
+/* package form switches: the panel's toggle with its On / Off word */
+.pk-sw { display: inline-flex; align-items: center; gap: 10px; margin-top: 4px; cursor: pointer; font-weight: 500; }
+.pk-sw [data-sw-text] { color: var(--text-muted); min-width: 24px; }
+.pk-sw .switch:has(input:checked) + [data-sw-text] { color: var(--accent); }

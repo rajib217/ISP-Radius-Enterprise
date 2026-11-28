@@ -10,7 +10,7 @@
   {% if gone %}<div class="err">Policy <b>{{ value }}</b> was deleted. Pick another one.</div>{% endif %}
 {% endmacro %}
 {% macro switch(name, on, dep='') %}
-  <label class="check sw"><input type="checkbox" name="{{ name }}" value="1" {{ 'checked' if on }} {% if dep %}data-switch="{{ dep }}"{% endif %}><span>{{ 'On' if on else 'Off' }}</span></label>
+  <label class="pk-sw"><span class="switch"><input type="checkbox" name="{{ name }}" value="1" {{ 'checked' if on }} {% if dep %}data-switch="{{ dep }}"{% endif %}><i></i></span><span data-sw-text>{{ 'On' if on else 'Off' }}</span></label>
 {% endmacro %}
 {% macro bad(key) %}{{ ' bad' if err == key }}{% endmacro %}
 {% block content %}

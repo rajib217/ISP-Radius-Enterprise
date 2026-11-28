@@ -209,7 +209,12 @@
     $$("[data-switch]", plan).forEach(function (sw) {
       var deps = $$("[data-dep=" + sw.dataset["switch"] + "]", plan);
       var apply = function () { deps.forEach(function (d) { d.disabled = !sw.checked; }); };
-      sw.addEventListener("change", function () { apply(); var l = sw.nextElementSibling; if (l) l.textContent = sw.checked ? "On" : "Off"; }); apply();
+      sw.addEventListener("change", apply); apply();
+    });
+    /* every switch on the form says On / Off as it is ticked (Auto Renew included, not only the ones with fields) */
+    $$(".pk-sw input[type=checkbox]", plan).forEach(function (sw) {
+      var l = sw.closest(".pk-sw").querySelector("[data-sw-text]");
+      sw.addEventListener("change", function () { if (l) l.textContent = sw.checked ? "On" : "Off"; });
     });
     /* quota "switch to policy" shows the policy picker */
     $$("[data-action-for]", plan).forEach(function (sel) {
